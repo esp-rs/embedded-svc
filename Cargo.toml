@@ -1,0 +1,17 @@
+[package]
+name = "embedded-svc"
+version = "0.1.0"
+authors = ["Ivan Markov <ivan.markov@gmail.com>"]
+edition = "2018"
+categories = ["embedded", "hardware-support"]
+keywords = ["embedded", "svc", "hal"]
+description = "A set of traits for services higher level than embedded-hal and typically found in embedded microcontrollers."
+repository = "https://github.com/ivmarkov/embedded-svc"
+license = "MIT"
+
+[dependencies]
+anyhow = "*"
+async-trait = "*"
+serde_json = "*"
+serde = {version = "*", features = ["derive"]}
+getrandom = {git = "https://github.com/ivmarkov/getrandom.git", branch = "0.1", version = "0.1"}
