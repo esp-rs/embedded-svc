@@ -257,9 +257,10 @@ impl Default for Configuration {
     }
 }
 
-pub trait TransitionalState {
+pub trait TransitionalState<T> {
     fn is_transitional(&self) -> bool;
     fn is_operating(&self) -> bool;
+    fn get_operating(&self) -> Option<&T>;
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -269,13 +270,21 @@ pub enum ClientIpStatus {
     Done(ipv4::ClientSettings),
 }
 
-impl TransitionalState for ClientIpStatus {
+impl TransitionalState<ipv4::ClientSettings> for ClientIpStatus {
     fn is_transitional(&self) -> bool {
         *self == ClientIpStatus::Waiting
     }
 
     fn is_operating(&self) -> bool {
         *self != ClientIpStatus::Disabled
+    }
+
+    fn get_operating(&self) -> Option<&ipv4::ClientSettings> {
+        if let &ClientIpStatus::Done(ref settings) = self {
+            Some(settings)
+        } else {
+            None
+        }
     }
 }
 
@@ -286,13 +295,21 @@ pub enum ClientConnectionStatus {
     Connected(ClientIpStatus),
 }
 
-impl TransitionalState for ClientConnectionStatus {
+impl TransitionalState<ClientIpStatus> for ClientConnectionStatus {
     fn is_transitional(&self) -> bool {
         *self == ClientConnectionStatus::Connecting || (if let ClientConnectionStatus::Connected(ips) = self {ips.is_transitional()} else {false})
     }
 
     fn is_operating(&self) -> bool {
         *self != ClientConnectionStatus::Disconnected
+    }
+
+    fn get_operating(&self) -> Option<&ClientIpStatus> {
+        if let &ClientConnectionStatus::Connected(ref settings) = self {
+            Some(settings)
+        } else {
+            None
+        }
     }
 }
 
@@ -303,13 +320,21 @@ pub enum ClientStatus {
     Started(ClientConnectionStatus),
 }
 
-impl TransitionalState for ClientStatus {
+impl TransitionalState<ClientConnectionStatus> for ClientStatus {
     fn is_transitional(&self) -> bool {
         *self == ClientStatus::Starting || (if let ClientStatus::Started(ccs) = self {ccs.is_transitional()} else {false})
     }
 
     fn is_operating(&self) -> bool {
         *self != ClientStatus::Stopped
+    }
+
+    fn get_operating(&self) -> Option<&ClientConnectionStatus> {
+        if let &ClientStatus::Started(ref settings) = self {
+            Some(settings)
+        } else {
+            None
+        }
     }
 }
 
@@ -320,13 +345,21 @@ pub enum ApIpStatus {
     Done,
 }
 
-impl TransitionalState for ApIpStatus {
+impl TransitionalState<()> for ApIpStatus {
     fn is_transitional(&self) -> bool {
         *self == ApIpStatus::Waiting
     }
 
     fn is_operating(&self) -> bool {
         *self != ApIpStatus::Disabled
+    }
+
+    fn get_operating(&self) -> Option<&()> {
+        if let &ApIpStatus::Done = self {
+            Some(&())
+        } else {
+            None
+        }
     }
 }
 
@@ -337,7 +370,7 @@ pub enum ApStatus {
     Started(ApIpStatus),
 }
 
-impl TransitionalState for ApStatus {
+impl TransitionalState<ApIpStatus> for ApStatus {
     fn is_transitional(&self) -> bool {
         *self == ApStatus::Starting || (if let ApStatus::Started(ips) = self {ips.is_transitional()} else {false})
     }
@@ -345,20 +378,18 @@ impl TransitionalState for ApStatus {
     fn is_operating(&self) -> bool {
         *self != ApStatus::Stopped
     }
+
+    fn get_operating(&self) -> Option<&ApIpStatus> {
+        if let &ApStatus::Started(ref settings) = self {
+            Some(settings)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Status(pub ClientStatus, pub ApStatus);
-
-impl TransitionalState for Status {
-    fn is_transitional(&self) -> bool {
-        self.0.is_transitional() || self.1.is_transitional()
-    }
-
-    fn is_operating(&self) -> bool {
-        self.0.is_operating() || self.1.is_operating()
-    }
-}
 
 pub trait Wifi {
     fn get_capabilities(&self) -> Result<collections::HashSet<Capability>>;
