@@ -101,12 +101,12 @@ impl Default for AccessPointConfiguration {
             auth_method: AuthMethod::None,
             password: "".into(),
             max_connections: 256,
-            ip_conf: Default::default(),
+            ip_conf: Some(Default::default()),
         }
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ClientConfiguration {
     pub ssid: String,
     pub bssid: Option<[u8; 6]>,
@@ -135,17 +135,17 @@ fn to_ip_conf(ip_conf: &mut Option<ipv4::ClientConfiguration>) -> &mut ipv4::Cli
     to_ip_conf(ip_conf)
 }
 
-// impl Default for ClientConfiguration {
-//     fn default() -> Self {
-//         ClientConfiguration {
-//             ssid: "".into(),
-//             bssid: None,
-//             auth_method: AuthMethod::WPA2Personal,
-//             password: "".into(),
-//             ip_conf: Some(Default::default()),
-//         }
-//     }
-// }
+impl Default for ClientConfiguration {
+    fn default() -> Self {
+        ClientConfiguration {
+            ssid: "".into(),
+            bssid: None,
+            auth_method: Default::default(),
+            password: "".into(),
+            ip_conf: Some(Default::default()),
+        }
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, EnumString, ToString, EnumMessage, EnumIter)]
 pub enum Capability {
@@ -390,6 +390,16 @@ impl TransitionalState<ApIpStatus> for ApStatus {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Status(pub ClientStatus, pub ApStatus);
+
+impl Status {
+    pub fn is_transitional(&self) -> bool {
+        self.0.is_transitional() || self.1.is_transitional()
+    }
+
+    pub fn is_operating(&self) -> bool {
+        self.0.is_operating() || self.1.is_operating()
+    }
+}
 
 pub trait Wifi {
     fn get_capabilities(&self) -> Result<collections::HashSet<Capability>>;

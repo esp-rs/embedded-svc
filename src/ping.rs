@@ -29,6 +29,7 @@ impl Default for Configuration {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Info {
+    pub seqno: u32,
     pub ttl: u8,
     pub elapsed_time: Duration,
     pub recv_len: u32,
@@ -42,8 +43,8 @@ pub enum Reply {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Summary {
-    pub transmitted: u16,
-    pub received: u16,
+    pub transmitted: u32,
+    pub received: u32,
     pub time: Duration,
 }
 

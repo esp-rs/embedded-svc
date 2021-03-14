@@ -1,6 +1,7 @@
 pub use std::net::Ipv4Addr;
-use std::str::FromStr;
+use std::{convert::TryFrom, str::FromStr};
 
+use anyhow::bail;
 use serde::{Serialize, Deserialize};
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -21,6 +22,35 @@ impl FromStr for Mask {
 impl ToString for Mask {
     fn to_string(&self) -> String {
         self.0.to_string()
+    }
+}
+
+impl TryFrom<Ipv4Addr> for Mask {
+    type Error = anyhow::Error;
+
+    fn try_from(ip: Ipv4Addr) -> Result<Self, Self::Error> {
+        let octets = ip.octets();
+        let addr: u32 = ((octets[0] as u32 & 0xff) << 24) | ((octets[1] as u32 & 0xff) << 16) | ((octets[2] as u32 & 0xff) << 8) | (octets[3] as u32 & 0xff);
+
+        if addr.leading_ones() + addr.trailing_zeros() == 32 {
+            Ok(Mask(addr.leading_ones() as u8))
+        } else {
+            bail!("Not a valid mask")
+        }
+    }
+}
+
+impl From<Mask> for Ipv4Addr {
+    fn from(mask: Mask) -> Self {
+        let addr: u32 = 1 << mask.0;
+
+        let (a, b, c, d) = (
+            ((addr >> 24) & 0xff) as u8,
+            ((addr >> 16) & 0xff) as u8,
+            ((addr >> 8) & 0xff) as u8,
+            (addr & 0xff) as u8);
+
+        Ipv4Addr::new(a, b, c, d)
     }
 }
 
