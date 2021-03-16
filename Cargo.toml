@@ -17,3 +17,4 @@ serde = {version = "*", features = ["derive"]}
 strum = "0.20"
 strum_macros = "0.20"
 getrandom = {git = "https://github.com/ivmarkov/getrandom.git", branch = "0.1", version = "0.1"}
+http-auth-basic = "0.1"
