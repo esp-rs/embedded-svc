@@ -1,11 +1,11 @@
-use std::{any::Any, cell::RefCell, collections::HashMap, fs, io::{self, Read}, sync::{Arc, RwLock}};
+use std::{any::Any, collections::HashMap, fs, io::{self, Read}, sync::{Arc, RwLock}};
 
 pub use anyhow::Result;
 
 pub enum Body {
     Empty,
     Bytes(Vec<u8>),
-    Read(Option<usize>, Box<RefCell<dyn io::Read>>)
+    Read(Option<usize>, Box<dyn io::Read>)
 }
 
 impl Body {
@@ -54,7 +54,7 @@ impl From<fs::File> for Body {
     fn from(f: fs::File) -> Self {
         Body::Read(
             f.metadata().map_or(None, |md| Some(md.len() as usize)),
-            Box::new(RefCell::new(f)))
+            Box::new(f))
     }
 }
 
@@ -82,7 +82,7 @@ impl Request {
             app: Option<State>) -> Self {
         Request {
             delegate,
-            attrs: HashMap::new(),
+            attrs: attribs,
             session,
             app
         }
@@ -222,8 +222,8 @@ impl ResponseBuilder {
         self
     }
 
-    pub fn status_message(mut self, message: String) -> Self {
-        self.0.status_message = Some(message);
+    pub fn status_message(mut self, message: impl Into<String>) -> Self {
+        self.0.status_message = Some(message.into());
 
         self
     }
@@ -234,8 +234,8 @@ impl ResponseBuilder {
         self
     }
 
-    pub fn content_type(self, value: String) -> Self {
-        self.header("content-type", value)
+    pub fn content_type(self, value: impl Into<String>) -> Self {
+        self.header("content-type", value.into())
     }
 
     pub fn content_len(self, value: usize) -> Self {
@@ -271,6 +271,7 @@ impl From<anyhow::Error> for Response {
     fn from(err: anyhow::Error) -> Self {
         ResponseBuilder::new(500)
             .status_message(err.to_string())
+            .body(format!("{:#}", err).into())
             .into()
     }
 }
