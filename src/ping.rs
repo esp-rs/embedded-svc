@@ -29,6 +29,7 @@ impl Default for Configuration {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Info {
+    pub addr: ipv4::Ipv4Addr,
     pub seqno: u32,
     pub ttl: u8,
     pub elapsed_time: Duration,

@@ -63,7 +63,7 @@ pub type State = Arc<RwLock<StateMap>>;
 
 pub trait RequestDelegate {
     fn header(&self, name: &str) -> Option<String>;
-    fn url(&self) -> String;
+    fn query_string(&self) -> Option<String>;
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error>;
 }
 
@@ -105,8 +105,8 @@ impl Request {
                 .flatten()
     }
 
-    pub fn url(&self) -> String {
-        self.delegate.url()
+    pub fn query_string(&self) -> Option<String> {
+        self.delegate.query_string()
     }
 
     pub fn as_string(&mut self) -> io::Result<String> {
