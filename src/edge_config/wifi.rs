@@ -2,7 +2,7 @@ use crate::{httpd::*, httpd::registry::*, wifi::{self, Wifi}};
 
 use super::*;
 
-pub fn register<R: Registry>(registry: R, pref: &str, default_role: Option<Role>) -> Result<R> {
+pub fn register<R: Registry>(registry: R, pref: &str, default_role: Option<auth::Role>) -> Result<R> {
     let prefix = |s| [pref.as_ref(), s].concat();
 
     registry
@@ -48,8 +48,8 @@ fn set_configuration(mut req: Request) -> Result<Response> {
     Ok(().into())
 }
 
-fn with_permissions(default_role: Option<Role>) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
-    with_role(Role::Admin, default_role)
+fn with_permissions(default_role: Option<auth::Role>) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
+    auth::with_role(auth::Role::Admin, default_role)
 }
 
 fn wifi<Q>(req: Request, f: impl FnOnce(&dyn Wifi) -> Q) -> Q {
@@ -61,7 +61,8 @@ fn wifi_mut<Q>(req: Request, f: impl FnOnce(&mut dyn Wifi) -> Q) -> Q {
 }
 
 fn json<T: ?Sized + serde::Serialize>(data: &T) -> Result<Response> {
-    Ok(ResponseBuilder::ok()
+    Response::ok()
         .content_type("application/json".to_string())
-        .body(serde_json::to_string(data)?.into()).into())
+        .body(serde_json::to_string(data)?.into())
+        .into()
 }

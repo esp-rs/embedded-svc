@@ -144,6 +144,11 @@ impl io::Read for Request {
     }
 }
 
+pub enum SessionState {
+    New(StateMap),
+    Invalidate
+}
+
 pub struct Response {
     pub status: u16,
     pub status_message: Option<String>,
@@ -152,7 +157,7 @@ pub struct Response {
 
     pub body: Body,
 
-    pub new_session: Option<StateMap>
+    pub new_session_state: Option<SessionState>
 }
 
 impl Default for Response {
@@ -162,74 +167,74 @@ impl Default for Response {
             status_message: None,
             headers: HashMap::new(),
             body: Default::default(),
-            new_session: None,
+            new_session_state: None,
         }
     }
 }
 
 impl From<()> for Response {
     fn from(_: ()) -> Self {
-        ResponseBuilder::ok().into()
+        Default::default()
     }
 }
 
 impl From<u16> for Response {
     fn from(status: u16) -> Self {
-        ResponseBuilder::new(status).into()
+        Self::new(status)
     }
 }
 
 impl From<Vec<u8>> for Response {
     fn from(v: Vec<u8>) -> Self {
-        ResponseBuilder::ok().body(v.into()).into()
+        Self::ok().body(v.into())
     }
 }
 
 impl From<&str> for Response {
     fn from(s: &str) -> Self {
-        ResponseBuilder::ok().body(s.into()).into()
+        Self::ok().body(s.into())
     }
 }
 
 impl From<String> for Response {
     fn from(s: String) -> Self {
-        ResponseBuilder::ok().body(s.into()).into()
+        Self::ok().body(s.into())
     }
 }
 
 impl From<fs::File> for Response {
     fn from(f: fs::File) -> Self {
-        ResponseBuilder::ok().body(f.into()).into()
+        Self::ok().body(f.into())
     }
 }
 
-pub struct ResponseBuilder(Response);
-
-impl ResponseBuilder {
+impl Response {
     pub fn ok() -> Self {
-        ResponseBuilder(Response {
-            ..Default::default()
-        })
+        Default::default()
+    }
+
+    pub fn redirect(location: impl Into<String>) -> Self {
+        Self::new(301).header("location", location)
     }
 
     pub fn new(status_code: u16) -> Self {
-        ResponseBuilder::ok().status(status_code)
+        Self::ok().status(status_code)
     }
 
     pub fn status(mut self, status: u16) -> Self {
-        self.0.status = status;
+        self.status = status;
 
         self
     }
 
     pub fn status_message(mut self, message: impl Into<String>) -> Self {
-        self.0.status_message = Some(message.into());
+        self.status_message = Some(message.into());
 
         self
     }
 
     pub fn header(mut self, name: &str, value: impl Into<String>) -> Self {
-        self.0.headers.insert(name.into(), value.into());
+        self.headers.insert(name.into(), value.into());
 
         self
     }
@@ -243,33 +248,27 @@ impl ResponseBuilder {
     }
 
     pub fn body(mut self, body: Body) -> Self {
-        self.0.body = body;
+        self.body = body;
 
         self
     }
 
-    pub fn new_session(mut self, new_session: StateMap) -> Self {
-        self.0.new_session = Some(new_session);
+    pub fn new_session_state(mut self, new_session_state: SessionState) -> Self {
+        self.new_session_state = Some(new_session_state);
 
         self
     }
 }
 
-impl From<ResponseBuilder> for Response {
-    fn from(builder: ResponseBuilder) -> Self {
-        builder.0
-    }
-}
-
-impl From<ResponseBuilder> for Result<Response> {
-    fn from(builder: ResponseBuilder) -> Self {
-        Ok(builder.0)
+impl From<Response> for Result<Response> {
+    fn from(response: Response) -> Self {
+        Ok(response)
     }
 }
 
 impl From<anyhow::Error> for Response {
     fn from(err: anyhow::Error) -> Self {
-        ResponseBuilder::new(500)
+        Response::new(500)
             .status_message(err.to_string())
             .body(format!("{:#}", err).into())
             .into()
@@ -430,9 +429,7 @@ pub mod registry {
 
     impl MiddlewareRegistry {
         pub fn new() -> Self {
-            Self {
-                ..Default::default()
-            }
+            Default::default()
         }
 
         pub fn apply_middleware(self) -> Vec<Handler> {
@@ -489,8 +486,9 @@ pub mod app {
 
 pub mod sessions {
     use std::{collections::HashMap, fmt::Write, sync::{Arc, Mutex, RwLock}};
+    use log::{info, warn};
 
-    use super::{Request, Response, ResponseBuilder, State, Result};
+    use super::{Request, Response, State, SessionState, Result};
 
     pub fn middleware(sessions: Sessions) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
         let sessions = Mutex::new(sessions);
@@ -534,6 +532,8 @@ pub mod sessions {
         }
 
         fn invalidate(&mut self, session_id: &str) -> bool {
+            info!("Invalidating session {}", session_id);
+
             match self.data.remove(session_id) {
                 Some(_) => true,
                 None => false,
@@ -542,7 +542,7 @@ pub mod sessions {
 
         fn get_session_id(req: &Request) -> Option<String> {
             req
-                .header("Cookie")
+                .header("cookie")
                 .map(|v| Self::parse_session_cookie(v.as_str()))
                 .flatten()
         }
@@ -556,7 +556,7 @@ pub mod sessions {
                     session_data.used += 1;
                     Some(session_data.data.clone())
                 } else {
-                    self.data.remove(session_id);
+                    self.invalidate(session_id);
 
                     None
                 }
@@ -566,26 +566,45 @@ pub mod sessions {
         }
 
         fn update(&mut self, session_id: Option<&str>, mut resp: Response) -> Response {
-            if let Some(new_session) = resp.new_session {
-                let new_sess = session_id
-                    .map_or(true, |s| self.data.remove(s).is_none());
+            if let Some(new_session_state) = resp.new_session_state {
+                match new_session_state {
+                    SessionState::Invalidate => {
+                        if let Some(session_id) = session_id {
+                            self.invalidate(session_id);
+                        }
 
-                if new_sess && self.data.len() == self.max_sessions {
-                    ResponseBuilder::new(429).into()
-                } else {
-                    let new_session_id = Self::generate_session_id();
+                        resp.new_session_state = None;
+                        resp
+                    },
+                    SessionState::New(new_session) => {
+                        let new_sess = session_id
+                        .map_or(true, |s| self.data.remove(s).is_none());
 
-                    resp.headers.insert("set-cookie".into(), Self::insert_session_cookie("", &new_session_id));
-                    resp.new_session = None;
+                        if new_sess {
+                            self.cleanup();
+                        }
 
-                    self.data.insert(new_session_id, SessionData {
-                        last_accessed: std::time::Instant::now(),
-                        session_timeout: std::time::Duration::from_secs(20 * 60),
-                        used: 0,
-                        data: Arc::new(RwLock::new(new_session))
-                    });
+                        if new_sess && self.data.len() == self.max_sessions {
+                            warn!("Cannot create a new session - max session limit ({}) exceeded", self.max_sessions);
+                            Response::new(429)
+                        } else {
+                            let new_session_id = Self::generate_session_id();
 
-                    resp
+                            resp.headers.insert("set-cookie".into(), Self::insert_session_cookie("", &new_session_id));
+
+                            info!("New session {} created", &new_session_id);
+
+                            self.data.insert(new_session_id, SessionData {
+                                last_accessed: std::time::Instant::now(),
+                                session_timeout: std::time::Duration::from_secs(20 * 60),
+                                used: 0,
+                                data: Arc::new(RwLock::new(new_session))
+                            });
+
+                            resp.new_session_state = None;
+                            resp
+                        }
+                    }
                 }
             } else {
                 if let Some(session_id) = session_id {
@@ -600,6 +619,8 @@ pub mod sessions {
         }
 
         fn cleanup(&mut self) {
+            info!("Performing sessions cleanup");
+
             let now = std::time::Instant::now();
 
             self.data.retain(|_, sd| sd.last_accessed + sd.session_timeout > now);
@@ -628,12 +649,23 @@ pub mod sessions {
             new_session_id
         }
 
-        fn parse_session_cookie(_cookies: &str) -> Option<String> {
-            Some("todo".into()) // TODO: Fetch from cookie header
+        fn parse_session_cookie(cookies: &str) -> Option<String> {
+            for cookie in cookies.split(";") {
+                let mut cookie_pair = cookie.split("=");
+
+                if let Some(name) = cookie_pair.next() {
+                    if name == "SESSIONID" {
+                        if let Some(value) = cookie_pair.next() {
+                            return Some(value.to_owned());
+                        }
+                    }
+                }
+            }
+
+            None
         }
 
         fn insert_session_cookie(_cookies: &str, session_id: &str) -> String {
-            // TODO: Fix the cookie handling code
             let mut cookie_str = String::new();
             write!(&mut cookie_str, "SESSIONID={}", session_id).unwrap();
 
