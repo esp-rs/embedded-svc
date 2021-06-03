@@ -5,6 +5,4 @@ pub mod ping;
 pub mod httpd;
 pub mod storage;
 
-pub mod gfx;
-
 pub mod edge_config;
