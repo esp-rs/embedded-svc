@@ -1,10 +1,19 @@
+#[cfg(feature = "std")]
 pub use std::net::Ipv4Addr;
-use std::{convert::TryFrom, str::FromStr};
 
-use anyhow::bail;
+#[cfg(not(feature = "std"))]
+pub use no_std_net::Ipv4Addr;
+
+use core::{convert::TryFrom, str::FromStr};
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "use_serde")]
 use serde::{Serialize, Deserialize};
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Mask(pub u8);
 
 impl FromStr for Mask {
@@ -19,14 +28,15 @@ impl FromStr for Mask {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToString for Mask {
-    fn to_string(&self) -> String {
+    fn to_string(&self) -> alloc::string::String {
         self.0.to_string()
     }
 }
 
 impl TryFrom<Ipv4Addr> for Mask {
-    type Error = anyhow::Error;
+    type Error = ();
 
     fn try_from(ip: Ipv4Addr) -> Result<Self, Self::Error> {
         let octets = ip.octets();
@@ -35,7 +45,7 @@ impl TryFrom<Ipv4Addr> for Mask {
         if addr.leading_ones() + addr.trailing_zeros() == 32 {
             Ok(Mask(addr.leading_ones() as u8))
         } else {
-            bail!("Not a valid mask")
+            Err(())
         }
     }
 }
@@ -54,14 +64,16 @@ impl From<Mask> for Ipv4Addr {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Subnet {
     pub gateway: Ipv4Addr,
     pub mask: Mask,
 }
 
+#[cfg(feature = "alloc")]
 impl ToString for Subnet {
-    fn to_string(&self) -> String {
+    fn to_string(&self) -> alloc::string::String {
         let mut s = self.gateway.to_string();
         s.push('/');
         s.push_str(self.mask.0.to_string().as_str());
@@ -74,20 +86,25 @@ impl FromStr for Subnet {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split('/').collect();
-        if let [gateway_str, mask_str] = parts[..] {
-            if let Ok(gateway) = gateway_str.parse::<Ipv4Addr>() {
-                mask_str.parse::<Mask>().map(|mask| Self {gateway, mask})
-            } else {
-                Err("Invalid ip address format, expected XXX.XXX.XXX.XXX")
+        let mut split = s.split('/');
+        if let Some(gateway_str) = split.next() {
+            if let Some(mask_str) = split.next() {
+                if split.next().is_none() {
+                    if let Ok(gateway) = gateway_str.parse::<Ipv4Addr>() {
+                        return mask_str.parse::<Mask>().map(|mask| Self {gateway, mask});
+                    } else {
+                        return Err("Invalid IP address format, expected XXX.XXX.XXX.XXX");
+                    }
+                }
             }
-        } else {
-            Err("Expected <gateway-ip-address>/<mask>")
         }
+
+        Err("Expected <gateway-ip-address>/<mask>")
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientSettings {
     pub ip: Ipv4Addr,
     pub subnet: Subnet,
@@ -109,7 +126,8 @@ impl Default for ClientSettings {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientConfiguration {
     DHCP,
     Fixed(ClientSettings),
@@ -140,7 +158,8 @@ impl Default for ClientConfiguration {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct RouterConfiguration {
     pub subnet: Subnet,
     pub dhcp_enabled: bool,

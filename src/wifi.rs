@@ -1,26 +1,39 @@
-use std::{collections, mem, vec};
-use std::fmt::Debug;
+use core::mem;
+use core::fmt::Debug;
 
-use anyhow::*;
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
+use enumset::*;
+
+#[cfg(feature = "use_serde")]
 use serde::{Serialize, Deserialize};
+
+#[cfg(feature = "use_strum")]
 use strum_macros::{EnumString, ToString, EnumMessage, EnumIter};
+
+#[cfg(feature = "use_numenum")]
+use num_enum::TryFromPrimitive;
 
 use async_trait::async_trait;
 
 use crate::ipv4;
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Debug, Serialize, Deserialize, EnumString, ToString, EnumMessage, EnumIter)]
+#[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
+#[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum AuthMethod {
-    #[strum(serialize = "none", message = "None")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "none", message = "None"))]
     None,
-    #[strum(serialize = "wep", message = "WEP")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "wep", message = "WEP"))]
     WEP,
-    #[strum(serialize = "wpa", message = "WPA")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "wpa", message = "WPA"))]
     WPA,
-    #[strum(serialize = "wpa2personal", message = "WPA2 Personal")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "wpa2personal", message = "WPA2 Personal"))]
     WPA2Personal,
-    #[strum(serialize = "wpa3personal", message = "WPA3 Personal")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "wpa3personal", message = "WPA3 Personal"))]
     WPA3Personal,
 }
 
@@ -30,17 +43,21 @@ impl Default for AuthMethod {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, EnumString, ToString, EnumMessage, EnumIter)]
+#[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
+#[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum Protocol {
-    #[strum(serialize = "p802d11b", message = "802.11B")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11b", message = "802.11B"))]
     P802D11B,
-    #[strum(serialize = "p802d11bg", message = "802.11BG")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11bg", message = "802.11BG"))]
     P802D11BG,
-    #[strum(serialize = "p802d11bgn", message = "802.11BGN")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11bgn", message = "802.11BGN"))]
     P802D11BGN,
-    #[strum(serialize = "p802d11bgnlr", message = "802.11BGNLR")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11bgnlr", message = "802.11BGNLR"))]
     P802D11BGNLR,
-    #[strum(serialize = "p802d11lr", message = "802.11LR")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11lr", message = "802.11LR"))]
     P802D11LR,
 }
 
@@ -50,13 +67,17 @@ impl Default for Protocol {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, EnumString, ToString, EnumMessage, EnumIter)]
+#[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
+#[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum SecondaryChannel { // TODO: Need to extend that for 5GHz
-    #[strum(serialize = "none", message = "None")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "none", message = "None"))]
     None,
-    #[strum(serialize = "above", message = "Above")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "above", message = "Above"))]
     Above,
-    #[strum(serialize = "below", message = "Below")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "below", message = "Below"))]
     Below,
 }
 
@@ -66,26 +87,28 @@ impl Default for SecondaryChannel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointInfo {
-    pub ssid: String,
+    pub ssid: alloc::string::String,
     pub bssid: [u8; 6],
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
     pub signal_strength: u8,
-    pub protocols: collections::HashSet<Protocol>,
+    pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointConfiguration {
-    pub ssid: String,
+    pub ssid: alloc::string::String,
     pub ssid_hidden: bool,
     pub channel: u8,
     pub secondary_channel: Option<u8>,
-    pub protocols: collections::HashSet<Protocol>,
+    pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
-    pub password: String,
+    pub password: alloc::string::String,
     pub max_connections: u16,
     pub ip_conf: Option<ipv4::RouterConfiguration>,
 }
@@ -97,7 +120,7 @@ impl Default for AccessPointConfiguration {
             ssid_hidden: false,
             channel: 1,
             secondary_channel: None,
-            protocols: vec!(Protocol::P802D11B, Protocol::P802D11BG, Protocol::P802D11BGN).drain(..).collect(),
+            protocols: Protocol::P802D11B | Protocol::P802D11BG | Protocol::P802D11BGN,
             auth_method: AuthMethod::None,
             password: "".into(),
             max_connections: 256,
@@ -106,13 +129,14 @@ impl Default for AccessPointConfiguration {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
-    pub ssid: String,
+    pub ssid: alloc::string::String,
     pub bssid: Option<[u8; 6]>,
     //pub protocol: Protocol,
     pub auth_method: AuthMethod,
-    pub password: String,
+    pub password: alloc::string::String,
     pub ip_conf: Option<ipv4::ClientConfiguration>,
 }
 
@@ -147,17 +171,22 @@ impl Default for ClientConfiguration {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, EnumString, ToString, EnumMessage, EnumIter)]
+#[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
+#[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum Capability {
-    #[strum(serialize = "client", message = "Client")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "client", message = "Client"))]
     Client,
-    #[strum(serialize = "ap", message = "Access Point")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "ap", message = "Access Point"))]
     AccessPoint,
-    #[strum(serialize = "mixed", message = "Client & Access Point")]
+    #[cfg_attr(feature = "use_strum", strum(serialize = "mixed", message = "Client & Access Point"))]
     Mixed,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Configuration {
     None,
     Client(ClientConfiguration),
@@ -263,7 +292,8 @@ pub trait TransitionalState<T> {
     fn get_operating(&self) -> Option<&T>;
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientIpStatus {
     Disabled,
     Waiting,
@@ -288,7 +318,8 @@ impl TransitionalState<ipv4::ClientSettings> for ClientIpStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientConnectionStatus {
     Disconnected,
     Connecting,
@@ -313,7 +344,8 @@ impl TransitionalState<ClientIpStatus> for ClientConnectionStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientStatus {
     Stopped,
     Starting,
@@ -338,7 +370,8 @@ impl TransitionalState<ClientConnectionStatus> for ClientStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ApIpStatus {
     Disabled,
     Waiting,
@@ -363,7 +396,8 @@ impl TransitionalState<()> for ApIpStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ApStatus {
     Stopped,
     Starting,
@@ -388,7 +422,8 @@ impl TransitionalState<ApIpStatus> for ApStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Status(pub ClientStatus, pub ApStatus);
 
 impl Status {
@@ -402,24 +437,70 @@ impl Status {
 }
 
 pub trait Wifi {
-    fn get_capabilities(&self) -> Result<collections::HashSet<Capability>>;
+    type Error;
+
+    fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
     fn get_status(&self) -> Status;
 
-    fn scan(&mut self) -> Result<vec::Vec<AccessPointInfo>>;
+    //fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize), Self::Error>;
+    fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error>;
 
-    fn get_configuration(&self) -> Result<Configuration>;
-    fn set_configuration(&mut self, conf: &Configuration) -> Result<()>;
+    #[cfg(feature = "alloc")]
+    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
+
+    fn get_configuration(&self) -> Result<Configuration, Self::Error>;
+    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }
 
 #[async_trait]
 pub trait WifiAsync {
-    async fn get_capabilities(&self) -> Result<collections::HashSet<Capability>>;
+    type Error;
 
-    async fn get_status(&self) -> Result<Status>;
+    async fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
-    async fn scan(&mut self) -> Result<vec::Vec<AccessPointInfo>>;
+    async fn get_status(&self) -> Result<Status, Self::Error>;
 
-    async fn get_configuration(&self) -> Result<Configuration>;
-    async fn set_configuration(&mut self, conf: &Configuration) -> Result<()>;
+    //async fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize)>;
+    async fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error>;
+
+    #[cfg(feature = "alloc")]
+    async fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
+
+    async fn get_configuration(&self) -> Result<Configuration, Self::Error>;
+    async fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
+}
+
+#[cfg(feature = "alloc")]
+pub struct AnyhowWifi<T>(pub T);
+
+#[cfg(feature = "alloc")]
+impl<E, W> Wifi for AnyhowWifi<W> where E: Into<anyhow::Error>, W: Wifi<Error = E> {
+    type Error = anyhow::Error;
+
+    fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error> {
+        self.0.get_capabilities().map_err(Into::into)
+    }
+
+    fn get_status(&self) -> Status {
+        self.0.get_status()
+    }
+
+    //fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize)>;
+    fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error> {
+        self.0.scan_fill(access_points).map_err(Into::into)
+    }
+
+    #[cfg(feature = "alloc")]
+    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error> {
+        self.0.scan().map_err(Into::into)
+    }
+
+    fn get_configuration(&self) -> Result<Configuration, Self::Error> {
+        self.0.get_configuration().map_err(Into::into)
+    }
+
+    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error> {
+        self.0.set_configuration(conf).map_err(Into::into)
+    }
 }

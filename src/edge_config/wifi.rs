@@ -1,4 +1,6 @@
-use crate::{httpd::*, httpd::registry::*, wifi::{self, Wifi}};
+extern crate alloc;
+
+use crate::{httpd::*, httpd::registry::*, wifi::*};
 
 use super::*;
 
@@ -52,12 +54,12 @@ fn with_permissions(default_role: Option<auth::Role>) -> impl for <'r> Fn(Reques
     auth::with_role(auth::Role::Admin, default_role)
 }
 
-fn wifi<Q>(req: Request, f: impl FnOnce(&dyn Wifi) -> Q) -> Q {
-    f(req.app().read().unwrap().get("wifi").unwrap().downcast_ref::<Box<dyn Wifi>>().unwrap().as_ref())
+fn wifi<Q>(req: Request, f: impl FnOnce(&dyn Wifi<Error = anyhow::Error>) -> Q) -> Q {
+    f(req.app().read().unwrap().get("wifi").unwrap().downcast_ref::<Box<dyn Wifi<Error = anyhow::Error>>>().unwrap().as_ref())
 }
 
-fn wifi_mut<Q>(req: Request, f: impl FnOnce(&mut dyn Wifi) -> Q) -> Q {
-    f(req.app().write().unwrap().get_mut("wifi").unwrap().downcast_mut::<Box<dyn Wifi>>().unwrap().as_mut())
+fn wifi_mut<Q>(req: Request, f: impl FnOnce(&mut dyn Wifi<Error = anyhow::Error>) -> Q) -> Q {
+    f(req.app().write().unwrap().get_mut("wifi").unwrap().downcast_mut::<Box<dyn Wifi<Error = anyhow::Error>>>().unwrap().as_mut())
 }
 
 fn json<T: ?Sized + serde::Serialize>(data: &T) -> Result<Response> {

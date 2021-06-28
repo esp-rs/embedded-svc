@@ -1,12 +1,15 @@
-use std::{time::Duration, vec};
+use core::time::Duration;
 
-use anyhow::*;
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
+#[cfg(feature = "use_serde")]
 use serde::{Serialize, Deserialize};
 
 use crate::ipv4;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Configuration {
     pub count: u32,
     pub interval: Duration,
@@ -27,7 +30,8 @@ impl Default for Configuration {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Info {
     pub addr: ipv4::Ipv4Addr,
     pub seqno: u32,
@@ -36,13 +40,15 @@ pub struct Info {
     pub recv_len: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Reply {
     Timeout,
     Success(Info)
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Default)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Summary {
     pub transmitted: u32,
     pub received: u32,
@@ -50,6 +56,25 @@ pub struct Summary {
 }
 
 pub trait Ping {
-    fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<vec::Vec<Reply>>;
-    fn ping_summary(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary>;
+    type Error;
+
+    fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
+
+    fn ping_details<F: Fn(&Summary, &Reply)>(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration, reply_callback: &F) -> Result<Summary, Self::Error>;
+}
+
+#[cfg(feature = "alloc")]
+pub struct AnyhowPing<T>(pub T);
+
+#[cfg(feature = "alloc")]
+impl<E, P> Ping for AnyhowPing<P> where E: Into<anyhow::Error>, P: Ping<Error = E> {
+    type Error = anyhow::Error;
+
+    fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error> {
+        self.0.ping(ip, conf).map_err(Into::into)
+    }
+
+    fn ping_details<F: Fn(&Summary, &Reply)>(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration, reply_callback: &F) -> Result<Summary, Self::Error> {
+        self.0.ping_details(ip, conf, reply_callback).map_err(Into::into)
+    }
 }

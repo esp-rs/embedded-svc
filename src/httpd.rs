@@ -1,11 +1,40 @@
-use std::{any::Any, collections::HashMap, fs, io::{self, Read}, sync::{Arc, RwLock}};
+extern crate alloc;
+use alloc::vec::Vec;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
+
+#[cfg(feature = "std")]
+use std::fs;
+
+// TODO: Any in no_std? Possible?
+use std::any::Any;
+
+// TODO: Think how to model this in no_std without pushing generic params everywhere
+use std::sync::RwLock;
+
+// TODO: Perhaps replace these with the core2 polyfills
+use std::io;
+use std::io::Read;
+
+use enumset::*;
 
 pub use anyhow::Result;
+pub use anyhow::Error;
+
+#[cfg(feature = "use_serde")]
+use serde::{Serialize, Deserialize};
+
+#[cfg(feature = "use_strum")]
+use strum_macros::{EnumString, ToString, EnumMessage, EnumIter};
+
+#[cfg(feature = "use_numenum")]
+use num_enum::TryFromPrimitive;
 
 pub enum Body {
     Empty,
     Bytes(Vec<u8>),
-    Read(Option<usize>, Box<dyn io::Read>)
+    #[cfg(feature = "std")]
+    Read(Option<usize>, Box<dyn io::Read>),
 }
 
 impl Body {
@@ -50,6 +79,7 @@ impl From<&str> for Body {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<fs::File> for Body {
     fn from(f: fs::File) -> Self {
         Body::Read(
@@ -58,7 +88,7 @@ impl From<fs::File> for Body {
     }
 }
 
-pub type StateMap = HashMap<String, Box<dyn Any>>;
+pub type StateMap = BTreeMap<String, Box<dyn Any>>;
 pub type State = Arc<RwLock<StateMap>>;
 
 pub trait RequestDelegate {
@@ -109,16 +139,16 @@ impl Request {
         self.delegate.query_string()
     }
 
-    pub fn as_string(&mut self) -> io::Result<String> {
+    pub fn as_string(&mut self) -> Result<String> {
         let mut s = String::new();
 
-        self.read_to_string(&mut s).map(|_| s)
+        Ok(self.read_to_string(&mut s).map(|_| s)?)
     }
 
-    pub fn as_bytes(&mut self) -> io::Result<Vec<u8>> {
+    pub fn as_bytes(&mut self) -> Result<Vec<u8>> {
         let mut v = vec! [];
 
-        self.read_to_end(&mut v).map(|_| v)
+        Ok(self.read_to_end(&mut v).map(|_| v)?)
     }
 
     pub fn attrs(&self) -> &StateMap {
@@ -138,6 +168,7 @@ impl Request {
     }
 }
 
+#[cfg(feature = "std")]
 impl io::Read for Request {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.delegate.read(buf)
@@ -153,7 +184,7 @@ pub struct Response {
     pub status: u16,
     pub status_message: Option<String>,
 
-    pub headers: HashMap<String, String>,
+    pub headers: BTreeMap<String, String>,
 
     pub body: Body,
 
@@ -165,7 +196,7 @@ impl Default for Response {
         Response {
             status: 200,
             status_message: None,
-            headers: HashMap::new(),
+            headers: BTreeMap::new(),
             body: Default::default(),
             new_session_state: None,
         }
@@ -202,6 +233,7 @@ impl From<String> for Response {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<fs::File> for Response {
     fn from(f: fs::File) -> Self {
         Self::ok().body(f.into())
@@ -275,7 +307,11 @@ impl From<anyhow::Error> for Response {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
+#[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum Method {
     Delete,
     Get,
