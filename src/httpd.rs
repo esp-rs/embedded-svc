@@ -1,13 +1,9 @@
+use core::any::Any;
+
 extern crate alloc;
 use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-
-#[cfg(feature = "std")]
-use std::fs;
-
-// TODO: Any in no_std? Possible?
-use std::any::Any;
 
 // TODO: Think how to model this in no_std without pushing generic params everywhere
 use std::sync::RwLock;
@@ -15,6 +11,9 @@ use std::sync::RwLock;
 // TODO: Perhaps replace these with the core2 polyfills
 use std::io;
 use std::io::Read;
+
+#[cfg(feature = "std")]
+use std::fs;
 
 use enumset::*;
 
@@ -89,6 +88,8 @@ impl From<fs::File> for Body {
 }
 
 pub type StateMap = BTreeMap<String, Box<dyn Any>>;
+
+#[cfg(feature = "std")]
 pub type State = Arc<RwLock<StateMap>>;
 
 pub trait RequestDelegate {
@@ -100,21 +101,30 @@ pub trait RequestDelegate {
 pub struct Request {
     delegate: Box<dyn RequestDelegate>,
     attrs: StateMap,
+
+    #[cfg(feature = "std")]
     session: Option<State>,
+
+    #[cfg(feature = "std")]
     app: Option<State>
 }
 
 impl Request {
     pub fn new(
-            delegate: Box<dyn RequestDelegate>,
-            attribs: StateMap,
-            session: Option<State>,
-            app: Option<State>) -> Self {
-        Request {
+        delegate: Box<dyn RequestDelegate>,
+        attribs: StateMap,
+        #[cfg(feature = "std")]
+        session: Option<State>,
+        #[cfg(feature = "std")]
+        app: Option<State>,
+    ) -> Self {
+        Self {
             delegate,
             attrs: attribs,
+            #[cfg(feature = "std")]
             session,
-            app
+            #[cfg(feature = "std")]
+            app,
         }
     }
 
@@ -159,10 +169,12 @@ impl Request {
         &mut self.attrs
     }
 
+    #[cfg(feature = "std")]
     pub fn session(&self) -> Option<&State> {
         self.session.as_ref()
     }
 
+    #[cfg(feature = "std")]
     pub fn app(&self) -> &State {
         &self.app.as_ref().unwrap()
     }
@@ -401,7 +413,10 @@ impl Handler {
 }
 
 pub mod registry {
-    use std::{sync::Arc, vec};
+    extern crate alloc;
+
+    use alloc::{sync::Arc, vec, string::*};
+
     use super::Result;
 
     use crate::httpd::{Request, Response, Handler, Middleware, Method};
@@ -505,7 +520,10 @@ pub mod registry {
 }
 
 pub mod app {
-    use std::sync::{Arc, RwLock};
+    extern crate alloc;
+    use alloc::sync::Arc;
+
+    use std::sync::RwLock;
 
     use super::{Request, Response, Result, State, StateMap};
 
@@ -521,7 +539,14 @@ pub mod app {
 }
 
 pub mod sessions {
-    use std::{collections::HashMap, fmt::Write, sync::{Arc, Mutex, RwLock}};
+    use core::fmt::Write;
+
+    extern crate alloc;
+    use alloc::collections::BTreeMap;
+    use alloc::sync::Arc;
+
+    use std::sync::{Mutex, RwLock};
+
     use log::{info, warn};
 
     use super::{Request, Response, State, SessionState, Result};
@@ -534,14 +559,14 @@ pub mod sessions {
 
     pub struct Sessions {
         max_sessions: usize,
-        data: HashMap<String, SessionData>
+        data: BTreeMap<String, SessionData>
     }
 
     impl Default for Sessions {
         fn default() -> Self {
             Self {
                 max_sessions: 16,
-                data: HashMap::new()
+                data: BTreeMap::new()
             }
         }
     }

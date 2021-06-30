@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#![feature(btree_retain)]
+
 pub mod eth;
 #[cfg(feature = "alloc")] // TODO: Expose a subset which does not require "alloc"
 pub mod wifi;
