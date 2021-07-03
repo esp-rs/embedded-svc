@@ -1,10 +1,12 @@
 extern crate alloc;
 
+use crate::edge_config::role::Role;
+
 use crate::{httpd::*, httpd::registry::*, wifi::*};
 
 use super::*;
 
-pub fn register<R: Registry>(registry: R, pref: &str, default_role: Option<auth::Role>) -> Result<R> {
+pub fn register<R: Registry>(registry: R, pref: &str, default_role: Option<Role>) -> Result<R> {
     let prefix = |s| [pref.as_ref(), s].concat();
 
     registry
@@ -50,8 +52,8 @@ fn set_configuration(mut req: Request) -> Result<Response> {
     Ok(().into())
 }
 
-fn with_permissions(default_role: Option<auth::Role>) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
-    auth::with_role(auth::Role::Admin, default_role)
+fn with_permissions(default_role: Option<Role>) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
+    auth::with_role(Role::Admin, default_role)
 }
 
 fn wifi<Q>(req: Request, f: impl FnOnce(&dyn Wifi<Error = anyhow::Error>) -> Q) -> Q {

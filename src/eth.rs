@@ -14,6 +14,7 @@ use num_enum::TryFromPrimitive;
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]

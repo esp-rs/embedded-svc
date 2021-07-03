@@ -1,30 +1,8 @@
-use enumset::*;
-
-#[cfg(feature = "use_serde")]
-use serde::{Serialize, Deserialize};
-
-#[cfg(feature = "use_strum")]
-use strum_macros::{EnumString, ToString, EnumMessage, EnumIter};
-
-#[cfg(feature = "use_numenum")]
-use num_enum::TryFromPrimitive;
-
-use crate::httpd::{Request, Response, Result, SessionState, StateMap};
-
 use http_auth_basic::Credentials;
 
-pub const ADMIN_USERNAME: &str = "admin";
+use crate::edge_config::role::*;
 
-#[derive(EnumSetType, Debug, PartialOrd)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
-#[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
-#[cfg_attr(feature = "use_numenum", repr(u8))]
-pub enum Role {
-    None,
-    User,
-    Admin
-}
+use crate::httpd::{Request, Response, Result, SessionState, StateMap};
 
 pub fn get_role(req: &Request, default_role: Option<Role>) -> Option<Role> {
     if let Some(role) = req.attrs().get("role") {

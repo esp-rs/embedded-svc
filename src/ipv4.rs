@@ -13,6 +13,7 @@ extern crate alloc;
 use serde::{Serialize, Deserialize};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Mask(pub u8);
 
@@ -65,6 +66,7 @@ impl From<Mask> for Ipv4Addr {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Subnet {
     pub gateway: Ipv4Addr,

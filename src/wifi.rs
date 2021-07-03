@@ -20,6 +20,7 @@ use async_trait::async_trait;
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
@@ -44,6 +45,7 @@ impl Default for AuthMethod {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
@@ -68,6 +70,7 @@ impl Default for Protocol {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
@@ -172,6 +175,7 @@ impl Default for ClientConfiguration {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
@@ -444,7 +448,20 @@ pub trait Wifi {
     fn get_status(&self) -> Status;
 
     //fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize), Self::Error>;
+
+    #[cfg(not(feature = "alloc"))]
     fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error>;
+
+    #[cfg(feature = "alloc")]
+    fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error> {
+        let result = self.scan()?;
+
+        let len = usize::min(access_points.len(), result.len());
+
+        access_points[0..len].clone_from_slice(&result[0..len]);
+
+        Ok(result.len())
+    }
 
     #[cfg(feature = "alloc")]
     fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
@@ -462,7 +479,20 @@ pub trait WifiAsync {
     async fn get_status(&self) -> Result<Status, Self::Error>;
 
     //async fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize)>;
+
+    #[cfg(not(feature = "alloc"))]
     async fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error>;
+
+    #[cfg(feature = "alloc")]
+    async fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error> {
+        let result = self.scan().await?;
+
+        let len = usize::min(access_points.len(), result.len());
+
+        access_points[0..len].clone_from_slice(&result[0..len]);
+
+        Ok(result.len())
+    }
 
     #[cfg(feature = "alloc")]
     async fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
