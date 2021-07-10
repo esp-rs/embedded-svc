@@ -314,7 +314,7 @@ impl From<anyhow::Error> for Response {
     fn from(err: anyhow::Error) -> Self {
         Response::new(500)
             .status_message(err.to_string())
-            .body(format!("{:#}", err).into())
+            .body(format!("{:#?}", err).into())
             .into()
     }
 }
