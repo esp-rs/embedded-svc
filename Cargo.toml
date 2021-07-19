@@ -8,6 +8,7 @@ keywords = ["embedded", "svc", "hal"]
 description = "A set of traits for services higher level than embedded-hal and typically found in embedded microcontrollers with WiFi or BLE support."
 repository = "https://github.com/ivmarkov/embedded-svc"
 license = "MIT"
+readme = "README.md"
 
 [features]
 default = ["std", "use_serde", "use_strum", "use_numenum"]
