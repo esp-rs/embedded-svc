@@ -9,7 +9,7 @@ impl<E: core::fmt::Debug> AnyError<E> {
 
     pub fn wrap<R, C>(closure: C) -> Result<R>
     where
-        C: FnOnce() -> Result<R, E>
+        C: FnOnce() -> Result<R, E>,
     {
         closure().map_err(Self::into)
     }

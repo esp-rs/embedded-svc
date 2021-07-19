@@ -16,7 +16,7 @@ pub fn get_role(req: &Request, default_role: Option<Role>) -> Option<Role> {
             .get("role")
             .map(|any| any.downcast_ref::<Role>().unwrap().clone())
             .or_else(|| default_role),
-        None => None
+        None => None,
     }
 }
 
@@ -28,13 +28,16 @@ pub fn set_role(state: &mut StateMap, role: Option<Role>) {
     }
 }
 
-pub fn with_role(role: Role, default_role: Option<Role>) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
+pub fn with_role(
+    role: Role,
+    default_role: Option<Role>,
+) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
     move |req, handler| {
         let current_role = get_role(&req, default_role);
 
         if let Some(current_role) = current_role {
             if current_role >= role {
-                return handler(req)
+                return handler(req);
             }
         }
 
@@ -51,10 +54,17 @@ pub fn get_admin_password(req: &Request) -> Option<String> {
 }
 
 pub fn set_admin_password(req: &Request, password: &str) {
-    *req.app().write().unwrap().entry("admin_password".to_owned()).or_insert(Box::new(password.to_owned())) = Box::new(password.to_owned());
+    *req.app()
+        .write()
+        .unwrap()
+        .entry("admin_password".to_owned())
+        .or_insert(Box::new(password.to_owned())) = Box::new(password.to_owned());
 }
 
-pub fn with_basic_auth(mut req: Request, handler: &dyn Fn(Request) -> Result<Response>) -> Result<Response> {
+pub fn with_basic_auth(
+    mut req: Request,
+    handler: &dyn Fn(Request) -> Result<Response>,
+) -> Result<Response> {
     if let Some(role) = get_role(&req, None) {
         if role == Role::Admin {
             return handler(req);
@@ -67,7 +77,9 @@ pub fn with_basic_auth(mut req: Request, handler: &dyn Fn(Request) -> Result<Res
         let authorization = req.header("Authorization");
         if let Some(authorization) = authorization {
             if let Ok(credentials) = Credentials::from_header(authorization) {
-                if credentials.user_id.to_lowercase() == ADMIN_USERNAME && credentials.password == admin_password {
+                if credentials.user_id.to_lowercase() == ADMIN_USERNAME
+                    && credentials.password == admin_password
+                {
                     set_role(req.attrs_mut(), Some(Role::Admin));
 
                     return handler(req);
@@ -104,7 +116,9 @@ pub fn login(mut req: Request) -> Result<Response> {
         }
     }
 
-    if username.map(|s| s.to_lowercase()) == Some(ADMIN_USERNAME.to_owned()) && password == admin_password {
+    if username.map(|s| s.to_lowercase()) == Some(ADMIN_USERNAME.to_owned())
+        && password == admin_password
+    {
         let mut session_state = StateMap::new();
         set_role(&mut session_state, Some(Role::Admin));
 
@@ -124,12 +138,16 @@ pub fn logout(_req: Request) -> Result<Response> {
         .into()
 }
 
-pub fn with_session_auth(login: impl Into<String>) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
+pub fn with_session_auth(
+    login: impl Into<String>,
+) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
     let login = login.into();
 
-    move |req, handler| if let Some(_) = get_role(&req, None) {
-        handler(req)
-    } else {
-        Response::redirect(login.clone()).into()
+    move |req, handler| {
+        if let Some(_) = get_role(&req, None) {
+            handler(req)
+        } else {
+            Response::redirect(login.clone()).into()
+        }
     }
 }

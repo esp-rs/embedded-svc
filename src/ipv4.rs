@@ -10,7 +10,7 @@ use core::{convert::TryFrom, str::FromStr};
 extern crate alloc;
 
 #[cfg(feature = "use_serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "std", derive(Hash))]
@@ -25,7 +25,14 @@ impl FromStr for Mask {
             .map_err(|_| "Invalid subnet mask")
             .map_or_else(
                 |err| Err(err),
-                |mask| if mask >= 1 && mask <= 32 {Ok(Mask(mask))} else {Err("Mask should be a number between 1 and 32")})
+                |mask| {
+                    if mask >= 1 && mask <= 32 {
+                        Ok(Mask(mask))
+                    } else {
+                        Err("Mask should be a number between 1 and 32")
+                    }
+                },
+            )
     }
 }
 
@@ -41,7 +48,10 @@ impl TryFrom<Ipv4Addr> for Mask {
 
     fn try_from(ip: Ipv4Addr) -> Result<Self, Self::Error> {
         let octets = ip.octets();
-        let addr: u32 = ((octets[0] as u32 & 0xff) << 24) | ((octets[1] as u32 & 0xff) << 16) | ((octets[2] as u32 & 0xff) << 8) | (octets[3] as u32 & 0xff);
+        let addr: u32 = ((octets[0] as u32 & 0xff) << 24)
+            | ((octets[1] as u32 & 0xff) << 16)
+            | ((octets[2] as u32 & 0xff) << 8)
+            | (octets[3] as u32 & 0xff);
 
         if addr.leading_ones() + addr.trailing_zeros() == 32 {
             Ok(Mask(addr.leading_ones() as u8))
@@ -59,7 +69,8 @@ impl From<Mask> for Ipv4Addr {
             ((addr >> 24) & 0xff) as u8,
             ((addr >> 16) & 0xff) as u8,
             ((addr >> 8) & 0xff) as u8,
-            (addr & 0xff) as u8);
+            (addr & 0xff) as u8,
+        );
 
         Ipv4Addr::new(a, b, c, d)
     }
@@ -93,7 +104,7 @@ impl FromStr for Subnet {
             if let Some(mask_str) = split.next() {
                 if split.next().is_none() {
                     if let Ok(gateway) = gateway_str.parse::<Ipv4Addr>() {
-                        return mask_str.parse::<Mask>().map(|mask| Self {gateway, mask});
+                        return mask_str.parse::<Mask>().map(|mask| Self { gateway, mask });
                     } else {
                         return Err("Invalid IP address format, expected XXX.XXX.XXX.XXX");
                     }
@@ -139,7 +150,7 @@ impl ClientConfiguration {
     pub fn as_fixed_settings_ref(&self) -> Option<&ClientSettings> {
         match self {
             Self::Fixed(client_settings) => Some(client_settings),
-            _ => None
+            _ => None,
         }
     }
 

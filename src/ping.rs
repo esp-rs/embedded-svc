@@ -4,7 +4,7 @@ use core::time::Duration;
 extern crate alloc;
 
 #[cfg(feature = "use_serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::ipv4;
 
@@ -44,7 +44,7 @@ pub struct Info {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Reply {
     Timeout,
-    Success(Info)
+    Success(Info),
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -60,21 +60,37 @@ pub trait Ping {
 
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
 
-    fn ping_details<F: Fn(&Summary, &Reply)>(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration, reply_callback: &F) -> Result<Summary, Self::Error>;
+    fn ping_details<F: Fn(&Summary, &Reply)>(
+        &mut self,
+        ip: ipv4::Ipv4Addr,
+        conf: &Configuration,
+        reply_callback: &F,
+    ) -> Result<Summary, Self::Error>;
 }
 
 #[cfg(feature = "alloc")]
 pub struct AnyhowPing<T>(pub T);
 
 #[cfg(feature = "alloc")]
-impl<E, P> Ping for AnyhowPing<P> where E: Into<anyhow::Error>, P: Ping<Error = E> {
+impl<E, P> Ping for AnyhowPing<P>
+where
+    E: Into<anyhow::Error>,
+    P: Ping<Error = E>,
+{
     type Error = anyhow::Error;
 
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error> {
         self.0.ping(ip, conf).map_err(Into::into)
     }
 
-    fn ping_details<F: Fn(&Summary, &Reply)>(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration, reply_callback: &F) -> Result<Summary, Self::Error> {
-        self.0.ping_details(ip, conf, reply_callback).map_err(Into::into)
+    fn ping_details<F: Fn(&Summary, &Reply)>(
+        &mut self,
+        ip: ipv4::Ipv4Addr,
+        conf: &Configuration,
+        reply_callback: &F,
+    ) -> Result<Summary, Self::Error> {
+        self.0
+            .ping_details(ip, conf, reply_callback)
+            .map_err(Into::into)
     }
 }

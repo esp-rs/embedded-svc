@@ -1,9 +1,9 @@
 use core::any::Any;
 
 extern crate alloc;
-use alloc::vec::Vec;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 
 // TODO: Think how to model this in no_std without pushing generic params everywhere
 use std::sync::RwLock;
@@ -17,14 +17,14 @@ use std::fs;
 
 use enumset::*;
 
-pub use anyhow::Result;
 pub use anyhow::Error;
+pub use anyhow::Result;
 
 #[cfg(feature = "use_serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "use_strum")]
-use strum_macros::{EnumString, ToString, EnumMessage, EnumIter};
+use strum_macros::{EnumIter, EnumMessage, EnumString, ToString};
 
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
@@ -55,7 +55,7 @@ impl Body {
 }
 
 impl Default for Body {
-    fn default () -> Self {
+    fn default() -> Self {
         Body::Empty
     }
 }
@@ -83,7 +83,8 @@ impl From<fs::File> for Body {
     fn from(f: fs::File) -> Self {
         Body::Read(
             f.metadata().map_or(None, |md| Some(md.len() as usize)),
-            Box::new(f))
+            Box::new(f),
+        )
     }
 }
 
@@ -106,17 +107,15 @@ pub struct Request {
     session: Option<State>,
 
     #[cfg(feature = "std")]
-    app: Option<State>
+    app: Option<State>,
 }
 
 impl Request {
     pub fn new(
         delegate: Box<dyn RequestDelegate>,
         attribs: StateMap,
-        #[cfg(feature = "std")]
-        session: Option<State>,
-        #[cfg(feature = "std")]
-        app: Option<State>,
+        #[cfg(feature = "std")] session: Option<State>,
+        #[cfg(feature = "std")] app: Option<State>,
     ) -> Self {
         Self {
             delegate,
@@ -138,11 +137,8 @@ impl Request {
 
     pub fn content_len(&self) -> Option<usize> {
         self.header("content-length")
-            .map(|v| v
-                    .as_str()
-                    .parse::<usize>()
-                    .map_or(None, Some))
-                .flatten()
+            .map(|v| v.as_str().parse::<usize>().map_or(None, Some))
+            .flatten()
     }
 
     pub fn query_string(&self) -> Option<String> {
@@ -156,7 +152,7 @@ impl Request {
     }
 
     pub fn as_bytes(&mut self) -> Result<Vec<u8>> {
-        let mut v = vec! [];
+        let mut v = vec![];
 
         Ok(self.read_to_end(&mut v).map(|_| v)?)
     }
@@ -189,7 +185,7 @@ impl io::Read for Request {
 
 pub enum SessionState {
     New(StateMap),
-    Invalidate
+    Invalidate,
 }
 
 pub struct Response {
@@ -200,7 +196,7 @@ pub struct Response {
 
     pub body: Body,
 
-    pub new_session_state: Option<SessionState>
+    pub new_session_state: Option<SessionState>,
 }
 
 impl Default for Response {
@@ -321,7 +317,10 @@ impl From<anyhow::Error> for Response {
 
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, ToString, EnumMessage, EnumIter)
+)]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum Method {
@@ -363,18 +362,21 @@ pub enum Method {
 pub struct Handler {
     uri: String,
     method: Method,
-    handler: Box<dyn Fn(Request) -> Result<Response>>
+    handler: Box<dyn Fn(Request) -> Result<Response>>,
 }
 
 pub struct Middleware {
     uri: String,
-    handler: Box<dyn for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>>
+    handler:
+        Box<dyn for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>>,
 }
 
 impl Middleware {
     pub fn new(
-            uri: impl ToString,
-            handler: impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> + 'static) -> Self {
+        uri: impl ToString,
+        handler: impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>
+            + 'static,
+    ) -> Self {
         Middleware {
             uri: uri.to_string(),
             handler: Box::new(handler),
@@ -385,13 +387,20 @@ impl Middleware {
         &self.uri
     }
 
-    pub fn handler(self) -> Box<dyn for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>> {
+    pub fn handler(
+        self,
+    ) -> Box<dyn for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>>
+    {
         self.handler
     }
 }
 
 impl Handler {
-    pub fn new(uri: impl ToString, method: Method, handler: impl Fn(Request) -> Result<Response> + 'static) -> Self {
+    pub fn new(
+        uri: impl ToString,
+        method: Method,
+        handler: impl Fn(Request) -> Result<Response> + 'static,
+    ) -> Self {
         Handler {
             uri: uri.to_string(),
             method,
@@ -415,11 +424,11 @@ impl Handler {
 pub mod registry {
     extern crate alloc;
 
-    use alloc::{sync::Arc, vec, string::*};
+    use alloc::{string::*, sync::Arc, vec};
 
     use super::Result;
 
-    use crate::httpd::{Request, Response, Handler, Middleware, Method};
+    use crate::httpd::{Handler, Method, Middleware, Request, Response};
 
     pub trait Registry: Sized {
         fn handler(self, handler: Handler) -> Result<Self>;
@@ -442,7 +451,10 @@ pub mod registry {
         registry: RR,
     }
 
-    impl<RR> RegistryBuilder<RR> where RR: Registry {
+    impl<RR> RegistryBuilder<RR>
+    where
+        RR: Registry,
+    {
         pub fn get(self, f: impl Fn(Request) -> Result<Response> + 'static) -> Result<RR> {
             self.handler(Method::Get, f)
         }
@@ -463,11 +475,19 @@ pub mod registry {
             self.handler(Method::Head, f)
         }
 
-        pub fn middleware(self, m: impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> + 'static) -> Result<RR> {
+        pub fn middleware(
+            self,
+            m: impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>
+                + 'static,
+        ) -> Result<RR> {
             self.registry.middleware(Middleware::new(self.uri, m))
         }
 
-        pub fn handler(self, method: Method, f: impl Fn(Request) -> Result<Response> + 'static) -> Result<RR> {
+        pub fn handler(
+            self,
+            method: Method,
+            f: impl Fn(Request) -> Result<Response> + 'static,
+        ) -> Result<RR> {
             self.registry.handler(Handler::new(self.uri, method, f))
         }
     }
@@ -475,7 +495,7 @@ pub mod registry {
     #[derive(Default)]
     pub struct MiddlewareRegistry {
         handlers: Vec<Handler>,
-        middlewares: Vec<Arc<Middleware>>
+        middlewares: Vec<Arc<Middleware>>,
     }
 
     impl MiddlewareRegistry {
@@ -501,7 +521,10 @@ pub mod registry {
             handlers
         }
 
-        fn apply(middleware: Arc<Middleware>, handler: Box<dyn Fn(Request) -> Result<Response>>) -> Box<dyn Fn(Request) -> Result<Response>> {
+        fn apply(
+            middleware: Arc<Middleware>,
+            handler: Box<dyn Fn(Request) -> Result<Response>>,
+        ) -> Box<dyn Fn(Request) -> Result<Response>> {
             Box::new(move |request| (middleware.handler)(request, &*handler))
         }
     }
@@ -527,14 +550,25 @@ pub mod app {
 
     use super::{Request, Response, Result, State, StateMap};
 
-    pub fn middleware(app: StateMap) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
+    pub fn middleware(
+        app: StateMap,
+    ) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
         let app = Arc::new(RwLock::new(app));
 
         move |request, handler| handle(&app, request, handler)
     }
 
-    fn handle(app: &State, request: Request, handler: &dyn Fn(Request) -> Result<Response>) -> Result<Response> {
-        handler(Request::new(request.delegate, request.attrs, request.session, Some(app.clone())))
+    fn handle(
+        app: &State,
+        request: Request,
+        handler: &dyn Fn(Request) -> Result<Response>,
+    ) -> Result<Response> {
+        handler(Request::new(
+            request.delegate,
+            request.attrs,
+            request.session,
+            Some(app.clone()),
+        ))
     }
 }
 
@@ -549,37 +583,36 @@ pub mod sessions {
 
     use log::{info, warn};
 
-    use super::{Request, Response, State, SessionState, Result};
+    use super::{Request, Response, Result, SessionState, State};
 
-    pub fn middleware(sessions: Sessions) -> impl for <'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
+    pub fn middleware<F: Fn() -> [u8; 16]>(
+        sessions: Sessions<F>,
+    ) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
         let sessions = Mutex::new(sessions);
 
         move |request, handler| Sessions::handle(&sessions, request, handler)
     }
 
-    pub struct Sessions {
+    pub struct Sessions<F> {
         max_sessions: usize,
-        data: BTreeMap<String, SessionData>
+        data: BTreeMap<String, SessionData>,
+        get_random: F,
     }
 
-    impl Default for Sessions {
-        fn default() -> Self {
-            Self {
-                max_sessions: 16,
-                data: BTreeMap::new()
-            }
-        }
-    }
-
-    impl Sessions {
-        pub fn new(max_sessions: usize) -> Self {
+    impl<F: Fn() -> [u8; 16]> Sessions<F> {
+        pub fn new(max_sessions: usize, get_random: F) -> Self {
             Self {
                 max_sessions,
-                ..Default::default()
+                get_random,
+                data: BTreeMap::new(),
             }
         }
 
-        fn handle(sessions: &Mutex<Sessions>, request: Request, handler: &dyn Fn(Request) -> Result<Response>) -> Result<Response> {
+        fn handle(
+            sessions: &Mutex<Sessions<F>>,
+            request: Request,
+            handler: &dyn Fn(Request) -> Result<Response>,
+        ) -> Result<Response> {
             let session_id = Self::get_session_id(&request);
 
             let session = session_id
@@ -587,9 +620,17 @@ pub mod sessions {
                 .map(|s| sessions.lock().unwrap().get(s.as_str()))
                 .flatten();
 
-            let response = handler(Request::new(request.delegate, request.attrs, session, request.app))?;
+            let response = handler(Request::new(
+                request.delegate,
+                request.attrs,
+                session,
+                request.app,
+            ))?;
 
-            Ok(sessions.lock().unwrap().update(session_id.as_ref().map(String::as_str), response))
+            Ok(sessions
+                .lock()
+                .unwrap()
+                .update(session_id.as_ref().map(String::as_str), response))
         }
 
         fn invalidate(&mut self, session_id: &str) -> bool {
@@ -602,8 +643,7 @@ pub mod sessions {
         }
 
         fn get_session_id(req: &Request) -> Option<String> {
-            req
-                .header("cookie")
+            req.header("cookie")
                 .map(|v| Self::parse_session_cookie(v.as_str()))
                 .flatten()
         }
@@ -612,7 +652,9 @@ pub mod sessions {
             if let Some(session_data) = self.data.get_mut(session_id) {
                 let now = std::time::Instant::now();
 
-                if session_data.used > 0 || session_data.last_accessed + session_data.session_timeout > now {
+                if session_data.used > 0
+                    || session_data.last_accessed + session_data.session_timeout > now
+                {
                     session_data.last_accessed = now;
                     session_data.used += 1;
                     Some(session_data.data.clone())
@@ -636,31 +678,39 @@ pub mod sessions {
 
                         resp.new_session_state = None;
                         resp
-                    },
+                    }
                     SessionState::New(new_session) => {
-                        let new_sess = session_id
-                        .map_or(true, |s| self.data.remove(s).is_none());
+                        let new_sess = session_id.map_or(true, |s| self.data.remove(s).is_none());
 
                         if new_sess {
                             self.cleanup();
                         }
 
                         if new_sess && self.data.len() == self.max_sessions {
-                            warn!("Cannot create a new session - max session limit ({}) exceeded", self.max_sessions);
+                            warn!(
+                                "Cannot create a new session - max session limit ({}) exceeded",
+                                self.max_sessions
+                            );
                             Response::new(429)
                         } else {
-                            let new_session_id = Self::generate_session_id();
+                            let new_session_id = self.generate_session_id();
 
-                            resp.headers.insert("set-cookie".into(), Self::insert_session_cookie("", &new_session_id));
+                            resp.headers.insert(
+                                "set-cookie".into(),
+                                Self::insert_session_cookie("", &new_session_id),
+                            );
 
                             info!("New session {} created", &new_session_id);
 
-                            self.data.insert(new_session_id, SessionData {
-                                last_accessed: std::time::Instant::now(),
-                                session_timeout: std::time::Duration::from_secs(20 * 60),
-                                used: 0,
-                                data: Arc::new(RwLock::new(new_session))
-                            });
+                            self.data.insert(
+                                new_session_id,
+                                SessionData {
+                                    last_accessed: std::time::Instant::now(),
+                                    session_timeout: std::time::Duration::from_secs(20 * 60),
+                                    used: 0,
+                                    data: Arc::new(RwLock::new(new_session)),
+                                },
+                            );
 
                             resp.new_session_state = None;
                             resp
@@ -684,12 +734,12 @@ pub mod sessions {
 
             let now = std::time::Instant::now();
 
-            self.data.retain(|_, sd| sd.last_accessed + sd.session_timeout > now);
+            self.data
+                .retain(|_, sd| sd.last_accessed + sd.session_timeout > now);
         }
 
-        fn generate_session_id() -> String {
-            let mut new_session_id_bytes = [0u8; 16];
-            getrandom::getrandom(&mut new_session_id_bytes).unwrap();
+        fn generate_session_id(&self) -> String {
+            let new_session_id_bytes = (self.get_random)();
 
             let mut new_session_id = String::new();
 
@@ -705,7 +755,8 @@ pub mod sessions {
                 }
             }
 
-            write!(&mut new_session_id, "{:x}", ByteBuf(&new_session_id_bytes)).expect("Unable to write");
+            write!(&mut new_session_id, "{:x}", ByteBuf(&new_session_id_bytes))
+                .expect("Unable to write");
 
             new_session_id
         }
@@ -738,6 +789,6 @@ pub mod sessions {
         last_accessed: std::time::Instant,
         session_timeout: std::time::Duration,
         used: u32,
-        data: State
+        data: State,
     }
 }

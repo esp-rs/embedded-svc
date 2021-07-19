@@ -3,10 +3,10 @@ use core::fmt::Debug;
 use enumset::*;
 
 #[cfg(feature = "use_serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "use_strum")]
-use strum_macros::{EnumString, ToString, EnumMessage, EnumIter};
+use strum_macros::{EnumIter, EnumMessage, EnumString, ToString};
 
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
@@ -16,7 +16,10 @@ use crate::ipv4;
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, ToString, EnumMessage, EnumIter)
+)]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum OperationMode {
@@ -91,7 +94,11 @@ pub trait Eth {
 pub struct AnyhowEth<T>(pub T);
 
 #[cfg(feature = "alloc")]
-impl<E, H> Eth for AnyhowEth<H> where E: Into<anyhow::Error>, H: Eth<Error = E> {
+impl<E, H> Eth for AnyhowEth<H>
+where
+    E: Into<anyhow::Error>,
+    H: Eth<Error = E>,
+{
     type Error = anyhow::Error;
 
     fn get_supported_operation_modes(&self) -> Result<EnumSet<OperationMode>, Self::Error> {

@@ -1,5 +1,5 @@
-use core::mem;
 use core::fmt::Debug;
+use core::mem;
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -7,10 +7,10 @@ extern crate alloc;
 use enumset::*;
 
 #[cfg(feature = "use_serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "use_strum")]
-use strum_macros::{EnumString, ToString, EnumMessage, EnumIter};
+use strum_macros::{EnumIter, EnumMessage, EnumString, ToString};
 
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
@@ -22,7 +22,10 @@ use crate::ipv4;
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, ToString, EnumMessage, EnumIter)
+)]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum AuthMethod {
@@ -32,9 +35,15 @@ pub enum AuthMethod {
     WEP,
     #[cfg_attr(feature = "use_strum", strum(serialize = "wpa", message = "WPA"))]
     WPA,
-    #[cfg_attr(feature = "use_strum", strum(serialize = "wpa2personal", message = "WPA2 Personal"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "wpa2personal", message = "WPA2 Personal")
+    )]
     WPA2Personal,
-    #[cfg_attr(feature = "use_strum", strum(serialize = "wpa3personal", message = "WPA3 Personal"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "wpa3personal", message = "WPA3 Personal")
+    )]
     WPA3Personal,
 }
 
@@ -47,19 +56,37 @@ impl Default for AuthMethod {
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, ToString, EnumMessage, EnumIter)
+)]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum Protocol {
-    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11b", message = "802.11B"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "p802d11b", message = "802.11B")
+    )]
     P802D11B,
-    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11bg", message = "802.11BG"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "p802d11bg", message = "802.11BG")
+    )]
     P802D11BG,
-    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11bgn", message = "802.11BGN"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "p802d11bgn", message = "802.11BGN")
+    )]
     P802D11BGN,
-    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11bgnlr", message = "802.11BGNLR"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "p802d11bgnlr", message = "802.11BGNLR")
+    )]
     P802D11BGNLR,
-    #[cfg_attr(feature = "use_strum", strum(serialize = "p802d11lr", message = "802.11LR"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "p802d11lr", message = "802.11LR")
+    )]
     P802D11LR,
 }
 
@@ -72,10 +99,14 @@ impl Default for Protocol {
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, ToString, EnumMessage, EnumIter)
+)]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
-pub enum SecondaryChannel { // TODO: Need to extend that for 5GHz
+pub enum SecondaryChannel {
+    // TODO: Need to extend that for 5GHz
     #[cfg_attr(feature = "use_strum", strum(serialize = "none", message = "None"))]
     None,
     #[cfg_attr(feature = "use_strum", strum(serialize = "above", message = "Above"))]
@@ -155,7 +186,7 @@ impl ClientConfiguration {
 
 fn to_ip_conf(ip_conf: &mut Option<ipv4::ClientConfiguration>) -> &mut ipv4::ClientConfiguration {
     if let Some(ip_conf) = ip_conf {
-        return ip_conf
+        return ip_conf;
     }
 
     *ip_conf = Some(ipv4::ClientConfiguration::DHCP);
@@ -177,15 +208,24 @@ impl Default for ClientConfiguration {
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "use_strum", derive(EnumString, ToString, EnumMessage, EnumIter))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, ToString, EnumMessage, EnumIter)
+)]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
 pub enum Capability {
     #[cfg_attr(feature = "use_strum", strum(serialize = "client", message = "Client"))]
     Client,
-    #[cfg_attr(feature = "use_strum", strum(serialize = "ap", message = "Access Point"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "ap", message = "Access Point")
+    )]
     AccessPoint,
-    #[cfg_attr(feature = "use_strum", strum(serialize = "mixed", message = "Client & Access Point"))]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "mixed", message = "Client & Access Point")
+    )]
     Mixed,
 }
 
@@ -202,14 +242,14 @@ impl Configuration {
     pub fn as_client_conf_ref(&self) -> Option<&ClientConfiguration> {
         match self {
             Self::Client(client_conf) | Self::Mixed(client_conf, _) => Some(client_conf),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn as_ap_conf_ref(&self) -> Option<&AccessPointConfiguration> {
         match self {
             Self::AccessPoint(ap_conf) | Self::Mixed(_, ap_conf) => Some(ap_conf),
-            _ => None
+            _ => None,
         }
     }
 
@@ -223,7 +263,7 @@ impl Configuration {
                         *self = Self::Client(client_conf);
                         self.as_client_conf_mut()
                     }
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             }
             _ => {
@@ -243,7 +283,7 @@ impl Configuration {
                         *self = Self::AccessPoint(ap_conf);
                         self.as_ap_conf_mut()
                     }
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             }
             _ => {
@@ -253,7 +293,9 @@ impl Configuration {
         }
     }
 
-    pub fn as_mixed_conf_mut(&mut self) -> (&mut ClientConfiguration, &mut AccessPointConfiguration) {
+    pub fn as_mixed_conf_mut(
+        &mut self,
+    ) -> (&mut ClientConfiguration, &mut AccessPointConfiguration) {
         match self {
             Self::Mixed(client_conf, ref mut ap_conf) => (client_conf, ap_conf),
             Self::AccessPoint(_) => {
@@ -263,7 +305,7 @@ impl Configuration {
                         *self = Self::Mixed(Default::default(), ap_conf);
                         self.as_mixed_conf_mut()
                     }
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             }
             Self::Client(_) => {
@@ -273,7 +315,7 @@ impl Configuration {
                         *self = Self::Mixed(client_conf, Default::default());
                         self.as_mixed_conf_mut()
                     }
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             }
             _ => {
@@ -332,7 +374,12 @@ pub enum ClientConnectionStatus {
 
 impl TransitionalState<ClientIpStatus> for ClientConnectionStatus {
     fn is_transitional(&self) -> bool {
-        *self == ClientConnectionStatus::Connecting || (if let ClientConnectionStatus::Connected(ips) = self {ips.is_transitional()} else {false})
+        *self == ClientConnectionStatus::Connecting
+            || (if let ClientConnectionStatus::Connected(ips) = self {
+                ips.is_transitional()
+            } else {
+                false
+            })
     }
 
     fn is_operating(&self) -> bool {
@@ -358,7 +405,12 @@ pub enum ClientStatus {
 
 impl TransitionalState<ClientConnectionStatus> for ClientStatus {
     fn is_transitional(&self) -> bool {
-        *self == ClientStatus::Starting || (if let ClientStatus::Started(ccs) = self {ccs.is_transitional()} else {false})
+        *self == ClientStatus::Starting
+            || (if let ClientStatus::Started(ccs) = self {
+                ccs.is_transitional()
+            } else {
+                false
+            })
     }
 
     fn is_operating(&self) -> bool {
@@ -410,7 +462,12 @@ pub enum ApStatus {
 
 impl TransitionalState<ApIpStatus> for ApStatus {
     fn is_transitional(&self) -> bool {
-        *self == ApStatus::Starting || (if let ApStatus::Started(ips) = self {ips.is_transitional()} else {false})
+        *self == ApStatus::Starting
+            || (if let ApStatus::Started(ips) = self {
+                ips.is_transitional()
+            } else {
+                false
+            })
     }
 
     fn is_operating(&self) -> bool {
@@ -481,10 +538,16 @@ pub trait WifiAsync {
     //async fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize)>;
 
     #[cfg(not(feature = "alloc"))]
-    async fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error>;
+    async fn scan_fill(
+        &mut self,
+        access_points: &mut [AccessPointInfo],
+    ) -> Result<usize, Self::Error>;
 
     #[cfg(feature = "alloc")]
-    async fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error> {
+    async fn scan_fill(
+        &mut self,
+        access_points: &mut [AccessPointInfo],
+    ) -> Result<usize, Self::Error> {
         let result = self.scan().await?;
 
         let len = usize::min(access_points.len(), result.len());
@@ -505,7 +568,11 @@ pub trait WifiAsync {
 pub struct AnyhowWifi<T>(pub T);
 
 #[cfg(feature = "alloc")]
-impl<E, W> Wifi for AnyhowWifi<W> where E: Into<anyhow::Error>, W: Wifi<Error = E> {
+impl<E, W> Wifi for AnyhowWifi<W>
+where
+    E: Into<anyhow::Error>,
+    W: Wifi<Error = E>,
+{
     type Error = anyhow::Error;
 
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error> {
