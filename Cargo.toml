@@ -19,17 +19,26 @@ use_serde = ["serde", "serde_json", "enumset/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
 
+[patch.crates-io]
+# If you plan on using a riscv32 MCU like ESP32C3:
+#   Always include this patch in your workspace / final binary crate as it is patching libc
+#   to support the riscv32 architecture with newlib. A similar patch for the xtensa architecture
+#   (ESP32, ESP32S2, ESP32S3) is already in libc since libc 0.2.76
+libc = { git = "https://github.com/ivmarkov/libc.git", branch = "version_0.2.98" }
+# Necessary for ESP-IDF support in STD
+getrandom = {git = "https://github.com/ivmarkov/getrandom.git", branch = "0.1" }
+
 [dependencies]
 log = "0.4"
 async-trait = "0.1"
 no-std-net = "0.5"
 enumset = "1"
-anyhow = {version = "1", optional = true}
-strum = {version = "0.21", optional = true}
-strum_macros = {version = "0.21", optional = true}
-num_enum = {version = "0.5", optional = true}
-serde = {version = "1", optional = true, features = ["derive"]}
-serde_json = {version = "1", optional = true}
-url = {version = "2", optional = true}
-http-auth-basic = {version = "0.1", optional = true}
-getrandom = {git = "https://github.com/ivmarkov/getrandom.git", branch = "0.1", version = "0.1", optional = true}
+anyhow = { version = "1", optional = true }
+strum = { version = "0.21", optional = true }
+strum_macros = { version = "0.21", optional = true }
+num_enum = { version = "0.5", optional = true }
+serde = { version = "1", optional = true, features = ["derive"] }
+serde_json = { version = "1", optional = true }
+url = { version = "2", optional = true }
+http-auth-basic = { version = "0.1", optional = true }
+getrandom = { version = "0.1", optional = true }
