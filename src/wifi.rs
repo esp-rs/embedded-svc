@@ -157,7 +157,7 @@ impl Default for AccessPointConfiguration {
             protocols: Protocol::P802D11B | Protocol::P802D11BG | Protocol::P802D11BGN,
             auth_method: AuthMethod::None,
             password: "".into(),
-            max_connections: 256,
+            max_connections: 255,
             ip_conf: Some(Default::default()),
         }
     }
