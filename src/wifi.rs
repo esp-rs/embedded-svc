@@ -42,9 +42,29 @@ pub enum AuthMethod {
     WPA2Personal,
     #[cfg_attr(
         feature = "use_strum",
+        strum(serialize = "wpawpa2personal", message = "WPA & WPA2 Personal")
+    )]
+    WPAWPA2Personal,
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "wpa2enterprise", message = "WPA2 Enterprise")
+    )]
+    WPA2Enterprise,
+    #[cfg_attr(
+        feature = "use_strum",
         strum(serialize = "wpa3personal", message = "WPA3 Personal")
     )]
     WPA3Personal,
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "wpa2wpa3personal", message = "WPA2 & WPA3 Personal")
+    )]
+    WPA2WPA3Personal,
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(serialize = "wapipersonal", message = "WAPI Personal")
+    )]
+    WAPIPersonal,
 }
 
 impl Default for AuthMethod {
@@ -171,6 +191,7 @@ pub struct ClientConfiguration {
     //pub protocol: Protocol,
     pub auth_method: AuthMethod,
     pub password: alloc::string::String,
+    pub channel: Option<u8>,
     pub ip_conf: Option<ipv4::ClientConfiguration>,
 }
 
@@ -200,6 +221,7 @@ impl Default for ClientConfiguration {
             bssid: None,
             auth_method: Default::default(),
             password: "".into(),
+            channel: None,
             ip_conf: Some(Default::default()),
         }
     }

@@ -63,7 +63,7 @@ impl TryFrom<Ipv4Addr> for Mask {
 
 impl From<Mask> for Ipv4Addr {
     fn from(mask: Mask) -> Self {
-        let addr: u32 = 1 << mask.0;
+        let addr: u32 = ((1 << (32 - mask.0)) - 1) ^ 0xffffffffu32;
 
         let (a, b, c, d) = (
             ((addr >> 24) & 0xff) as u8,
