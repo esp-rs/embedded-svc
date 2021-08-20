@@ -167,6 +167,27 @@ pub struct AccessPointConfiguration {
     pub ip_conf: Option<ipv4::RouterConfiguration>,
 }
 
+impl AccessPointConfiguration {
+    pub fn as_ip_conf_ref(&self) -> Option<&ipv4::RouterConfiguration> {
+        self.ip_conf.as_ref()
+    }
+
+    pub fn as_ip_conf_mut(&mut self) -> &mut ipv4::RouterConfiguration {
+        Self::to_ip_conf(&mut self.ip_conf)
+    }
+
+    fn to_ip_conf(
+        ip_conf: &mut Option<ipv4::RouterConfiguration>,
+    ) -> &mut ipv4::RouterConfiguration {
+        if let Some(ip_conf) = ip_conf {
+            return ip_conf;
+        }
+
+        *ip_conf = Some(Default::default());
+        Self::to_ip_conf(ip_conf)
+    }
+}
+
 impl Default for AccessPointConfiguration {
     fn default() -> Self {
         Self {
@@ -201,17 +222,19 @@ impl ClientConfiguration {
     }
 
     pub fn as_ip_conf_mut(&mut self) -> &mut ipv4::ClientConfiguration {
-        to_ip_conf(&mut self.ip_conf)
-    }
-}
-
-fn to_ip_conf(ip_conf: &mut Option<ipv4::ClientConfiguration>) -> &mut ipv4::ClientConfiguration {
-    if let Some(ip_conf) = ip_conf {
-        return ip_conf;
+        Self::to_ip_conf(&mut self.ip_conf)
     }
 
-    *ip_conf = Some(ipv4::ClientConfiguration::DHCP);
-    to_ip_conf(ip_conf)
+    fn to_ip_conf(
+        ip_conf: &mut Option<ipv4::ClientConfiguration>,
+    ) -> &mut ipv4::ClientConfiguration {
+        if let Some(ip_conf) = ip_conf {
+            return ip_conf;
+        }
+
+        *ip_conf = Some(ipv4::ClientConfiguration::DHCP);
+        Self::to_ip_conf(ip_conf)
+    }
 }
 
 impl Default for ClientConfiguration {
