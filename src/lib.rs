@@ -1,5 +1,4 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(btree_retain)]
 
 #[cfg(feature = "alloc")]
 pub mod anyerror;
