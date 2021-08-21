@@ -6,6 +6,7 @@ pub mod eth;
 #[cfg(feature = "std")] // TODO: Lower requirements to "alloc"
 pub mod httpd;
 pub mod ipv4;
+pub mod mutex;
 pub mod ping;
 #[cfg(feature = "alloc")] // TODO: Expose a subset which does not require "alloc"
 pub mod storage;
