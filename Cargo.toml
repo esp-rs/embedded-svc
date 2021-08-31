@@ -1,13 +1,13 @@
 [package]
 name = "embedded-svc"
-version = "0.8.4"
+version = "0.8.5"
 authors = ["Ivan Markov <ivan.markov@gmail.com>"]
 edition = "2018"
 categories = ["embedded", "hardware-support"]
 keywords = ["embedded", "svc", "hal"]
 description = "A set of traits for services higher level than embedded-hal and typically found in embedded microcontrollers with WiFi or BLE support."
 repository = "https://github.com/ivmarkov/embedded-svc"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [features]
