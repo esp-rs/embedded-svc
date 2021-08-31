@@ -7,6 +7,7 @@ pub mod eth;
 pub mod httpd;
 pub mod ipv4;
 pub mod mutex;
+pub mod ota;
 pub mod ping;
 #[cfg(feature = "alloc")] // TODO: Expose a subset which does not require "alloc"
 pub mod storage;
