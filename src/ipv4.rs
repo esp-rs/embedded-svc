@@ -23,16 +23,13 @@ impl FromStr for Mask {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.parse::<u8>()
             .map_err(|_| "Invalid subnet mask")
-            .map_or_else(
-                |err| Err(err),
-                |mask| {
-                    if mask >= 1 && mask <= 32 {
-                        Ok(Mask(mask))
-                    } else {
-                        Err("Mask should be a number between 1 and 32")
-                    }
-                },
-            )
+            .map_or_else(Err, |mask| {
+                if (1..=32).contains(&mask) {
+                    Ok(Mask(mask))
+                } else {
+                    Err("Mask should be a number between 1 and 32")
+                }
+            })
     }
 }
 

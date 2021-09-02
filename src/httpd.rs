@@ -137,7 +137,7 @@ impl Request {
 
     pub fn content_len(&self) -> Option<usize> {
         self.header("content-length")
-            .map(|v| v.as_str().parse::<usize>().map_or(None, Some))
+            .map(|v| v.as_str().parse::<usize>().ok())
             .flatten()
     }
 
@@ -172,7 +172,7 @@ impl Request {
 
     #[cfg(feature = "std")]
     pub fn app(&self) -> &State {
-        &self.app.as_ref().unwrap()
+        self.app.as_ref().unwrap()
     }
 }
 
@@ -311,7 +311,6 @@ impl From<anyhow::Error> for Response {
         Response::new(500)
             .status_message(err.to_string())
             .body(format!("{:#?}", err).into())
-            .into()
     }
 }
 
@@ -365,10 +364,12 @@ pub struct Handler {
     handler: Box<dyn Fn(Request) -> Result<Response>>,
 }
 
+pub type BoxedMiddlewareHandler =
+    Box<dyn for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>>;
+
 pub struct Middleware {
     uri: String,
-    handler:
-        Box<dyn for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>>,
+    handler: BoxedMiddlewareHandler,
 }
 
 impl Middleware {
@@ -387,6 +388,7 @@ impl Middleware {
         &self.uri
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn handler(
         self,
     ) -> Box<dyn for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>>
@@ -630,16 +632,13 @@ pub mod sessions {
             Ok(sessions
                 .lock()
                 .unwrap()
-                .update(session_id.as_ref().map(String::as_str), response))
+                .update(session_id.as_deref(), response))
         }
 
         fn invalidate(&mut self, session_id: &str) -> bool {
             info!("Invalidating session {}", session_id);
 
-            match self.data.remove(session_id) {
-                Some(_) => true,
-                None => false,
-            }
+            self.data.remove(session_id).is_some()
         }
 
         fn get_session_id(req: &Request) -> Option<String> {
@@ -762,8 +761,8 @@ pub mod sessions {
         }
 
         fn parse_session_cookie(cookies: &str) -> Option<String> {
-            for cookie in cookies.split(";") {
-                let mut cookie_pair = cookie.split("=");
+            for cookie in cookies.split(';') {
+                let mut cookie_pair = cookie.split('=');
 
                 if let Some(name) = cookie_pair.next() {
                     if name == "SESSIONID" {

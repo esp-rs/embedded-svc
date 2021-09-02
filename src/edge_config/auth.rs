@@ -14,15 +14,17 @@ pub fn get_role(req: &Request, default_role: Option<Role>) -> Option<Role> {
             .read()
             .unwrap()
             .get("role")
-            .map(|any| any.downcast_ref::<Role>().unwrap().clone())
-            .or_else(|| default_role),
+            .map(|any| *any.downcast_ref::<Role>().unwrap())
+            .or(default_role),
         None => None,
     }
 }
 
 pub fn set_role(state: &mut StateMap, role: Option<Role>) {
     if let Some(role) = role {
-        *state.entry("role".to_owned()).or_insert(Box::new(role)) = Box::new(role);
+        state
+            .entry("role".to_owned())
+            .or_insert_with(|| Box::new(role));
     } else {
         state.remove("role");
     }
@@ -54,11 +56,11 @@ pub fn get_admin_password(req: &Request) -> Option<String> {
 }
 
 pub fn set_admin_password(req: &Request, password: &str) {
-    *req.app()
+    req.app()
         .write()
         .unwrap()
         .entry("admin_password".to_owned())
-        .or_insert(Box::new(password.to_owned())) = Box::new(password.to_owned());
+        .or_insert_with(|| Box::new(password.to_owned()));
 }
 
 pub fn with_basic_auth(
@@ -94,7 +96,7 @@ pub fn with_basic_auth(
 }
 
 pub fn login(mut req: Request) -> Result<Response> {
-    if let Some(_) = req.session() {
+    if req.session().is_some() {
         return Ok(().into());
     }
 
@@ -144,7 +146,7 @@ pub fn with_session_auth(
     let login = login.into();
 
     move |req, handler| {
-        if let Some(_) = get_role(&req, None) {
+        if get_role(&req, None).is_some() {
             handler(req)
         } else {
             Response::redirect(login.clone()).into()

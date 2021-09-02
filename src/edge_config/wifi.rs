@@ -19,13 +19,13 @@ where
     W: wifi::Wifi<Error = E>,
     E: Into<anyhow::Error>,
 {
-    let prefix = |s| [pref.as_ref(), s].concat();
+    let prefix = |s| [pref, s].concat();
 
     let wifi_get_status = wifi.clone();
     let wifi_scan = wifi.clone();
     let wifi_get_capabilities = wifi.clone();
     let wifi_get_configuration = wifi.clone();
-    let wifi_set_configuration = wifi.clone();
+    let wifi_set_configuration = wifi;
 
     registry
         .at(prefix(""))

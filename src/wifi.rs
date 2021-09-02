@@ -20,7 +20,6 @@ use async_trait::async_trait;
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
-#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -74,7 +73,6 @@ impl Default for AuthMethod {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
-#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -117,7 +115,6 @@ impl Default for Protocol {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
-#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -251,7 +248,6 @@ impl Default for ClientConfiguration {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
-#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -401,7 +397,7 @@ impl TransitionalState<ipv4::ClientSettings> for ClientIpStatus {
     }
 
     fn get_operating(&self) -> Option<&ipv4::ClientSettings> {
-        if let &ClientIpStatus::Done(ref settings) = self {
+        if let ClientIpStatus::Done(ref settings) = *self {
             Some(settings)
         } else {
             None
@@ -432,7 +428,7 @@ impl TransitionalState<ClientIpStatus> for ClientConnectionStatus {
     }
 
     fn get_operating(&self) -> Option<&ClientIpStatus> {
-        if let &ClientConnectionStatus::Connected(ref settings) = self {
+        if let ClientConnectionStatus::Connected(ref settings) = *self {
             Some(settings)
         } else {
             None
@@ -463,7 +459,7 @@ impl TransitionalState<ClientConnectionStatus> for ClientStatus {
     }
 
     fn get_operating(&self) -> Option<&ClientConnectionStatus> {
-        if let &ClientStatus::Started(ref settings) = self {
+        if let ClientStatus::Started(ref settings) = *self {
             Some(settings)
         } else {
             None
@@ -489,7 +485,7 @@ impl TransitionalState<()> for ApIpStatus {
     }
 
     fn get_operating(&self) -> Option<&()> {
-        if let &ApIpStatus::Done = self {
+        if let ApIpStatus::Done = *self {
             Some(&())
         } else {
             None
@@ -520,7 +516,7 @@ impl TransitionalState<ApIpStatus> for ApStatus {
     }
 
     fn get_operating(&self) -> Option<&ApIpStatus> {
-        if let &ApStatus::Started(ref settings) = self {
+        if let ApStatus::Started(ref settings) = *self {
             Some(settings)
         } else {
             None

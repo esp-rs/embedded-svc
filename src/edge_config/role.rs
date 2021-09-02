@@ -12,7 +12,6 @@ use num_enum::TryFromPrimitive;
 pub const ADMIN_USERNAME: &str = "admin";
 
 #[derive(EnumSetType, Debug, PartialOrd)]
-#[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",

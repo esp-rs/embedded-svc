@@ -26,11 +26,7 @@ pub trait Storage {
     ) -> Result<Option<T>, Self::Error> {
         let data = self.get_raw(key)?;
 
-        Ok(if let Some(data) = data {
-            Some(serde_json::from_slice::<T>(&data).unwrap()) // TODO
-        } else {
-            None
-        })
+        Ok(data.map(|data| serde_json::from_slice::<T>(&data).unwrap()))
     }
 
     #[cfg(feature = "use_serde")]
@@ -102,6 +98,12 @@ impl MemoryStorage {
     }
 }
 
+impl Default for MemoryStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Storage for MemoryStorage {
     type Error = core::convert::Infallible;
 
@@ -141,7 +143,7 @@ impl<T: Storage> StorageCache<T> {
     }
 
     pub fn flush(&mut self) {
-        *&mut self.1 = core::cell::RefCell::new(MemoryStorage::new());
+        self.1 = core::cell::RefCell::new(MemoryStorage::new());
     }
 }
 
@@ -160,14 +162,12 @@ impl<T: Storage> Storage for StorageCache<T> {
     fn get_raw(&self, key: impl AsRef<str>) -> Result<Option<alloc::vec::Vec<u8>>, Self::Error> {
         if let Some(data) = self.1.borrow().get_raw(&key).unwrap() {
             Ok(Some(data))
+        } else if let Some(data) = self.0.get_raw(&key)? {
+            self.1.borrow_mut().put_raw(&key, data.clone()).unwrap(); // TODO
+            Ok(Some(data))
         } else {
-            if let Some(data) = self.0.get_raw(&key)? {
-                self.1.borrow_mut().put_raw(&key, data.clone()).unwrap(); // TODO
-                Ok(Some(data))
-            } else {
-                self.1.borrow_mut().remove(key).unwrap();
-                Ok(None)
-            }
+            self.1.borrow_mut().remove(key).unwrap();
+            Ok(None)
         }
     }
 
