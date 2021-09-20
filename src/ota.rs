@@ -1,7 +1,9 @@
+extern crate alloc;
+use alloc::borrow::Cow;
+
 use async_trait::async_trait;
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
+use crate::io;
 
 #[derive(Clone, Debug)]
 pub struct FirmwareInfo {
@@ -10,6 +12,7 @@ pub struct FirmwareInfo {
     pub description: String,
     #[cfg(feature = "alloc")]
     pub signature: Option<alloc::vec::Vec<u8>>,
+    pub download_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -39,31 +42,25 @@ pub enum SlotState {
     Unknown,
 }
 
-pub trait Slot {
+pub trait Slot<'a> {
     type Error;
 
-    fn get_label(&self) -> Result<String, Self::Error>;
+    fn get_label(&self) -> Result<Cow<'_, str>, Self::Error>;
     fn get_state(&self) -> Result<SlotState, Self::Error>;
 
     fn get_firmware_info(&self) -> Result<Option<FirmwareInfo>, Self::Error>;
 }
 
 pub trait Ota {
-    type Slot: Slot;
+    type Slot<'a>: Slot<'a>;
     type OtaUpdate: OtaUpdate;
     type Error;
 
-    fn get_boot_slot<'a>(&'a self) -> Result<Self::Slot, Self::Error>
-    where
-        Self::Slot: 'a;
+    fn get_boot_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
 
-    fn get_running_slot<'a>(&'a self) -> Result<Self::Slot, Self::Error>
-    where
-        Self::Slot: 'a;
+    fn get_running_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
 
-    fn get_update_slot<'a>(&'a self) -> Result<Self::Slot, Self::Error>
-    where
-        Self::Slot: 'a;
+    fn get_update_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
 
     fn factory_reset(self) -> Self::Error; // TODO: Figure out how to report on status update
 
@@ -73,30 +70,15 @@ pub trait Ota {
     fn mark_running_slot_invalid_and_reboot(&mut self) -> Self::Error;
 }
 
-#[cfg(feature = "std")]
-pub trait OtaUpdate: std::io::Write {
+pub trait OtaUpdate: io::Write {
     type Ota: Ota;
-    type Error;
-
-    fn write_buf(&mut self, buf: &[u8]) -> Result<(), Self::Error>;
-
-    fn complete(self) -> Result<Self::Ota, Self::Error>;
-    fn abort(self) -> Result<Self::Ota, Self::Error>;
-}
-
-#[cfg(not(feature = "std"))]
-pub trait OtaUpdate {
-    type Ota: Ota;
-    type Error;
-
-    fn write_buf(&mut self, buf: &[u8]) -> Result<(), Self::Error>;
 
     fn complete(self) -> Result<Self::Ota, Self::Error>;
     fn abort(self) -> Result<Self::Ota, Self::Error>;
 }
 
 #[async_trait]
-pub trait OtaService {
+pub trait OtaAsync {
     type Error;
 
     async fn get_available_update(&self) -> Result<Option<String>, Self::Error>;
@@ -104,4 +86,16 @@ pub trait OtaService {
     async fn factory_reset(&mut self) -> Self::Error;
 
     async fn update(&mut self) -> Self::Error;
+}
+
+pub trait OtaServer {
+    type Read<'a>: io::Read<Error = Self::Error>;
+    type Iterator: Iterator<Item = crate::ota::FirmwareInfo>;
+    type Error;
+
+    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error>;
+
+    fn get_releases(&mut self) -> Result<Self::Iterator, Self::Error>;
+
+    fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::Read<'_>, Self::Error>;
 }

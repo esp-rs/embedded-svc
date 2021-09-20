@@ -1,6 +1,6 @@
 [package]
 name = "embedded-svc"
-version = "0.8.6"
+version = "0.8.7"
 authors = ["Ivan Markov <ivan.markov@gmail.com>"]
 edition = "2018"
 categories = ["embedded", "hardware-support"]
@@ -11,7 +11,9 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [features]
-default = ["std", "use_serde", "use_strum", "use_numenum"]
+default = ["std", "use_serde", "use_strum", "use_numenum", "anyhow/std", "serde/std", "serde_json/std", "url", "http-auth-basic"]
+
+experimental = []
 
 std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "url", "http-auth-basic"]
 alloc = ["anyhow", "serde/alloc", "serde_json/alloc"]
