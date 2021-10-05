@@ -68,7 +68,7 @@ pub struct GitHubOtaService<'a, C> {
 
 impl<'a, C> GitHubOtaService<'a, C>
 where
-    C: Client,
+    C: HttpClient,
 {
     pub fn new(
         repo: impl Into<Cow<'a, str>>,
@@ -166,13 +166,16 @@ where
 
 impl<'a, C> OtaServer for GitHubOtaService<'a, C>
 where
-    C: Client + 'static,
+    C: HttpClient + 'static,
 {
     type Error = anyhow::Error;
 
-    type Read<'b> = OtaRead<
-        <<<C as Client>::Request<'b> as Request<'b>>::Response<'b> as Response<'b>>::Read<'b>,
-    >;
+    type Read<'b> =
+        OtaRead<
+            <<<C as HttpClient>::Request<'b> as HttpRequest<'b>>::Response<'b> as HttpResponse<
+                'b,
+            >>::Read<'b>,
+        >;
 
     type Iterator = OtaServerIterator;
 

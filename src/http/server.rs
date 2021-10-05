@@ -4,10 +4,15 @@ use alloc::string::String;
 
 use crate::io::{self, Write};
 
-use super::{Headers, Method, SendHeaders, SendStatus};
+use super::{HttpHeaders, HttpMethod, HttpSendHeaders, HttpSendStatus};
 
-pub trait Request<'a>: Headers {
+pub trait HttpRequest<'a>: HttpHeaders {
     type Read: io::Read<Error = Self::Error>;
+
+    #[cfg(not(feature = "std"))]
+    type Error;
+
+    #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn query_string(&self) -> Cow<'a, str>;
@@ -15,42 +20,59 @@ pub trait Request<'a>: Headers {
     fn payload(&mut self) -> &mut Self::Read;
 }
 
-pub trait Response<'a>: SendStatus<'a> + SendHeaders<'a> {
+pub trait HttpResponse<'a>: HttpSendStatus<'a> + HttpSendHeaders<'a> {
     type Write: io::Write<Error = Self::Error>;
+
+    #[cfg(not(feature = "std"))]
+    type Error;
+
+    #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn send_bytes(
         self,
-        request: impl Request<'a>,
+        request: impl HttpRequest<'a>,
         bytes: impl AsRef<[u8]>,
-    ) -> Result<Completion, Self::Error> {
-        self.send(request, |w| w.do_write_all(bytes.as_ref()))
+    ) -> Result<HttpCompletion, Self::Error>
+    where
+        Self: Sized,
+    {
+        self.send(request, |write| write.do_write_all(bytes.as_ref()))
     }
 
     fn send_str(
         self,
-        request: impl Request<'a>,
+        request: impl HttpRequest<'a>,
         s: impl AsRef<str>,
-    ) -> Result<Completion, Self::Error> {
+    ) -> Result<HttpCompletion, Self::Error>
+    where
+        Self: Sized,
+    {
         self.send_bytes(request, s.as_ref().as_bytes())
     }
 
     fn send_json<T>(
         self,
-        _request: impl Request<'a>,
+        _request: impl HttpRequest<'a>,
         _t: impl AsRef<T>,
-    ) -> Result<Completion, Self::Error> {
+    ) -> Result<HttpCompletion, Self::Error>
+    where
+        Self: Sized,
+    {
         todo!()
     }
 
     fn send_reader<R: io::Read<Error = Self::Error>>(
         self,
-        request: impl Request<'a>,
+        request: impl HttpRequest<'a>,
         size: usize,
-        mut read: impl AsMut<R>,
-    ) -> Result<Completion, Self::Error> {
+        read: R,
+    ) -> Result<HttpCompletion, Self::Error>
+    where
+        Self: Sized,
+    {
         self.send(request, |write| {
-            read.as_mut().do_copy_len(size as u64, write)?;
+            io::copy_len(read, write, size as u64)?;
 
             Ok(())
         })
@@ -58,35 +80,40 @@ pub trait Response<'a>: SendStatus<'a> + SendHeaders<'a> {
 
     fn send(
         self,
-        request: impl Request<'a>,
+        request: impl HttpRequest<'a>,
         f: impl FnOnce(&mut Self::Write) -> Result<(), Self::Error>,
-    ) -> Result<Completion, Self::Error>;
+    ) -> Result<HttpCompletion, Self::Error>
+    where
+        Self: Sized;
 
-    fn submit(self, request: impl Request<'a>) -> Result<Completion, Self::Error> {
+    fn submit(self, request: impl HttpRequest<'a>) -> Result<HttpCompletion, Self::Error>
+    where
+        Self: Sized,
+    {
         self.send_bytes(request, &[0_u8; 0])
     }
 }
 
 struct PrivateData;
 
-pub struct Completion(PrivateData);
+pub struct HttpCompletion(PrivateData);
 
-impl Completion {
-    pub fn new<'a>(_req: impl Request<'a>, _resp: impl Response<'a>) -> Self {
+impl HttpCompletion {
+    pub fn new<'a>(_req: impl HttpRequest<'a>, _resp: impl HttpResponse<'a>) -> Self {
         Self(PrivateData)
     }
 }
 
-pub struct Handler<H> {
+pub struct HttpHandler<H> {
     uri: String,
-    method: Method,
+    method: HttpMethod,
     handler: H,
 }
 
-impl<H> Handler<H> {
-    pub fn new(uri: impl ToString, method: Method, handler: H) -> Self {
-        Handler {
-            uri: uri.to_string(),
+impl<H> HttpHandler<H> {
+    pub fn new(uri: impl Into<String>, method: HttpMethod, handler: H) -> Self {
+        Self {
+            uri: uri.into(),
             method,
             handler,
         }
@@ -96,7 +123,7 @@ impl<H> Handler<H> {
         &self.uri
     }
 
-    pub fn method(&self) -> Method {
+    pub fn method(&self) -> HttpMethod {
         self.method
     }
 
@@ -105,18 +132,23 @@ impl<H> Handler<H> {
     }
 }
 
-pub trait Registry: Sized {
-    type Request<'a>: Request<'a>;
-    type Response<'a>: Response<'a>;
+pub trait HttpRegistry: Sized {
+    type Request<'a>: HttpRequest<'a>;
+    type Response<'a>: HttpResponse<'a>;
+
+    #[cfg(not(feature = "std"))]
+    type Error;
+
+    #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
-    fn set_handler<'a, F, E>(&mut self, handler: Handler<F>) -> Result<&mut Self, Self::Error>
+    fn set_handler<'a, F, E>(&mut self, handler: HttpHandler<F>) -> Result<&mut Self, Self::Error>
     where
-        F: Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, E>,
+        F: Fn(Self::Request<'a>, Self::Response<'a>) -> Result<HttpCompletion, E>,
         E: Into<Box<dyn std::error::Error>>;
 
-    fn at(self, uri: impl ToString) -> RegistryBuilder<Self> {
-        RegistryBuilder {
+    fn at(self, uri: impl ToString) -> HttpRegistryBuilder<Self> {
+        HttpRegistryBuilder {
             uri: uri.to_string(),
             registry: self,
         }
@@ -130,57 +162,60 @@ pub trait Registry: Sized {
     }
 }
 
-pub struct RegistryBuilder<RR> {
+pub struct HttpRegistryBuilder<RR> {
     uri: String,
     registry: RR,
 }
 
-impl<RR> RegistryBuilder<RR>
+impl<RR> HttpRegistryBuilder<RR>
 where
-    RR: Registry,
+    RR: HttpRegistry,
 {
     pub fn get<'a, E>(
         self,
-        f: impl Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E>,
+        f: impl Fn(RR::Request<'a>, RR::Response<'a>) -> Result<HttpCompletion, E>,
     ) -> Result<RR, RR::Error>
     where
         E: Into<Box<dyn std::error::Error>>,
     {
-        self.handler(Method::Get, f)
+        self.handler(HttpMethod::Get, f)
     }
 
     pub fn post<'a, E>(
         self,
-        f: impl Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E>,
+        f: impl Fn(RR::Request<'a>, RR::Response<'a>) -> Result<HttpCompletion, E>,
     ) -> Result<RR, RR::Error>
     where
         E: Into<Box<dyn std::error::Error>>,
     {
-        self.handler(Method::Post, f)
+        self.handler(HttpMethod::Post, f)
     }
 
     pub fn handler<'a, E>(
         mut self,
-        method: Method,
-        f: impl Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E>,
+        method: HttpMethod,
+        f: impl Fn(RR::Request<'a>, RR::Response<'a>) -> Result<HttpCompletion, E>,
     ) -> Result<RR, RR::Error>
     where
         E: Into<Box<dyn std::error::Error>>,
     {
         self.registry
-            .set_handler(Handler::new(self.uri, method, f))?;
+            .set_handler(HttpHandler::new(self.uri, method, f))?;
 
         Ok(self.registry)
     }
 }
 
-// fn test<'a>(req: impl Request<'a>, resp: impl Response<'a>) -> Result<Completion, anyhow::Error> {
+// fn test<'a>(
+//     req: impl HttpRequest<'a>,
+//     resp: impl HttpResponse<'a>,
+// ) -> Result<HttpCompletion, anyhow::Error> {
 //     Ok(resp.send_str(req, "Hello, world!")?)
 // }
 
 // fn blah<R>(registry: R) -> Result<R, R::Error>
 // where
-//     R: Registry,
+//     R: HttpRegistry,
 // {
 //     registry.at("/blah").get(test)
 // }

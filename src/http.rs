@@ -5,7 +5,7 @@ pub mod client;
 pub mod server;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Method {
+pub enum HttpMethod {
     Delete,
     Get,
     Head,
@@ -41,7 +41,7 @@ pub enum Method {
     Unlink,
 }
 
-pub trait Headers {
+pub trait HttpHeaders {
     fn header(&self, name: impl AsRef<str>) -> Option<Cow<'_, str>>;
 
     fn content_type(&self) -> Option<Cow<'_, str>> {
@@ -58,7 +58,7 @@ pub trait Headers {
     }
 }
 
-pub trait SendHeaders<'a>: Sized {
+pub trait HttpSendHeaders<'a> {
     fn set_header<H, V>(&mut self, name: H, value: V) -> &mut Self
     where
         H: Into<Cow<'a, str>>,
@@ -86,6 +86,7 @@ pub trait SendHeaders<'a>: Sized {
     where
         H: Into<Cow<'a, str>>,
         V: Into<Cow<'a, str>>,
+        Self: Sized,
     {
         self.set_header(name, value);
         self
@@ -94,12 +95,16 @@ pub trait SendHeaders<'a>: Sized {
     fn content_type<V>(mut self, ctype: V) -> Self
     where
         V: Into<Cow<'a, str>>,
+        Self: Sized,
     {
         self.set_content_type(ctype);
         self
     }
 
-    fn content_len(mut self, len: usize) -> Self {
+    fn content_len(mut self, len: usize) -> Self
+    where
+        Self: Sized,
+    {
         self.set_content_len(len);
         self
     }
@@ -107,18 +112,19 @@ pub trait SendHeaders<'a>: Sized {
     fn content_encoding<V>(mut self, encoding: V) -> Self
     where
         V: Into<Cow<'a, str>>,
+        Self: Sized,
     {
         self.set_content_encoding(encoding);
         self
     }
 }
 
-pub trait Status {
+pub trait HttpStatus {
     fn status(&self) -> u16;
     fn status_message(&self) -> Option<Cow<'_, str>>;
 }
 
-pub trait SendStatus<'a>: Sized {
+pub trait HttpSendStatus<'a> {
     fn set_ok(&mut self) -> &mut Self {
         self.set_status(200)
     }
@@ -128,7 +134,10 @@ pub trait SendStatus<'a>: Sized {
     where
         M: Into<Cow<'a, str>>;
 
-    fn status(mut self, status: u16) -> Self {
+    fn status(mut self, status: u16) -> Self
+    where
+        Self: Sized,
+    {
         self.set_status(status);
         self
     }
@@ -136,6 +145,7 @@ pub trait SendStatus<'a>: Sized {
     fn status_message<M>(mut self, message: M) -> Self
     where
         M: Into<Cow<'a, str>>,
+        Self: Sized,
     {
         self.set_status_message(message);
         self

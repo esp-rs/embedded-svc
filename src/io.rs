@@ -1,39 +1,12 @@
+#[cfg(feature = "std")]
+pub use stdio::*;
+
 const BUF_SIZE: usize = 128;
 
 pub trait Read {
     type Error;
 
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error>;
-
-    fn do_copy<W>(&mut self, write: &mut W) -> Result<u64, Self::Error>
-    where
-        W: Write<Error = Self::Error>,
-    {
-        self.do_copy_len(u64::MAX, write)
-    }
-
-    fn do_copy_len<W>(&mut self, mut len: u64, write: &mut W) -> Result<u64, Self::Error>
-    where
-        W: Write<Error = Self::Error>,
-    {
-        let mut buf = [0_u8; BUF_SIZE];
-
-        let mut copied = 0;
-
-        while len > 0 {
-            let size_read = self.do_read(&mut buf)?;
-            if size_read == 0 {
-                break;
-            }
-
-            write.do_write_all(&buf[0..size_read])?;
-
-            copied += size_read as u64;
-            len -= size_read as u64;
-        }
-
-        Ok(copied)
-    }
 }
 
 pub trait Write {
@@ -56,65 +29,123 @@ pub trait Write {
     }
 }
 
-#[cfg(feature = "std")]
-impl<R> Read for R
+impl<'a, R> Read for &'a mut R
 where
-    R: std::io::Read,
+    R: Read,
 {
-    type Error = std::io::Error;
+    type Error = R::Error;
 
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.read(buf)
+        (*self).do_read(buf)
     }
 }
 
-#[cfg(feature = "std")]
-impl<W> Write for W
+impl<'a, W> Write for &'a mut W
 where
-    W: std::io::Write,
+    W: Write,
 {
-    type Error = std::io::Error;
+    type Error = W::Error;
 
     fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        self.write(buf)
+        (*self).do_write(buf)
     }
 
     fn do_flush(&mut self) -> Result<(), Self::Error> {
-        self.flush()
+        (*self).do_flush()
     }
 }
 
-#[cfg(feature = "std")]
-pub struct StdIO<'a, T>(pub &'a mut T);
-
-#[cfg(feature = "std")]
-impl<'a, R> std::io::Read for StdIO<'a, R>
+pub fn copy<R, W>(read: R, write: W) -> Result<u64, R::Error>
 where
     R: Read,
-    R::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    W: Write,
+    W::Error: Into<R::Error>,
 {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        self.0
-            .do_read(buf)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    copy_len(read, write, u64::MAX)
+}
+
+pub fn copy_len<R, W>(mut read: R, mut write: W, mut len: u64) -> Result<u64, R::Error>
+where
+    R: Read,
+    W: Write,
+    W::Error: Into<R::Error>,
+{
+    let mut buf = [0_u8; BUF_SIZE];
+
+    let mut copied = 0;
+
+    while len > 0 {
+        let size_read = read.do_read(&mut buf)?;
+        if size_read == 0 {
+            break;
+        }
+
+        write.do_write_all(&buf[0..size_read]).map_err(Into::into)?;
+
+        copied += size_read as u64;
+        len -= size_read as u64;
     }
+
+    Ok(copied)
 }
 
 #[cfg(feature = "std")]
-impl<'a, W> std::io::Write for StdIO<'a, W>
-where
-    W: Write,
-    W::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-{
-    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-        self.0
-            .do_write(buf)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+mod stdio {
+    pub struct StdIO<T>(pub T);
+
+    impl<R> super::Read for StdIO<R>
+    where
+        R: std::io::Read,
+    {
+        type Error = std::io::Error;
+
+        fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            self.0.read(buf)
+        }
     }
 
-    fn flush(&mut self) -> Result<(), std::io::Error> {
-        self.0
-            .do_flush()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    impl<W> super::Write for StdIO<W>
+    where
+        W: std::io::Write,
+    {
+        type Error = std::io::Error;
+
+        fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            self.0.write(buf)
+        }
+
+        fn do_flush(&mut self) -> Result<(), Self::Error> {
+            self.0.flush()
+        }
+    }
+
+    impl<R> std::io::Read for StdIO<R>
+    where
+        R: super::Read,
+        R::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+            self.0
+                .do_read(buf)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        }
+    }
+
+    impl<W> std::io::Write for StdIO<W>
+    where
+        W: super::Write,
+        W::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
+            self.0
+                .do_write(buf)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        }
+
+        fn flush(&mut self) -> Result<(), std::io::Error> {
+            self.0
+                .do_flush()
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+        }
     }
 }
