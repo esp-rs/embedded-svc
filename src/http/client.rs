@@ -38,16 +38,6 @@ pub trait HttpRequest<'a>: HttpSendHeaders<'a> {
     #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
-    fn set_follow_redirects(&mut self, follow_redirects: bool) -> &mut Self;
-
-    fn follow_redirects(mut self, follow_redirects: bool) -> Self
-    where
-        Self: Sized,
-    {
-        self.set_follow_redirects(follow_redirects);
-        self
-    }
-
     fn send_bytes(self, bytes: impl AsRef<[u8]>) -> Result<Self::Response<'a>, Self::Error>
     where
         Self: Sized,

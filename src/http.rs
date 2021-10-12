@@ -4,7 +4,18 @@ use alloc::borrow::Cow;
 pub mod client;
 pub mod server;
 
+pub mod status {
+    use core::ops::Range;
+
+    pub const INFO: Range<u16> = 100..200;
+    pub const OK: Range<u16> = 200..300;
+    pub const REDIRECT: Range<u16> = 300..400;
+    pub const CLIENT_ERROR: Range<u16> = 400..500;
+    pub const SERVER_ERROR: Range<u16> = 500..600;
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(Hash))]
 pub enum HttpMethod {
     Delete,
     Get,
