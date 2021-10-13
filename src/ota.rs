@@ -90,7 +90,7 @@ pub trait OtaAsync {
 
 pub trait OtaServer {
     type Read<'a>: io::Read<Error = Self::Error>;
-    type Iterator: Iterator<Item = crate::ota::FirmwareInfo>;
+    type Iterator: Iterator<Item = FirmwareInfo>;
     type Error;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error>;

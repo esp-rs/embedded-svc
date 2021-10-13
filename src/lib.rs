@@ -20,7 +20,7 @@ pub mod storage;
 #[cfg(feature = "alloc")]
 pub mod wifi;
 
-#[cfg(all(feature = "experimental", feature = "std", feature = "use_serde"))]
+#[cfg(all(feature = "experimental", feature = "use_serde"))]
 pub mod ghota;
 
 #[cfg(all(feature = "alloc", feature = "use_serde"))]

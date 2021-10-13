@@ -3,8 +3,6 @@ use core::mem;
 extern crate alloc;
 use alloc::borrow::Cow;
 
-use url;
-
 use anyhow;
 
 #[cfg(feature = "use_serde")]
@@ -60,8 +58,7 @@ impl From<(Release, Asset)> for FirmwareInfo {
 }
 
 pub struct GitHubOtaService<'a, C> {
-    repo: Cow<'a, str>,
-    project: Cow<'a, str>,
+    base_url: Cow<'a, str>,
     label: Cow<'a, str>,
     client: C,
 }
@@ -71,28 +68,47 @@ where
     C: HttpClient,
 {
     pub fn new(
-        repo: impl Into<Cow<'a, str>>,
-        project: impl Into<Cow<'a, str>>,
+        base_url: impl Into<Cow<'a, str>>,
         label: impl Into<Cow<'a, str>>,
         client: C,
     ) -> Self {
         Self {
-            repo: repo.into(),
-            project: project.into(),
+            base_url: base_url.into(),
             label: label.into(),
             client,
         }
     }
 
+    pub fn new_with_repo(
+        repo: impl AsRef<str>,
+        project: impl AsRef<str>,
+        label: impl Into<Cow<'a, str>>,
+        client: C,
+    ) -> Self {
+        Self::new(
+            join(join("https://api.github.com/repos", repo), project),
+            label,
+            client,
+        )
+    }
+
     fn get_gh_releases(&mut self) -> Result<impl Iterator<Item = Release>, anyhow::Error> {
         let response = self
             .client
-            .get(self.get_base_url()?.join("releases")?)?
+            .get(join(self.base_url.as_ref(), "releases"))?
             .submit()?;
 
-        // TODO: Not efficient
+        // TODO: Deserialization code below is not efficient
+        // See this for a common workaround: https://github.com/serde-rs/json/issues/404#issuecomment-892957228
+
+        #[cfg(feature = "std")]
         let releases =
             serde_json::from_reader::<_, Vec<Release>>(StdIO(&mut response.into_payload()))?;
+
+        #[cfg(not(feature = "std"))]
+        let releases = serde_json::from_slice::<_, Vec<Release>>(
+            &StdIO(&mut response.into_payload()).read_to_end(),
+        )?;
 
         Ok(releases.into_iter())
     }
@@ -100,7 +116,7 @@ where
     fn get_gh_latest_release(&mut self) -> Result<Option<Release>, anyhow::Error> {
         let response = self
             .client
-            .get(self.get_base_url()?.join("release")?.join("latest")?)?
+            .get(join(join(self.base_url.as_ref(), "release"), "latest"))?
             .submit()?;
 
         let release =
@@ -132,12 +148,6 @@ where
                     .unwrap_or(false)
             })
     }
-
-    fn get_base_url(&self) -> Result<url::Url, anyhow::Error> {
-        Ok(url::Url::parse("https://api.github.com/repos")?
-            .join(self.repo.as_ref())?
-            .join(self.project.as_ref())?)
-    }
 }
 
 pub struct OtaServerIterator(Box<dyn Iterator<Item = FirmwareInfo>>);
@@ -155,12 +165,12 @@ pub struct OtaRead<R>(R);
 impl<R, E> io::Read for OtaRead<R>
 where
     R: io::Read<Error = E>,
-    E: std::error::Error + Send + Sync + 'static,
+    E: Into<anyhow::Error>,
 {
     type Error = anyhow::Error;
 
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        Ok(self.0.do_read(buf)?)
+        self.0.do_read(buf).map_err(Into::into)
     }
 }
 
@@ -193,10 +203,35 @@ where
 
     fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::Read<'_>, Self::Error> {
         Ok(OtaRead(
-            self.client
-                .get(url::Url::parse(download_id.as_ref())?)?
-                .submit()?
-                .into_payload(),
+            self.client.get(download_id)?.submit()?.into_payload(),
         ))
+    }
+}
+
+fn join<'a>(uri: impl Into<Cow<'a, str>>, path: impl AsRef<str>) -> Cow<'a, str> {
+    let uri = uri.into();
+    let path = path.as_ref();
+
+    let uri_slash = uri.ends_with("/");
+    let path_slash = path.starts_with("/");
+
+    if path.len() == 0 || path.len() == 1 && uri_slash && path_slash {
+        uri
+    } else {
+        let path = if uri_slash && path_slash {
+            &path[1..]
+        } else {
+            path
+        };
+
+        let mut result = uri.into_owned();
+
+        if !uri_slash && !path_slash {
+            result.push_str("/");
+        }
+
+        result.push_str(path);
+
+        Cow::Owned(result)
     }
 }
