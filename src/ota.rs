@@ -3,9 +3,15 @@ use alloc::borrow::Cow;
 
 use async_trait::async_trait;
 
+use either::*;
+
+#[cfg(feature = "use_serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::io;
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct FirmwareInfo {
     pub version: String,
     pub released: String,
@@ -13,6 +19,13 @@ pub struct FirmwareInfo {
     #[cfg(feature = "alloc")]
     pub signature: Option<alloc::vec::Vec<u8>>,
     pub download_id: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub struct UpdateProgress {
+    pub progress: f32,
+    pub operation: String,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -42,7 +55,7 @@ pub enum SlotState {
     Unknown,
 }
 
-pub trait Slot<'a> {
+pub trait OtaSlot {
     type Error;
 
     fn get_label(&self) -> Result<Cow<'_, str>, Self::Error>;
@@ -52,8 +65,8 @@ pub trait Slot<'a> {
 }
 
 pub trait Ota {
-    type Slot<'a>: Slot<'a>;
-    type OtaUpdate: OtaUpdate;
+    type Slot<'a>: OtaSlot;
+    type Update<'a>: OtaUpdate;
     type Error;
 
     fn get_boot_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
@@ -62,34 +75,60 @@ pub trait Ota {
 
     fn get_update_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
 
-    fn factory_reset(self) -> Self::Error; // TODO: Figure out how to report on status update
+    fn is_factory_reset_supported(&self) -> Result<bool, Self::Error>;
 
-    fn initiate_update(self) -> Result<Self::OtaUpdate, Self::Error>;
+    fn factory_reset(&mut self) -> Result<(), Self::Error>;
+
+    fn initiate_update(&mut self) -> Result<Self::Update<'_>, Self::Error>;
 
     fn mark_running_slot_valid(&mut self) -> Result<(), Self::Error>;
     fn mark_running_slot_invalid_and_reboot(&mut self) -> Self::Error;
 }
 
 pub trait OtaUpdate: io::Write {
-    type Ota: Ota;
+    fn complete(self) -> Result<(), Self::Error>;
+    fn abort(self) -> Result<(), Self::Error>;
 
-    fn complete(self) -> Result<Self::Ota, Self::Error>;
-    fn abort(self) -> Result<Self::Ota, Self::Error>;
+    fn update<R>(
+        mut self,
+        read: R,
+        progress: impl Fn(u64, u64),
+    ) -> Result<(), Either<R::Error, Self::Error>>
+    where
+        R: io::Read,
+        Self: Sized,
+    {
+        match io::copy_len_with_progress(read, &mut self, u64::MAX, progress) {
+            Ok(_) => self.complete().map_err(Either::Right),
+            Err(e) => {
+                self.abort().map_err(Either::Right)?;
+                Err(e)
+            }
+        }
+    }
 }
 
 #[async_trait]
 pub trait OtaAsync {
     type Error;
 
-    async fn get_available_update(&self) -> Result<Option<String>, Self::Error>;
+    async fn get_available_update(&self) -> Result<Option<FirmwareInfo>, Self::Error>;
+
+    async fn get_all_updates(&self) -> Result<Vec<FirmwareInfo>, Self::Error>;
 
     async fn factory_reset(&mut self) -> Self::Error;
 
-    async fn update(&mut self) -> Self::Error;
+    async fn update(&mut self, download_id: Option<String>) -> Self::Error;
+
+    async fn get_update_progress(&mut self) -> Result<Option<UpdateProgress>, Self::Error>;
+}
+
+pub trait OtaRead: io::Read {
+    fn size(&self) -> Option<usize>;
 }
 
 pub trait OtaServer {
-    type Read<'a>: io::Read<Error = Self::Error>;
+    type OtaRead<'a>: OtaRead<Error = Self::Error>;
     type Iterator: Iterator<Item = FirmwareInfo>;
     type Error;
 
@@ -97,5 +136,5 @@ pub trait OtaServer {
 
     fn get_releases(&mut self) -> Result<Self::Iterator, Self::Error>;
 
-    fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::Read<'_>, Self::Error>;
+    fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error>;
 }

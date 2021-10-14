@@ -1,3 +1,5 @@
+use core::convert::identity;
+
 extern crate alloc;
 use alloc::borrow::Cow;
 use alloc::string::String;
@@ -72,7 +74,7 @@ pub trait HttpResponse<'a>: HttpSendStatus<'a> + HttpSendHeaders<'a> {
         Self: Sized,
     {
         self.send(request, |write| {
-            io::copy_len(read, write, size as u64)?;
+            io::copy_len(read, write, size as u64).map_err(|e| e.either(identity, identity))?;
 
             Ok(())
         })

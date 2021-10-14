@@ -1,6 +1,6 @@
 [package]
 name = "embedded-svc"
-version = "0.10.1"
+version = "0.10.3"
 authors = ["Ivan Markov <ivan.markov@gmail.com>"]
 edition = "2018"
 categories = ["embedded", "hardware-support"]
@@ -15,9 +15,9 @@ default = ["std", "use_serde", "use_strum", "use_numenum", "anyhow/std", "serde/
 
 experimental = []
 
-std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "url", "http-auth-basic"]
+std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "either/use_std", "url", "http-auth-basic"]
 alloc = ["anyhow", "serde/alloc", "serde_json/alloc"]
-use_serde = ["serde", "serde_json", "enumset/serde"]
+use_serde = ["serde", "serde_json", "enumset/serde", "either/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
 
@@ -32,5 +32,6 @@ strum_macros = { version = "0.21", optional = true }
 num_enum = { version = "0.5", optional = true }
 serde = { version = "1", optional = true, features = ["derive"] }
 serde_json = { version = "1", optional = true }
+either = "1.6"
 url = { version = "2", optional = true }
 http-auth-basic = { version = "0.1", optional = true }

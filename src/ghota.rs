@@ -9,7 +9,7 @@ use anyhow;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    http::client::*,
+    http::{client::*, HttpHeaders},
     io::{self, StdIO},
     ota::*,
 };
@@ -160,9 +160,22 @@ impl Iterator for OtaServerIterator {
     }
 }
 
-pub struct OtaRead<R>(R);
+pub struct GitHubOtaRead<R> {
+    size: Option<usize>,
+    read: R,
+}
 
-impl<R, E> io::Read for OtaRead<R>
+impl<R, E> OtaRead for GitHubOtaRead<R>
+where
+    R: io::Read<Error = E>,
+    E: Into<anyhow::Error>,
+{
+    fn size(&self) -> Option<usize> {
+        self.size
+    }
+}
+
+impl<R, E> io::Read for GitHubOtaRead<R>
 where
     R: io::Read<Error = E>,
     E: Into<anyhow::Error>,
@@ -170,7 +183,7 @@ where
     type Error = anyhow::Error;
 
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.0.do_read(buf).map_err(Into::into)
+        self.read.do_read(buf).map_err(Into::into)
     }
 }
 
@@ -180,8 +193,8 @@ where
 {
     type Error = anyhow::Error;
 
-    type Read<'b> =
-        OtaRead<
+    type OtaRead<'b> =
+        GitHubOtaRead<
             <<<C as HttpClient>::Request<'b> as HttpRequest<'b>>::Response<'b> as HttpResponse<
                 'b,
             >>::Read<'b>,
@@ -201,10 +214,13 @@ where
         Ok(OtaServerIterator(Box::new(assets)))
     }
 
-    fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::Read<'_>, Self::Error> {
-        Ok(OtaRead(
-            self.client.get(download_id)?.submit()?.into_payload(),
-        ))
+    fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error> {
+        let response = self.client.get(download_id)?.submit()?;
+
+        Ok(GitHubOtaRead {
+            size: response.content_len(),
+            read: response.into_payload(),
+        })
     }
 }
 
