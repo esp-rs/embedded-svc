@@ -116,9 +116,9 @@ pub trait OtaAsync {
 
     async fn get_all_updates(&self) -> Result<Vec<FirmwareInfo>, Self::Error>;
 
-    async fn factory_reset(&mut self) -> Self::Error;
+    async fn factory_reset(&mut self) -> Result<(), Self::Error>;
 
-    async fn update(&mut self, download_id: Option<String>) -> Self::Error;
+    async fn update(&mut self, download_id: Option<String>) -> Result<(), Self::Error>;
 
     async fn get_update_progress(&mut self) -> Result<Option<UpdateProgress>, Self::Error>;
 }
