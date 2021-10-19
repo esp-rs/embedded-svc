@@ -11,6 +11,8 @@ use strum_macros::{EnumIter, EnumMessage, EnumString, ToString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
+use async_trait::async_trait;
+
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
@@ -21,7 +23,7 @@ use crate::ipv4;
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
-pub enum OperationMode {
+pub enum Capability {
     Client,
     Router,
 }
@@ -30,58 +32,109 @@ pub enum OperationMode {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Configuration {
     None,
+    NOIP,
     Client(ipv4::ClientConfiguration),
     Router(ipv4::RouterConfiguration),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ClientIpStatus {
-    Disabled,
-    Waiting,
-    Done(ipv4::ClientSettings),
+pub trait TransitionalState<T> {
+    fn is_transitional(&self) -> bool;
+    fn is_operating(&self) -> bool;
+    fn get_operating(&self) -> Option<&T>;
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ClientConnectionStatus {
+pub enum IpStatus {
+    Disabled,
+    Waiting,
+    Done(Option<ipv4::ClientSettings>),
+}
+
+impl TransitionalState<Option<ipv4::ClientSettings>> for IpStatus {
+    fn is_transitional(&self) -> bool {
+        *self == IpStatus::Waiting
+    }
+
+    fn is_operating(&self) -> bool {
+        *self != IpStatus::Disabled
+    }
+
+    fn get_operating(&self) -> Option<&Option<ipv4::ClientSettings>> {
+        if let IpStatus::Done(ref settings) = *self {
+            Some(settings)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub enum ConnectionStatus {
     Disconnected,
     Connecting,
-    Connected(ClientIpStatus),
+    Connected(IpStatus),
+}
+
+impl TransitionalState<IpStatus> for ConnectionStatus {
+    fn is_transitional(&self) -> bool {
+        *self == ConnectionStatus::Connecting
+            || (if let ConnectionStatus::Connected(ips) = self {
+                ips.is_transitional()
+            } else {
+                false
+            })
+    }
+
+    fn is_operating(&self) -> bool {
+        *self != ConnectionStatus::Disconnected
+    }
+
+    fn get_operating(&self) -> Option<&IpStatus> {
+        if let ConnectionStatus::Connected(ref settings) = *self {
+            Some(settings)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ClientStatus {
+pub enum Status {
     Stopped,
     Starting,
-    Started(ClientConnectionStatus),
+    Started(ConnectionStatus),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum RouterIpStatus {
-    Disabled,
-    Waiting,
-    Done,
-}
+impl TransitionalState<ConnectionStatus> for Status {
+    fn is_transitional(&self) -> bool {
+        *self == Status::Starting
+            || (if let Status::Started(ccs) = self {
+                ccs.is_transitional()
+            } else {
+                false
+            })
+    }
 
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum RouterStatus {
-    Stopped,
-    Starting,
-    Started(RouterIpStatus),
-}
+    fn is_operating(&self) -> bool {
+        *self != Status::Stopped
+    }
 
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct Status(pub ClientStatus, pub RouterStatus);
+    fn get_operating(&self) -> Option<&ConnectionStatus> {
+        if let Status::Started(ref settings) = *self {
+            Some(settings)
+        } else {
+            None
+        }
+    }
+}
 
 pub trait Eth {
     type Error;
 
-    fn get_supported_operation_modes(&self) -> Result<EnumSet<OperationMode>, Self::Error>;
+    fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
     fn get_status(&self) -> Status;
 
@@ -89,30 +142,14 @@ pub trait Eth {
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }
 
-#[cfg(feature = "alloc")]
-pub struct AnyhowEth<T>(pub T);
+#[async_trait]
+pub trait EthAsync {
+    type Error;
 
-#[cfg(feature = "alloc")]
-impl<E, H> Eth for AnyhowEth<H>
-where
-    E: Into<anyhow::Error>,
-    H: Eth<Error = E>,
-{
-    type Error = anyhow::Error;
+    async fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
-    fn get_supported_operation_modes(&self) -> Result<EnumSet<OperationMode>, Self::Error> {
-        self.0.get_supported_operation_modes().map_err(Into::into)
-    }
+    async fn get_status(&self) -> Result<Status, Self::Error>;
 
-    fn get_status(&self) -> Status {
-        self.0.get_status()
-    }
-
-    fn get_configuration(&self) -> Result<Configuration, Self::Error> {
-        self.0.get_configuration().map_err(Into::into)
-    }
-
-    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error> {
-        self.0.set_configuration(conf).map_err(Into::into)
-    }
+    async fn get_configuration(&self) -> Result<Configuration, Self::Error>;
+    async fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }
