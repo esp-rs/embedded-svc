@@ -207,17 +207,3 @@ where
         Ok(self.registry)
     }
 }
-
-// fn test<'a>(
-//     req: impl HttpRequest<'a>,
-//     resp: impl HttpResponse<'a>,
-// ) -> Result<HttpCompletion, anyhow::Error> {
-//     Ok(resp.send_str(req, "Hello, world!")?)
-// }
-
-// fn blah<R>(registry: R) -> Result<R, R::Error>
-// where
-//     R: HttpRegistry,
-// {
-//     registry.at("/blah").get(test)
-// }

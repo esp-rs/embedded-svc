@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "experimental", feature(generic_associated_types))] // for http, http::client, http::server, ota and ghota
-#![feature(backtrace)]
 
 #[cfg(feature = "alloc")]
 pub mod anyerror;

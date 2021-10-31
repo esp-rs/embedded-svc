@@ -1,5 +1,8 @@
 extern crate alloc;
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use async_trait::async_trait;
 
@@ -16,7 +19,6 @@ pub struct FirmwareInfo {
     pub version: String,
     pub released: String,
     pub description: String,
-    #[cfg(feature = "alloc")]
     pub signature: Option<alloc::vec::Vec<u8>>,
     pub download_id: Option<String>,
 }

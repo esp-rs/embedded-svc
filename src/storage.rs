@@ -1,4 +1,5 @@
 extern crate alloc;
+use alloc::borrow::ToOwned;
 
 pub trait Storage {
     type Error;
@@ -36,57 +37,6 @@ pub trait Storage {
         value: &impl serde::Serialize,
     ) -> Result<bool, Self::Error> {
         self.put_raw(key, &*serde_json::to_vec(value).unwrap()) // TODO
-    }
-}
-
-pub struct AnyhowStorage<T>(pub T);
-
-impl<E, S> Storage for AnyhowStorage<S>
-where
-    E: Into<anyhow::Error>,
-    S: Storage<Error = E>,
-{
-    type Error = anyhow::Error;
-
-    fn contains(&self, key: impl AsRef<str>) -> Result<bool, Self::Error> {
-        self.0.contains(key).map_err(Into::into)
-    }
-
-    fn remove(&mut self, key: impl AsRef<str>) -> Result<bool, Self::Error> {
-        self.0.remove(key).map_err(Into::into)
-    }
-
-    fn len(&self, key: impl AsRef<str>) -> Result<Option<usize>, Self::Error> {
-        self.0.len(key).map_err(Into::into)
-    }
-
-    fn get_raw(&self, key: impl AsRef<str>) -> Result<Option<alloc::vec::Vec<u8>>, Self::Error> {
-        self.0.get_raw(key).map_err(Into::into)
-    }
-
-    fn put_raw(
-        &mut self,
-        key: impl AsRef<str>,
-        value: impl Into<alloc::vec::Vec<u8>>,
-    ) -> Result<bool, Self::Error> {
-        self.0.put_raw(key, value).map_err(Into::into)
-    }
-
-    #[cfg(feature = "use_serde")]
-    fn get<T: serde::de::DeserializeOwned>(
-        &self,
-        key: impl AsRef<str>,
-    ) -> Result<Option<T>, Self::Error> {
-        self.0.get(key).map_err(Into::into)
-    }
-
-    #[cfg(feature = "use_serde")]
-    fn put(
-        &mut self,
-        key: impl AsRef<str>,
-        value: &impl serde::Serialize,
-    ) -> Result<bool, Self::Error> {
-        self.0.put(key, value).map_err(Into::into)
     }
 }
 

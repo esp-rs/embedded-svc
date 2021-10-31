@@ -1,7 +1,9 @@
 extern crate alloc;
 use alloc::borrow::Cow;
+use alloc::string::ToString;
 
 pub mod client;
+#[cfg(feature = "std")] // TODO: Remove
 pub mod server;
 
 pub mod status {

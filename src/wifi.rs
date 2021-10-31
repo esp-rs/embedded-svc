@@ -1,8 +1,8 @@
 use core::fmt::Debug;
 use core::mem;
 
-#[cfg(feature = "alloc")]
 extern crate alloc;
+use alloc::boxed::Box;
 
 use enumset::*;
 

@@ -1,5 +1,8 @@
 use anyhow::*;
 
+extern crate alloc;
+use alloc::format;
+
 pub struct AnyError<E>(E);
 
 impl<E: core::fmt::Debug> AnyError<E> {

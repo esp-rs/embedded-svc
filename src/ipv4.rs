@@ -8,6 +8,8 @@ use core::{convert::TryFrom, str::FromStr};
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
+#[cfg(feature = "alloc")]
+use alloc::string::ToString;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};

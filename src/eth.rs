@@ -1,5 +1,10 @@
 use core::fmt::Debug;
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+
 use enumset::*;
 
 #[cfg(feature = "use_serde")]
@@ -11,6 +16,7 @@ use strum_macros::{EnumIter, EnumMessage, EnumString, ToString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
+#[cfg(feature = "alloc")]
 use async_trait::async_trait;
 
 use crate::ipv4;
@@ -142,6 +148,7 @@ pub trait Eth {
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }
 
+#[cfg(feature = "alloc")]
 #[async_trait]
 pub trait EthAsync {
     type Error;

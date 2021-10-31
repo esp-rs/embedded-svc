@@ -113,25 +113,3 @@ pub trait HttpResponse<'a>: HttpStatus + HttpHeaders {
 
     fn into_payload(self) -> Self::Read<'a>;
 }
-
-// pub fn test(mut client: impl Client) -> Result<(), anyhow::Error> {
-//     let response = client
-//         .get("https://google.com")?
-//         .header("foo", "bar")
-//         .follow_redirects(true)
-//         .send_str("xxx")?;
-
-//     let h = response.content_type().unwrap();
-
-//     let mut v = Vec::new();
-
-//     info!("{:?} {}", v, h);
-
-//     io::StdIO(&mut response.into_payload()).read_to_end(&mut v)?;
-
-//     //q(response);
-
-//     Ok(())
-// }
-
-// fn q<R: Response>(_r: R) {}
