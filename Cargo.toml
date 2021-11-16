@@ -1,6 +1,6 @@
 [package]
 name = "embedded-svc"
-version = "0.12.0"
+version = "0.13.0"
 authors = ["Ivan Markov <ivan.markov@gmail.com>"]
 edition = "2018"
 resolver = "2"
@@ -14,7 +14,7 @@ readme = "README.md"
 [features]
 default = ["std", "use_serde", "use_strum", "use_numenum"]
 
-experimental = []
+experimental = ["domain"]
 
 std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "either/use_std", "url", "http-auth-basic"]
 alloc = ["anyhow", "serde/alloc", "serde_json/alloc"]
@@ -36,3 +36,4 @@ serde_json = { version = "1", default-features = false, optional = true }
 either = { version = "1.6", default-features = false }
 url = { version = "2", optional = true }
 http-auth-basic = { version = "0.1", optional = true }
+domain = { version = "0.6", optional = true, default-features = false }

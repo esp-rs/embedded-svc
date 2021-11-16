@@ -1,7 +1,7 @@
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::edge_config::role::Role;
+use super::role::Role;
 
 use crate::{httpd::registry::*, httpd::*, mutex::*, wifi};
 

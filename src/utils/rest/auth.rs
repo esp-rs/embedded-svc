@@ -1,6 +1,6 @@
 use http_auth_basic::Credentials;
 
-use crate::edge_config::role::*;
+use super::role::*;
 
 use crate::httpd::{Request, Response, Result, SessionState, StateMap};
 

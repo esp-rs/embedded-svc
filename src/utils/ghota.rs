@@ -193,7 +193,10 @@ where
 {
     type Error = anyhow::Error;
 
-    type OtaRead<'b> =
+    type OtaRead<'b>
+    where
+        Self: 'b,
+    =
         GitHubOtaRead<
             <<<C as HttpClient>::Request<'b> as HttpRequest<'b>>::Response<'b> as HttpResponse<
                 'b,

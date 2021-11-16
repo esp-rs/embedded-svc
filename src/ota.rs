@@ -67,8 +67,12 @@ pub trait OtaSlot {
 }
 
 pub trait Ota {
-    type Slot<'a>: OtaSlot;
-    type Update<'a>: OtaUpdate;
+    type Slot<'a>: OtaSlot
+    where
+        Self: 'a;
+    type Update<'a>: OtaUpdate
+    where
+        Self: 'a;
     type Error;
 
     fn get_boot_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
@@ -130,7 +134,9 @@ pub trait OtaRead: io::Read {
 }
 
 pub trait OtaServer {
-    type OtaRead<'a>: OtaRead<Error = Self::Error>;
+    type OtaRead<'a>: OtaRead<Error = Self::Error>
+    where
+        Self: 'a;
     type Iterator: Iterator<Item = FirmwareInfo>;
     type Error;
 

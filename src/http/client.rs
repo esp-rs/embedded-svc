@@ -5,7 +5,9 @@ use crate::io::{self, Write};
 use super::{HttpHeaders, HttpMethod, HttpSendHeaders, HttpStatus};
 
 pub trait HttpClient {
-    type Request<'a>: HttpRequest<'a, Error = Self::Error>;
+    type Request<'a>: HttpRequest<'a, Error = Self::Error>
+    where
+        Self: 'a;
 
     #[cfg(not(feature = "std"))]
     type Error;

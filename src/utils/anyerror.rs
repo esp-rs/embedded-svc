@@ -1,7 +1,6 @@
 use anyhow::*;
 
 extern crate alloc;
-use alloc::format;
 
 pub struct AnyError<E>(E);
 

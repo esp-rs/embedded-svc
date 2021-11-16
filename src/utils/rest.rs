@@ -1,5 +1,5 @@
 pub mod auth;
-#[cfg(feature = "experimental")]
+pub mod captive;
 pub mod ota;
 pub mod role;
 pub mod wifi;
