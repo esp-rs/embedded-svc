@@ -2,7 +2,11 @@ extern crate alloc;
 use alloc::borrow::ToOwned;
 
 pub trait Storage {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: core::fmt::Debug + core::fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn contains(&self, key: impl AsRef<str>) -> Result<bool, Self::Error>;
 

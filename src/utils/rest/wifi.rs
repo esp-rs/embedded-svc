@@ -7,7 +7,7 @@ use crate::{httpd::registry::*, httpd::*, mutex::*, wifi};
 
 use super::*;
 
-pub fn register<R, M, W, E>(
+pub fn register<R, M, W>(
     registry: R,
     pref: &str,
     wifi: Arc<M>,
@@ -16,8 +16,7 @@ pub fn register<R, M, W, E>(
 where
     R: Registry,
     M: Mutex<Data = W> + 'static,
-    W: wifi::Wifi<Error = E>,
-    E: Into<anyhow::Error>,
+    W: wifi::Wifi,
 {
     let prefix = |s| [pref, s].concat();
 
@@ -42,64 +41,61 @@ where
         .middleware(with_permissions(default_role))
 }
 
-fn get_capabilities<M, W, E>(_req: Request, wifi: &M) -> Result<Response>
+fn get_capabilities<M, W>(_req: Request, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
-    W: wifi::Wifi<Error = E>,
-    E: Into<anyhow::Error>,
+    W: wifi::Wifi,
 {
     let caps = wifi
         .with_lock(|wifi| wifi.get_capabilities())
-        .map_err(Into::into)?;
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     json(&caps)
 }
 
-fn get_status<M, W, E>(_req: Request, wifi: &M) -> Result<Response>
+fn get_status<M, W>(_req: Request, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
-    W: wifi::Wifi<Error = E>,
-    E: Into<anyhow::Error>,
+    W: wifi::Wifi,
 {
     let status = wifi.with_lock(|wifi| wifi.get_status());
 
     json(&status)
 }
 
-fn scan<M, W, E>(_req: Request, wifi: &M) -> Result<Response>
+fn scan<M, W>(_req: Request, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
-    W: wifi::Wifi<Error = E>,
-    E: Into<anyhow::Error>,
+    W: wifi::Wifi,
 {
-    let data = wifi.with_lock(|wifi| wifi.scan()).map_err(Into::into)?;
+    let data = wifi
+        .with_lock(|wifi| wifi.scan())
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     json(&data)
 }
 
-fn get_configuration<M, W, E>(_req: Request, wifi: &M) -> Result<Response>
+fn get_configuration<M, W>(_req: Request, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
-    W: wifi::Wifi<Error = E>,
-    E: Into<anyhow::Error>,
+    W: wifi::Wifi,
 {
     let conf = wifi
         .with_lock(|wifi| wifi.get_configuration())
-        .map_err(Into::into)?;
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     json(&conf)
 }
 
-fn set_configuration<M, W, E>(mut req: Request, wifi: &M) -> Result<Response>
+fn set_configuration<M, W>(mut req: Request, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
-    W: wifi::Wifi<Error = E>,
-    E: Into<anyhow::Error>,
+    W: wifi::Wifi,
 {
     let conf: wifi::Configuration = serde_json::from_slice(req.as_bytes()?.as_slice())?;
 
     wifi.with_lock(|wifi| wifi.set_configuration(&conf))
-        .map_err(Into::into)?;
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     Ok(().into())
 }

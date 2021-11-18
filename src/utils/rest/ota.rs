@@ -6,14 +6,13 @@ use super::role::Role;
 use crate::{
     httpd::registry::*,
     httpd::*,
-    io,
     mutex::*,
     ota::{self, OtaRead, OtaSlot, OtaUpdate},
 };
 
 use super::*;
 
-pub fn register<R, MO, MS, MP, O, S, EO, ES>(
+pub fn register<R, MO, MS, MP, O, S>(
     registry: R,
     pref: &str,
     ota: Arc<MO>,
@@ -26,12 +25,8 @@ where
     MO: Mutex<Data = O> + 'static,
     MS: Mutex<Data = S> + 'static,
     MP: Mutex<Data = Option<f32>> + 'static,
-    O: ota::Ota<Error = EO>,
-    S: ota::OtaServer<Error = ES>,
-    EO: Into<anyhow::Error>,
-    ES: Into<anyhow::Error>,
-    for<'a> <<O as ota::Ota>::Slot<'a> as ota::OtaSlot>::Error: Into<anyhow::Error>,
-    for<'a> <<O as ota::Ota>::Update<'a> as io::Write>::Error: Into<anyhow::Error>,
+    O: ota::Ota,
+    S: ota::OtaServer,
 {
     let prefix = |s| [pref, s].concat();
 
@@ -59,63 +54,61 @@ where
         .middleware(with_permissions(default_role))
 }
 
-fn get_status<M, O, E>(_req: Request, ota: &M) -> Result<Response>
+fn get_status<M, O>(_req: Request, ota: &M) -> Result<Response>
 where
     M: Mutex<Data = O>,
-    O: ota::Ota<Error = E>,
-    E: Into<anyhow::Error>,
-    for<'a> <<O as ota::Ota>::Slot<'a> as ota::OtaSlot>::Error: Into<anyhow::Error>,
+    O: ota::Ota,
 {
     let info = ota.with_lock(|ota| {
         ota.get_running_slot()
-            .map_err(Into::into)
-            .and_then(|slot| slot.get_firmware_info().map_err(Into::into))
+            .map_err(|e| anyhow::anyhow!(e))
+            .and_then(|slot| slot.get_firmware_info().map_err(|e| anyhow::anyhow!(e)))
     })?;
 
     json(&info)
 }
 
-fn get_updates<M, O, E>(_req: Request, ota_server: &M) -> Result<Response>
+fn get_updates<M, O>(_req: Request, ota_server: &M) -> Result<Response>
 where
     M: Mutex<Data = O>,
-    O: ota::OtaServer<Error = E>,
-    E: Into<anyhow::Error>,
+    O: ota::OtaServer,
 {
     // TODO: Not efficient
     let updates = ota_server.with_lock(|ota_server| {
         ota_server
             .get_releases()
             .map(|releases| releases.collect::<Vec<_>>())
-            .map_err(Into::into)
+            .map_err(|e| anyhow::anyhow!(e))
     })?;
 
     json(&updates)
 }
 
-fn get_latest_update<M, O, E>(_req: Request, ota_server: &M) -> Result<Response>
+fn get_latest_update<M, O>(_req: Request, ota_server: &M) -> Result<Response>
 where
     M: Mutex<Data = O>,
-    O: ota::OtaServer<Error = E>,
-    E: Into<anyhow::Error>,
+    O: ota::OtaServer,
 {
-    let update =
-        ota_server.with_lock(|ota_server| ota_server.get_latest_release().map_err(Into::into))?;
+    let update = ota_server.with_lock(|ota_server| {
+        ota_server
+            .get_latest_release()
+            .map_err(|e| anyhow::anyhow!(e))
+    })?;
 
     json(&update)
 }
 
-fn factory_reset<M, O, E>(_req: Request, ota: &M) -> Result<Response>
+fn factory_reset<M, O>(_req: Request, ota: &M) -> Result<Response>
 where
     M: Mutex<Data = O>,
-    O: ota::Ota<Error = E>,
-    E: Into<anyhow::Error>,
+    O: ota::Ota,
 {
-    ota.with_lock(|ota| ota.factory_reset().map_err(Into::into))?;
+    ota.with_lock(|ota| ota.factory_reset().map_err(|e| anyhow::anyhow!(e)))?;
 
     Ok(Response::ok())
 }
 
-fn update<MO, MS, MP, O, S, EO, ES>(
+fn update<MO, MS, MP, O, S>(
     mut req: Request,
     ota: &MO,
     ota_server: &MS,
@@ -125,11 +118,8 @@ where
     MO: Mutex<Data = O>,
     MS: Mutex<Data = S>,
     MP: Mutex<Data = Option<f32>>,
-    O: ota::Ota<Error = EO>,
-    S: ota::OtaServer<Error = ES>,
-    EO: Into<anyhow::Error>,
-    ES: Into<anyhow::Error>,
-    for<'a> <<O as ota::Ota>::Update<'a> as io::Write>::Error: Into<anyhow::Error>,
+    O: ota::Ota,
+    S: ota::OtaServer,
 {
     let download_id: Option<String> = serde_json::from_slice(req.as_bytes()?.as_slice())?;
 
@@ -137,25 +127,27 @@ where
         let download_id = match download_id {
             None => ota_server
                 .get_latest_release()
-                .map_err(Into::into)?
+                .map_err(|e| anyhow::anyhow!(e))?
                 .and_then(|release| release.download_id),
             some => some,
         };
 
         let download_id = download_id.ok_or_else(|| anyhow::anyhow!("No update"))?;
 
-        let mut ota_update = ota_server.open(download_id).map_err(Into::into)?;
+        let mut ota_update = ota_server
+            .open(download_id)
+            .map_err(|e| anyhow::anyhow!(e))?;
         let size = ota_update.size();
 
         ota.with_lock(|ota| {
             ota.initiate_update()
-                .map_err(Into::into)?
+                .map_err(|e| anyhow::anyhow!(e))?
                 .update(&mut ota_update, |_, copied| {
                     progress.with_lock(|progress| {
                         *progress = size.map(|size| copied as f32 / size as f32)
                     })
                 }) // TODO: Take the progress mutex more rarely
-                .map_err(|e| e.either(Into::into, Into::into))
+                .map_err(|e| anyhow::anyhow!(e))
         })
     })?;
 

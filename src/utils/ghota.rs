@@ -3,13 +3,11 @@ use core::mem;
 extern crate alloc;
 use alloc::borrow::Cow;
 
-use anyhow;
-
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    http::{client::*, HttpHeaders},
+    http::{client::*, Headers},
     io::{self, StdIO},
     ota::*,
 };
@@ -65,7 +63,7 @@ pub struct GitHubOtaService<'a, C> {
 
 impl<'a, C> GitHubOtaService<'a, C>
 where
-    C: HttpClient,
+    C: Client,
 {
     pub fn new(
         base_url: impl Into<Cow<'a, str>>,
@@ -92,35 +90,43 @@ where
         )
     }
 
-    fn get_gh_releases(&mut self) -> Result<impl Iterator<Item = Release>, anyhow::Error> {
+    fn get_gh_releases(&mut self) -> Result<impl Iterator<Item = Release>, C::Error> {
         let response = self
             .client
             .get(join(self.base_url.as_ref(), "releases"))?
             .submit()?;
 
+        let mut read = response.reader();
+
         // TODO: Deserialization code below is not efficient
         // See this for a common workaround: https://github.com/serde-rs/json/issues/404#issuecomment-892957228
 
+        // TODO: Need to implement our own error type
         #[cfg(feature = "std")]
-        let releases =
-            serde_json::from_reader::<_, Vec<Release>>(StdIO(&mut response.into_payload()))?;
+        let releases = serde_json::from_reader::<_, Vec<Release>>(StdIO(&mut read)).unwrap();
 
         #[cfg(not(feature = "std"))]
-        let releases = serde_json::from_slice::<_, Vec<Release>>(
-            &StdIO(&mut response.into_payload()).read_to_end(),
-        )?;
+        let releases =
+            serde_json::from_slice::<_, Vec<Release>>(&StdIO(&mut read).read_to_end().unwrap())?;
 
         Ok(releases.into_iter())
     }
 
-    fn get_gh_latest_release(&mut self) -> Result<Option<Release>, anyhow::Error> {
+    fn get_gh_latest_release(&mut self) -> Result<Option<Release>, C::Error> {
         let response = self
             .client
             .get(join(join(self.base_url.as_ref(), "release"), "latest"))?
             .submit()?;
 
-        let release =
-            serde_json::from_reader::<_, Option<Release>>(StdIO(&mut response.into_payload()))?;
+        let mut read = response.reader();
+
+        // TODO: Need to implement our own error type
+        #[cfg(feature = "std")]
+        let release = serde_json::from_reader::<_, Option<Release>>(StdIO(&mut read)).unwrap();
+
+        #[cfg(not(feature = "std"))]
+        let releases =
+            serde_json::from_slice::<_, Option<Release>>(&StdIO(&mut read).read_to_end().unwrap())?;
 
         Ok(release)
     }
@@ -162,51 +168,47 @@ impl Iterator for OtaServerIterator {
 
 pub struct GitHubOtaRead<R> {
     size: Option<usize>,
-    read: R,
+    response: R,
 }
 
-impl<R, E> OtaRead for GitHubOtaRead<R>
+impl<R> OtaRead for GitHubOtaRead<R>
 where
-    R: io::Read<Error = E>,
-    E: Into<anyhow::Error>,
+    R: Response,
 {
     fn size(&self) -> Option<usize> {
         self.size
     }
 }
 
-impl<R, E> io::Read for GitHubOtaRead<R>
+impl<R> io::Read for GitHubOtaRead<R>
 where
-    R: io::Read<Error = E>,
-    E: Into<anyhow::Error>,
+    R: Response,
 {
-    type Error = anyhow::Error;
+    type Error = R::Error;
 
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.read.do_read(buf).map_err(Into::into)
+        self.response.reader().do_read(buf)
     }
 }
 
 impl<'a, C> OtaServer for GitHubOtaService<'a, C>
 where
-    C: HttpClient + 'static,
+    C: Client + 'static,
 {
-    type Error = anyhow::Error;
+    type Error = C::Error;
 
     type OtaRead<'b>
     where
         Self: 'b,
-    =
-        GitHubOtaRead<
-            <<<C as HttpClient>::Request<'b> as HttpRequest<'b>>::Response<'b> as HttpResponse<
-                'b,
-            >>::Read<'b>,
-        >;
+    = GitHubOtaRead<
+        <<<C as Client>::Request<'b> as Request<'b>>::Write<'b> as RequestWrite<'b>>::Response,
+    >;
 
     type Iterator = OtaServerIterator;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
-        let releases = self.get_gh_latest_release()?.into_iter();
+        // TODO: Need to implement our own error type
+        let releases = self.get_gh_latest_release().unwrap().into_iter();
         Ok(self.get_gh_assets(releases).map(Into::into).next())
     }
 
@@ -222,7 +224,7 @@ where
 
         Ok(GitHubOtaRead {
             size: response.content_len(),
-            read: response.into_payload(),
+            response,
         })
     }
 }

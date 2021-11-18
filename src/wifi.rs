@@ -539,7 +539,11 @@ impl Status {
 }
 
 pub trait Wifi {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: core::fmt::Debug + core::fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
@@ -570,7 +574,11 @@ pub trait Wifi {
 
 #[async_trait]
 pub trait WifiAsync {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: core::fmt::Debug + core::fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     async fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
