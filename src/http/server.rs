@@ -71,6 +71,12 @@ struct PrivateData;
 
 pub struct Completion(PrivateData);
 
+impl Completion {
+    pub unsafe fn internal_new() -> Self {
+        Self(PrivateData)
+    }
+}
+
 pub trait ResponseWrite<'a>: io::Write {
     fn complete(self) -> Result<Completion, Self::Error>;
 }
