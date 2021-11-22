@@ -354,45 +354,6 @@ impl<E> From<Response> for Result<Response, E> {
     }
 }
 
-pub trait InlineHandler<'a, REQ: Request<'a>, RESP: InlineResponse<'a>> {
-    type Error: core::fmt::Debug + core::fmt::Display;
-
-    fn handle(&self, req: REQ, resp: RESP) -> Result<Completion, Self::Error>;
-}
-
-impl<'a, F, REQ, RESP, E> InlineHandler<'a, REQ, RESP> for F
-where
-    F: Fn(REQ, RESP) -> Result<Completion, E>,
-    REQ: Request<'a>,
-    RESP: InlineResponse<'a>,
-    E: core::fmt::Debug + core::fmt::Display,
-{
-    type Error = E;
-
-    fn handle(&self, req: REQ, resp: RESP) -> Result<Completion, Self::Error> {
-        (self)(req, resp)
-    }
-}
-
-pub trait Handler<'a, R: Request<'a>> {
-    type Error: fmt::Debug + fmt::Display;
-
-    fn handle(&self, req: &mut R) -> Result<Response, Self::Error>;
-}
-
-impl<'a, F, R, E> Handler<'a, R> for F
-where
-    F: Fn(&mut R) -> Result<Response, E>,
-    R: Request<'a>,
-    E: fmt::Debug + fmt::Display,
-{
-    type Error = E;
-
-    fn handle(&self, req: &mut R) -> Result<Response, Self::Error> {
-        (self)(req)
-    }
-}
-
 pub struct HandlerRegistration<H> {
     uri: String,
     method: Method,
@@ -421,9 +382,54 @@ impl<H> HandlerRegistration<H> {
     }
 }
 
+pub trait Middleware<R>
+where
+    R: Registry,
+{
+    type Error: fmt::Display + fmt::Debug;
+
+    fn handle<'a, H, E>(
+        &self,
+        req: R::Request<'a>,
+        resp: R::InlineResponse<'a>,
+        handler: &H,
+    ) -> Result<Completion, Self::Error>
+    where
+        R: Registry,
+        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        E: fmt::Display + fmt::Debug;
+}
+
+// pub struct TestMiddleware;
+
+// impl<R> Middleware<R> for TestMiddleware
+// where
+//     R: Registry,
+// {
+//     type Error = anyhow::Error;
+
+//     fn handle<'a, H, E>(
+//         &self,
+//         req: R::Request<'a>,
+//         resp: R::InlineResponse<'a>,
+//         handler: &H,
+//     ) -> Result<Completion, Self::Error>
+//     where
+//         R: Registry,
+//         H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+//         E: fmt::Display + fmt::Debug,
+//     {
+//         if req.header("foo").is_some() {
+//             anyhow::bail!("Boo");
+//         }
+
+//         handler(req, resp).map_err(|e| anyhow::format_err!("{}", e))
+//     }
+// }
+
 pub trait Registry: Sized {
     type Request<'a>: Request<'a>;
-    type Response<'a>: InlineResponse<'a>;
+    type InlineResponse<'a>: InlineResponse<'a>;
 
     #[cfg(not(feature = "std"))]
     type Error: fmt::Debug + fmt::Display;
@@ -431,14 +437,46 @@ pub trait Registry: Sized {
     #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
-    fn set_inline_handler<'a, F>(
+    fn set_inline_handler<H, E>(
         &mut self,
-        handler: HandlerRegistration<F>,
+        uri: &str,
+        method: Method,
+        handler: H,
     ) -> Result<&mut Self, Self::Error>
     where
-        F: InlineHandler<'a, Self::Request<'a>, Self::Response<'a>>;
+        H: for<'a> Fn(Self::Request<'a>, Self::InlineResponse<'a>) -> Result<Completion, E>
+            + 'static,
+        E: fmt::Display + fmt::Debug;
 
-    fn at(self, uri: impl ToString) -> HandlerRegistrationBuilder<Self> {
+    fn set_handler<H, E>(
+        &mut self,
+        uri: &str,
+        method: Method,
+        handler: H,
+    ) -> Result<&mut Self, Self::Error>
+    where
+        Self: 'static,
+        H: for<'a, 'c> Fn(&'c mut Self::Request<'a>) -> Result<Response, E> + 'static + Clone,
+        E: fmt::Debug
+            + fmt::Display
+            + for<'a> From<<<Self as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + From<io::IODynError>
+            + 'static,
+    {
+        self.set_inline_handler(uri, method, into_boxed_inline_handler(handler))
+    }
+
+    fn with_middleware<M>(&mut self, middleware: M) -> MiddlewareRegistry<'_, Self, M>
+    where
+        M: Middleware<Self>,
+    {
+        MiddlewareRegistry {
+            registry: self,
+            middleware,
+        }
+    }
+
+    fn at(&mut self, uri: impl ToString) -> HandlerRegistrationBuilder<Self> {
         HandlerRegistrationBuilder {
             uri: uri.to_string(),
             registry: self,
@@ -453,136 +491,161 @@ pub trait Registry: Sized {
     }
 }
 
-pub struct HandlerRegistrationBuilder<RR> {
-    uri: String,
-    registry: RR,
+pub struct MiddlewareRegistry<'r, RR, M> {
+    registry: &'r mut RR,
+    middleware: M,
 }
 
-impl<RR> HandlerRegistrationBuilder<RR>
+impl<'r, R, M> Registry for MiddlewareRegistry<'r, R, M>
+where
+    R: Registry + 'static,
+    M: Middleware<R> + Clone + 'static,
+    M::Error: 'static,
+{
+    type Request<'a> = R::Request<'a>;
+    type InlineResponse<'a> = R::InlineResponse<'a>;
+
+    type Error = R::Error;
+
+    fn set_inline_handler<H, E>(
+        &mut self,
+        uri: &str,
+        method: Method,
+        handler: H,
+    ) -> Result<&mut Self, Self::Error>
+    where
+        H: for<'a> Fn(Self::Request<'a>, Self::InlineResponse<'a>) -> Result<Completion, E>
+            + 'static,
+        E: fmt::Debug + fmt::Display,
+    {
+        let middleware = self.middleware.clone();
+
+        self.registry
+            .set_inline_handler(uri, method, move |req, resp| {
+                middleware.handle(req, resp, &handler)
+            })?;
+
+        Ok(self)
+    }
+}
+
+pub struct InlineHandlerRegistrationBuilder<'r, RR> {
+    uri: String,
+    registry: &'r mut RR,
+}
+
+impl<'r, RR> InlineHandlerRegistrationBuilder<'r, RR>
 where
     RR: Registry,
 {
-    pub fn inline(self) -> InlineHandlerRegistrationBuilder<RR> {
+    pub fn get<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
+    where
+        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
+        E: fmt::Debug + fmt::Display,
+    {
+        self.handler(Method::Get, handler)
+    }
+
+    pub fn post<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
+    where
+        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
+        E: fmt::Debug + fmt::Display,
+    {
+        self.handler(Method::Post, handler)
+    }
+
+    pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut RR, RR::Error>
+    where
+        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
+        E: fmt::Debug + fmt::Display,
+    {
+        self.registry
+            .set_inline_handler(self.uri.as_str(), method, handler)
+    }
+}
+
+pub struct HandlerRegistrationBuilder<'r, RR> {
+    uri: String,
+    registry: &'r mut RR,
+}
+
+impl<'r, RR> HandlerRegistrationBuilder<'r, RR>
+where
+    RR: Registry + 'static,
+{
+    pub fn inline(self) -> InlineHandlerRegistrationBuilder<'r, RR> {
         InlineHandlerRegistrationBuilder {
             uri: self.uri,
             registry: self.registry,
         }
     }
 
-    pub fn get<'a, F>(self, f: F) -> Result<RR, RR::Error>
+    pub fn get<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        F: Handler<'a, RR::Request<'a>>,
-        F::Error: From<
-            SendError<
-                <<RR as Registry>::Response<'a> as InlineResponse<'a>>::Error,
-                std::io::Error,
-            >,
-        >,
+        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static + Clone,
+        E: fmt::Debug
+            + fmt::Display
+            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + From<io::IODynError>
+            + 'static,
     {
-        self.handler(Method::Get, f)
+        self.handler(Method::Get, handler)
     }
 
-    pub fn post<'a, F>(self, f: F) -> Result<RR, RR::Error>
+    pub fn post<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        F: Handler<'a, RR::Request<'a>>,
-        F::Error: From<
-            SendError<
-                <<RR as Registry>::Response<'a> as InlineResponse<'a>>::Error,
-                std::io::Error,
-            >,
-        >,
+        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static + Clone,
+        E: fmt::Debug
+            + fmt::Display
+            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + From<io::IODynError>
+            + 'static,
     {
-        self.handler(Method::Post, f)
+        self.handler(Method::Post, handler)
     }
 
-    pub fn handler<'a, F>(mut self, method: Method, f: F) -> Result<RR, RR::Error>
+    pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        F: Handler<'a, RR::Request<'a>>,
-        F::Error: From<
-            SendError<
-                <<RR as Registry>::Response<'a> as InlineResponse<'a>>::Error,
-                std::io::Error,
-            >,
-        >,
-    {
-        self.registry.set_inline_handler(HandlerRegistration::new(
-            self.uri,
-            method,
-            into_inline_handler(f),
-        ))?;
-
-        Ok(self.registry)
-    }
-}
-
-pub struct InlineHandlerRegistrationBuilder<RR> {
-    uri: String,
-    registry: RR,
-}
-
-impl<RR> InlineHandlerRegistrationBuilder<RR>
-where
-    RR: Registry,
-{
-    pub fn get<'a, F>(self, f: F) -> Result<RR, RR::Error>
-    where
-        F: InlineHandler<'a, RR::Request<'a>, RR::Response<'a>>,
-    {
-        self.handler(Method::Get, f)
-    }
-
-    pub fn post<'a, F>(self, f: F) -> Result<RR, RR::Error>
-    where
-        F: InlineHandler<'a, RR::Request<'a>, RR::Response<'a>>,
-    {
-        self.handler(Method::Post, f)
-    }
-
-    pub fn handler<'a, F>(mut self, method: Method, f: F) -> Result<RR, RR::Error>
-    where
-        F: InlineHandler<'a, RR::Request<'a>, RR::Response<'a>>,
+        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static + Clone,
+        E: fmt::Debug
+            + fmt::Display
+            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + From<io::IODynError>
+            + 'static,
     {
         self.registry
-            .set_inline_handler(HandlerRegistration::new(self.uri, method, f))?;
-
-        Ok(self.registry)
+            .set_handler(self.uri.as_str(), method, handler)
     }
 }
 
-// fn test<'a>(req: &mut impl Request<'a>) -> Result<Response, anyhow::Error> {
-//     let h1 = req.header("test").unwrap();
-
-//     let mut xxx = [0_u8; 512];
-//     req.do_read(&mut xxx)?;
-
-//     let mut v: Vec<u8> = Vec::new();
-//     io::StdIO(req).read_to_end(&mut v)?;
-
-//     Response::ok().status_message(h1.into_owned()).into()
-// }
-
-pub fn into_inline_handler<'a, H, REQ, RESP>(h: H) -> impl InlineHandler<'a, REQ, RESP>
+fn into_boxed_inline_handler<RR, H, E>(
+    handler: H,
+) -> Box<dyn for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E>>
 where
-    H: Handler<'a, REQ>,
-    REQ: Request<'a>,
-    RESP: InlineResponse<'a>,
-    H::Error: From<SendError<RESP::Error, std::io::Error>>,
+    RR: Registry,
+    H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static + Clone,
+    E: fmt::Debug
+        + fmt::Display
+        + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+        + From<io::IODynError>,
 {
-    move |req, resp| handle(&h, req, resp)
+    Box::new(move |req, resp| handle::<RR, _, _>(req, resp, &handler))
 }
 
-fn handle<'a, H, REQ, RESP>(
-    h: &H,
-    mut req: REQ,
-    mut inline_resp: RESP,
-) -> Result<Completion, H::Error>
+fn handle<'b, RR, H, E>(
+    mut req: RR::Request<'b>,
+    mut inline_resp: RR::InlineResponse<'b>,
+    handler: &H,
+) -> Result<Completion, E>
 where
-    H: Handler<'a, REQ>,
-    REQ: Request<'a>,
-    RESP: InlineResponse<'a>,
-    H::Error: From<SendError<RESP::Error, std::io::Error>>,
+    RR: Registry,
+    H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E>,
+    E: fmt::Debug
+        + fmt::Display
+        + From<<<RR as Registry>::InlineResponse<'b> as InlineResponse<'b>>::Error>
+        + From<io::IODynError>,
 {
-    let resp = h.handle(&mut req)?;
+    let resp = handler(&mut req)?;
 
     inline_resp.set_status(resp.status);
 
@@ -595,11 +658,28 @@ where
     }
 
     match resp.body {
-        Body::Empty => inline_resp.submit(req).map_err(|e| SendError::SendError(e)),
-        Body::Bytes(bytes) => inline_resp
-            .send_bytes(req, &bytes)
-            .map_err(|e| SendError::SendError(e)),
-        Body::Read(size, reader) => inline_resp.send_reader(req, size, reader),
+        Body::Empty => inline_resp.submit(req).map_err(Into::into),
+        Body::Bytes(bytes) => inline_resp.send_bytes(req, &bytes).map_err(Into::into),
+        Body::Read(size, reader) => {
+            inline_resp
+                .send_reader(req, size, reader)
+                .map_err(|e| match e {
+                    SendError::SendError(e) => e.into(),
+                    SendError::WriteError(e) => e.into(),
+                })
+        }
     }
-    .map_err(|e| e.into())
 }
+
+// fn test<'a>(req: &mut impl Request<'a>) -> Result<Response, anyhow::Error> {
+//     let h1 = req.header("test").unwrap();
+
+//     let mut xxx = [0_u8; 512];
+//     let mut reader = req.reader();
+//     reader.do_read(&mut xxx)?;
+
+//     let mut v: Vec<u8> = Vec::new();
+//     io::StdIO(reader).read_to_end(&mut v)?;
+
+//     Response::ok().status_message(h1.into_owned()).into()
+// }
