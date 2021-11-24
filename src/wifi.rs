@@ -211,7 +211,7 @@ pub struct ClientConfiguration {
     pub password: alloc::string::String,
     pub channel: Option<u8>,
     pub ip_conf: Option<ipv4::ClientConfiguration>,
-	pub hostname: Option<alloc::string::String>
+    pub hostname: Option<alloc::string::String>,
 }
 
 impl ClientConfiguration {
@@ -244,7 +244,7 @@ impl Default for ClientConfiguration {
             password: "".into(),
             channel: None,
             ip_conf: Some(Default::default()),
-			hostname: None
+            hostname: None,
         }
     }
 }
