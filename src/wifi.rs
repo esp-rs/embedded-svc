@@ -229,7 +229,7 @@ impl ClientConfiguration {
             return ip_conf;
         }
 
-        *ip_conf = Some(ipv4::ClientConfiguration::DHCP);
+        *ip_conf = Some(ipv4::ClientConfiguration::DHCP(Default::default()));
         Self::to_ip_conf(ip_conf)
     }
 }

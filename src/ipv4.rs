@@ -140,8 +140,20 @@ impl Default for ClientSettings {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub struct DHCPClientSettings {
+    pub hostname: Option<String>,
+}
+
+impl Default for DHCPClientSettings {
+    fn default() -> Self {
+        Self { hostname: None }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientConfiguration {
-    DHCP,
+    DHCP(DHCPClientSettings),
     Fixed(ClientSettings),
 }
 
@@ -166,7 +178,7 @@ impl ClientConfiguration {
 
 impl Default for ClientConfiguration {
     fn default() -> ClientConfiguration {
-        ClientConfiguration::DHCP
+        ClientConfiguration::DHCP(Default::default())
     }
 }
 
