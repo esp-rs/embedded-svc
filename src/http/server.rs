@@ -1,16 +1,93 @@
-use core::fmt;
+use core::{any::Any, fmt};
 
 extern crate alloc;
 use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::io::{self, Read, Write};
 
 use super::{Headers, Method, SendHeaders, SendStatus};
 
-pub trait Request<'a>: Headers {
+pub mod registry;
+pub mod session;
+
+#[derive(Debug)]
+pub enum SessionError {
+    Missing,
+    Timeout,
+    Invalidated,
+    MaxSessiuonsReached,
+    Serde, // TODO
+}
+
+impl fmt::Display for SessionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SessionError::Missing => write!(f, "No session"),
+            SessionError::Timeout => write!(f, "Session timed out"),
+            SessionError::Invalidated => write!(f, "Session invalidated"),
+            SessionError::MaxSessiuonsReached => write!(f, "Max number of sessions reached"),
+            SessionError::Serde => write!(f, "Serde error"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SessionError {
+    // TODO
+    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    //     match self {
+    //         SendError::SendError(s) => Some(s),
+    //         SendError::WriteError(w) => Some(w),
+    //     }
+    // }
+}
+
+pub trait Session<'a> {
+    fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError>;
+
+    fn get_error(&self) -> Option<SessionError>;
+
+    fn is_valid(&self) -> bool {
+        self.get_error().is_none()
+    }
+
+    fn get<T: DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError>;
+    fn set_and_get<S: Serialize, T: DeserializeOwned>(
+        &mut self,
+        name: impl AsRef<str>,
+        value: &S,
+    ) -> Result<Option<T>, SessionError>;
+    fn remove_and_get<T: DeserializeOwned>(
+        &mut self,
+        name: impl AsRef<str>,
+    ) -> Result<Option<T>, SessionError>;
+
+    fn set<S: Serialize>(&mut self, name: impl AsRef<str>, value: &S)
+        -> Result<bool, SessionError>;
+    fn remove(&mut self, name: impl AsRef<str>) -> Result<bool, SessionError>;
+
+    fn invalidate(&mut self) -> Result<bool, SessionError>;
+}
+
+pub trait Attributes<'a> {
+    fn get(&self, name: impl AsRef<str>) -> Option<Box<dyn Any>>;
+    fn set(&mut self, name: impl AsRef<str>, value: Box<dyn Any>) -> Option<Box<dyn Any>>;
+    fn remove(&mut self, name: impl AsRef<str>) -> Option<Box<dyn Any>>;
+}
+
+pub trait Request<'a>: Headers + Attributes<'a> + Session<'a> {
     type Read<'b>: io::Read<Error = Self::Error>
+    where
+        Self: 'b;
+
+    type Attributes<'b>: Attributes<'b>
+    where
+        Self: 'b;
+
+    type Session<'b>: Session<'b>
     where
         Self: 'b;
 
@@ -23,6 +100,10 @@ pub trait Request<'a>: Headers {
     fn query_string(&self) -> Cow<'_, str>;
 
     fn reader(&self) -> Self::Read<'_>;
+
+    fn attrs(&self) -> Self::Attributes<'_>;
+
+    fn session(&self) -> Self::Session<'_>;
 }
 
 #[derive(Debug)]
@@ -159,6 +240,17 @@ pub trait InlineResponse<'a>: SendStatus<'a> + SendHeaders<'a> {
     {
         self.send_bytes(request, &[0_u8; 0])
     }
+
+    fn redirect(
+        self,
+        request: impl Request<'a>,
+        location: impl Into<Cow<'a, str>>,
+    ) -> Result<Completion, Self::Error>
+    where
+        Self: Sized,
+    {
+        self.header("location", location).submit(request)
+    }
 }
 
 pub enum Body {
@@ -223,6 +315,11 @@ impl From<std::fs::File> for Body {
     }
 }
 
+pub enum SessionState {
+    New(BTreeMap<String, Box<dyn Any>>),
+    Invalidate,
+}
+
 pub struct Response {
     status: u16,
     status_message: Option<String>,
@@ -230,7 +327,8 @@ pub struct Response {
     headers: BTreeMap<String, String>,
 
     body: Body,
-    //pub new_session_state: Option<SessionState>,
+
+    new_session_state: Option<SessionState>,
 }
 
 impl Default for Response {
@@ -240,7 +338,7 @@ impl Default for Response {
             status_message: None,
             headers: BTreeMap::new(),
             body: Default::default(),
-            //new_session_state: None,
+            new_session_state: None,
         }
     }
 }
@@ -314,11 +412,11 @@ impl Response {
         self
     }
 
-    // pub fn new_session_state(mut self, new_session_state: SessionState) -> Self {
-    //     self.new_session_state = Some(new_session_state);
+    pub fn new_session_state(mut self, new_session_state: SessionState) -> Self {
+        self.new_session_state = Some(new_session_state);
 
-    //     self
-    // }
+        self
+    }
 }
 
 impl SendStatus<'static> for Response {
@@ -353,333 +451,3 @@ impl<E> From<Response> for Result<Response, E> {
         Ok(response)
     }
 }
-
-pub struct HandlerRegistration<H> {
-    uri: String,
-    method: Method,
-    handler: H,
-}
-
-impl<H> HandlerRegistration<H> {
-    pub fn new(uri: impl Into<String>, method: Method, handler: H) -> Self {
-        Self {
-            uri: uri.into(),
-            method,
-            handler,
-        }
-    }
-
-    pub fn uri(&self) -> &str {
-        &self.uri
-    }
-
-    pub fn method(&self) -> Method {
-        self.method
-    }
-
-    pub fn handler(self) -> H {
-        self.handler
-    }
-}
-
-pub trait Middleware<R>
-where
-    R: Registry,
-{
-    type Error: fmt::Display + fmt::Debug;
-
-    fn handle<'a, H, E>(
-        &self,
-        req: R::Request<'a>,
-        resp: R::InlineResponse<'a>,
-        handler: &H,
-    ) -> Result<Completion, Self::Error>
-    where
-        R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
-        E: fmt::Display + fmt::Debug;
-}
-
-// pub struct TestMiddleware;
-
-// impl<R> Middleware<R> for TestMiddleware
-// where
-//     R: Registry,
-// {
-//     type Error = anyhow::Error;
-
-//     fn handle<'a, H, E>(
-//         &self,
-//         req: R::Request<'a>,
-//         resp: R::InlineResponse<'a>,
-//         handler: &H,
-//     ) -> Result<Completion, Self::Error>
-//     where
-//         R: Registry,
-//         H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
-//         E: fmt::Display + fmt::Debug,
-//     {
-//         if req.header("foo").is_some() {
-//             anyhow::bail!("Boo");
-//         }
-
-//         handler(req, resp).map_err(|e| anyhow::format_err!("{}", e))
-//     }
-// }
-
-pub trait Registry: Sized {
-    type Request<'a>: Request<'a>;
-    type InlineResponse<'a>: InlineResponse<'a>;
-
-    #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    fn set_inline_handler<H, E>(
-        &mut self,
-        uri: &str,
-        method: Method,
-        handler: H,
-    ) -> Result<&mut Self, Self::Error>
-    where
-        H: for<'a> Fn(Self::Request<'a>, Self::InlineResponse<'a>) -> Result<Completion, E>
-            + 'static,
-        E: fmt::Display + fmt::Debug;
-
-    fn set_handler<H, E>(
-        &mut self,
-        uri: &str,
-        method: Method,
-        handler: H,
-    ) -> Result<&mut Self, Self::Error>
-    where
-        Self: 'static,
-        H: for<'a, 'c> Fn(&'c mut Self::Request<'a>) -> Result<Response, E> + 'static + Clone,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<Self as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.set_inline_handler(uri, method, into_boxed_inline_handler(handler))
-    }
-
-    fn with_middleware<M>(&mut self, middleware: M) -> MiddlewareRegistry<'_, Self, M>
-    where
-        M: Middleware<Self>,
-    {
-        MiddlewareRegistry {
-            registry: self,
-            middleware,
-        }
-    }
-
-    fn at(&mut self, uri: impl ToString) -> HandlerRegistrationBuilder<Self> {
-        HandlerRegistrationBuilder {
-            uri: uri.to_string(),
-            registry: self,
-        }
-    }
-
-    fn register<R: FnOnce(Self) -> Result<Self, Self::Error>>(
-        self,
-        register: R,
-    ) -> Result<Self, Self::Error> {
-        register(self)
-    }
-}
-
-pub struct MiddlewareRegistry<'r, RR, M> {
-    registry: &'r mut RR,
-    middleware: M,
-}
-
-impl<'r, R, M> Registry for MiddlewareRegistry<'r, R, M>
-where
-    R: Registry + 'static,
-    M: Middleware<R> + Clone + 'static,
-    M::Error: 'static,
-{
-    type Request<'a> = R::Request<'a>;
-    type InlineResponse<'a> = R::InlineResponse<'a>;
-
-    type Error = R::Error;
-
-    fn set_inline_handler<H, E>(
-        &mut self,
-        uri: &str,
-        method: Method,
-        handler: H,
-    ) -> Result<&mut Self, Self::Error>
-    where
-        H: for<'a> Fn(Self::Request<'a>, Self::InlineResponse<'a>) -> Result<Completion, E>
-            + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        let middleware = self.middleware.clone();
-
-        self.registry
-            .set_inline_handler(uri, method, move |req, resp| {
-                middleware.handle(req, resp, &handler)
-            })?;
-
-        Ok(self)
-    }
-}
-
-pub struct InlineHandlerRegistrationBuilder<'r, RR> {
-    uri: String,
-    registry: &'r mut RR,
-}
-
-impl<'r, RR> InlineHandlerRegistrationBuilder<'r, RR>
-where
-    RR: Registry,
-{
-    pub fn get<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
-    where
-        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        self.handler(Method::Get, handler)
-    }
-
-    pub fn post<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
-    where
-        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        self.handler(Method::Post, handler)
-    }
-
-    pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut RR, RR::Error>
-    where
-        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        self.registry
-            .set_inline_handler(self.uri.as_str(), method, handler)
-    }
-}
-
-pub struct HandlerRegistrationBuilder<'r, RR> {
-    uri: String,
-    registry: &'r mut RR,
-}
-
-impl<'r, RR> HandlerRegistrationBuilder<'r, RR>
-where
-    RR: Registry + 'static,
-{
-    pub fn inline(self) -> InlineHandlerRegistrationBuilder<'r, RR> {
-        InlineHandlerRegistrationBuilder {
-            uri: self.uri,
-            registry: self.registry,
-        }
-    }
-
-    pub fn get<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static + Clone,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.handler(Method::Get, handler)
-    }
-
-    pub fn post<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static + Clone,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.handler(Method::Post, handler)
-    }
-
-    pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut RR, RR::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static + Clone,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.registry
-            .set_handler(self.uri.as_str(), method, handler)
-    }
-}
-
-fn into_boxed_inline_handler<RR, H, E>(
-    handler: H,
-) -> Box<dyn for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E>>
-where
-    RR: Registry,
-    H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static + Clone,
-    E: fmt::Debug
-        + fmt::Display
-        + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
-        + From<io::IODynError>,
-{
-    Box::new(move |req, resp| handle::<RR, _, _>(req, resp, &handler))
-}
-
-fn handle<'b, RR, H, E>(
-    mut req: RR::Request<'b>,
-    mut inline_resp: RR::InlineResponse<'b>,
-    handler: &H,
-) -> Result<Completion, E>
-where
-    RR: Registry,
-    H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E>,
-    E: fmt::Debug
-        + fmt::Display
-        + From<<<RR as Registry>::InlineResponse<'b> as InlineResponse<'b>>::Error>
-        + From<io::IODynError>,
-{
-    let resp = handler(&mut req)?;
-
-    inline_resp.set_status(resp.status);
-
-    if let Some(status_message) = resp.status_message {
-        inline_resp.set_status_message(status_message);
-    }
-
-    for (key, value) in resp.headers {
-        inline_resp.set_header(key, value);
-    }
-
-    match resp.body {
-        Body::Empty => inline_resp.submit(req).map_err(Into::into),
-        Body::Bytes(bytes) => inline_resp.send_bytes(req, &bytes).map_err(Into::into),
-        Body::Read(size, reader) => {
-            inline_resp
-                .send_reader(req, size, reader)
-                .map_err(|e| match e {
-                    SendError::SendError(e) => e.into(),
-                    SendError::WriteError(e) => e.into(),
-                })
-        }
-    }
-}
-
-// fn test<'a>(req: &mut impl Request<'a>) -> Result<Response, anyhow::Error> {
-//     let h1 = req.header("test").unwrap();
-
-//     let mut xxx = [0_u8; 512];
-//     let mut reader = req.reader();
-//     reader.do_read(&mut xxx)?;
-
-//     let mut v: Vec<u8> = Vec::new();
-//     io::StdIO(reader).read_to_end(&mut v)?;
-
-//     Response::ok().status_message(h1.into_owned()).into()
-// }

@@ -1,111 +1,207 @@
+use core::fmt;
+use std::borrow::Cow;
+
+use anyhow::*;
+
 use http_auth_basic::Credentials;
+
+use crate::{http::server::registry::*, http::server::*, http::*, io};
 
 use super::role::*;
 
-use crate::httpd::{Request, Response, Result, SessionState, StateMap};
-
-pub fn get_role(req: &Request, default_role: Option<Role>) -> Option<Role> {
-    if let Some(role) = req.attrs().get("role") {
-        return role.downcast_ref::<Role>().map(Clone::clone);
-    }
-
-    match req.session() {
-        Some(session) => session
-            .read()
-            .unwrap()
-            .get("role")
-            .map(|any| *any.downcast_ref::<Role>().unwrap())
-            .or(default_role),
-        None => None,
-    }
+pub trait Authenticator {
+    fn authenticate(&self, username: impl AsRef<str>, password: impl AsRef<str>) -> Option<Role>;
 }
 
-pub fn set_role(state: &mut StateMap, role: Option<Role>) {
-    if let Some(role) = role {
-        state
-            .entry("role".to_owned())
-            .or_insert_with(|| Box::new(role));
-    } else {
-        state.remove("role");
-    }
+#[derive(Clone)]
+pub struct WithRoleMiddleware {
+    pub role: Role,
+    pub default_role: Option<Role>,
 }
 
-pub fn with_role(
-    role: Role,
-    default_role: Option<Role>,
-) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
-    move |req, handler| {
-        let current_role = get_role(&req, default_role);
+impl<R> Middleware<R> for WithRoleMiddleware
+where
+    R: Registry,
+{
+    type Error = anyhow::Error;
+
+    fn handle<'a, H, E>(
+        &self,
+        mut req: R::Request<'a>,
+        resp: R::InlineResponse<'a>,
+        handler: &H,
+    ) -> Result<Completion, Self::Error>
+    where
+        R: Registry,
+        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        E: fmt::Display + fmt::Debug,
+    {
+        let current_role = get_role(&mut req, self.default_role);
 
         if let Some(current_role) = current_role {
-            if current_role >= role {
-                return handler(req);
+            if current_role >= self.role {
+                return handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e));
             }
         }
 
-        Ok(400.into())
+        let completion = resp.status(400).submit(req)?;
+
+        Ok(completion)
     }
 }
 
-pub fn get_admin_password(req: &Request) -> Option<String> {
-    req.app()
-        .read()
-        .unwrap()
-        .get("admin_password")
-        .map(|any| any.downcast_ref::<String>().unwrap().clone())
+#[derive(Clone)]
+pub struct WithBasicAuthMiddleware<A> {
+    pub authenticator: A,
+    pub min_role: Role,
 }
 
-pub fn set_admin_password(req: &Request, password: &str) {
-    req.app()
-        .write()
-        .unwrap()
-        .entry("admin_password".to_owned())
-        .or_insert_with(|| Box::new(password.to_owned()));
-}
+impl<A, R> Middleware<R> for WithBasicAuthMiddleware<A>
+where
+    A: Authenticator,
+    R: Registry,
+{
+    type Error = anyhow::Error;
 
-pub fn with_basic_auth(
-    mut req: Request,
-    handler: &dyn Fn(Request) -> Result<Response>,
-) -> Result<Response> {
-    if let Some(role) = get_role(&req, None) {
-        if role == Role::Admin {
-            return handler(req);
+    fn handle<'a, H, E>(
+        &self,
+        mut req: R::Request<'a>,
+        resp: R::InlineResponse<'a>,
+        handler: &H,
+    ) -> Result<Completion, Self::Error>
+    where
+        R: Registry,
+        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        E: fmt::Display + fmt::Debug,
+    {
+        if let Some(role) = get_role(&mut req, None) {
+            if role >= self.min_role {
+                return handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e));
+            }
         }
-    }
 
-    let admin_password = get_admin_password(&req);
-
-    if let Some(admin_password) = admin_password {
         let authorization = req.header("Authorization");
         if let Some(authorization) = authorization {
-            if let Ok(credentials) = Credentials::from_header(authorization) {
-                if credentials.user_id.to_lowercase() == ADMIN_USERNAME
-                    && credentials.password == admin_password
+            if let Ok(credentials) = Credentials::from_header(authorization.into_owned()) {
+                if let Some(role) = self
+                    .authenticator
+                    .authenticate(credentials.user_id, credentials.password)
                 {
-                    set_role(req.attrs_mut(), Some(Role::Admin));
+                    if role >= self.min_role {
+                        set_request_role(&mut req, Some(Role::Admin));
 
-                    return handler(req);
+                        return handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e));
+                    }
                 }
             }
         }
-    }
 
-    Response::new(401)
-        .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
-        .into()
+        let completion = resp
+            .status(401)
+            .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
+            .submit(req)?;
+
+        Ok(completion)
+    }
 }
 
-pub fn login(mut req: Request) -> Result<Response> {
-    if req.session().is_some() {
+#[derive(Clone)]
+pub struct WithSessionAuthMiddleware<'l> {
+    pub login: Cow<'l, str>,
+    pub min_role: Role,
+}
+
+impl<'l, R> Middleware<R> for WithSessionAuthMiddleware<'l>
+where
+    R: Registry,
+{
+    type Error = anyhow::Error;
+
+    fn handle<'a, H, E>(
+        &self,
+        mut req: R::Request<'a>,
+        resp: R::InlineResponse<'a>,
+        handler: &H,
+    ) -> Result<Completion, Self::Error>
+    where
+        R: Registry,
+        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        E: fmt::Display + fmt::Debug,
+    {
+        if let Some(role) = get_role(&mut req, None) {
+            if role >= self.min_role {
+                return handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e));
+            }
+        }
+
+        let completion = resp.redirect(req, self.login.as_ref().to_owned())?;
+
+        Ok(completion)
+    }
+}
+
+pub fn get_role<'a>(req: &mut impl Request<'a>, default_role: Option<Role>) -> Option<Role> {
+    if let Some(role) = req.attrs().get("role") {
+        role.downcast_ref::<Role>().map(Clone::clone)
+    } else if let Some(role) = req.session().get("role").ok().flatten() {
+        Some(role)
+    } else {
+        default_role
+    }
+}
+
+pub fn set_request_role<'a>(req: &mut impl Request<'a>, role: Option<Role>) {
+    if let Some(role) = role {
+        req.attrs().set("role", Box::new(role));
+    } else {
+        req.attrs().remove("role");
+    }
+}
+
+pub fn set_session_role<'a>(
+    req: &mut impl Request<'a>,
+    role: Option<Role>,
+) -> Result<(), SessionError> {
+    if let Some(role) = role {
+        req.session().set("role", &role)?;
+    } else {
+        req.session().remove("role")?;
+    }
+
+    Ok(())
+}
+
+pub fn register<R, A>(
+    registry: &mut R,
+    pref: impl AsRef<str>,
+    authenticator: A,
+) -> Result<(), R::Error>
+where
+    R: Registry,
+    A: Authenticator + 'static,
+{
+    let prefix = |s| [pref.as_ref(), s].concat();
+
+    registry
+        .at(prefix("login"))
+        .post(move |req| login(&authenticator, req))?
+        .at(prefix("/logout"))
+        .post(move |req| logout(req))?;
+
+    Ok(())
+}
+
+pub fn login<'a, A>(authenticator: &A, req: &mut impl Request<'a>) -> Result<Response>
+where
+    A: Authenticator,
+{
+    if req.session().is_valid() {
         return Ok(().into());
     }
 
-    let admin_password = get_admin_password(&req);
-    if admin_password == None {
-        return Ok(().into());
-    }
+    let bytes: Result<Vec<_>, _> = io::Bytes::<_, 64>::new(req.reader()).take(3000).collect();
 
-    let bytes = req.as_bytes()?;
+    let bytes = bytes?;
 
     let mut username = None;
     let mut password = None;
@@ -118,38 +214,30 @@ pub fn login(mut req: Request) -> Result<Response> {
         }
     }
 
-    if username.map(|s| s.to_lowercase()) == Some(ADMIN_USERNAME.to_owned())
-        && password == admin_password
-    {
-        let mut session_state = StateMap::new();
-        set_role(&mut session_state, Some(Role::Admin));
+    if let Some(username) = username {
+        if let Some(password) = password {
+            if let Some(role) = authenticator.authenticate(username, password) {
+                {
+                    let mut session = req.session();
 
-        Response::ok()
-            .new_session_state(SessionState::New(session_state))
-            .into()
-    } else {
-        Response::new(401)
-            .body("Invalid username or password".into())
-            .into()
+                    session.invalidate()?;
+                    session.create_if_invalid()?;
+                }
+
+                set_session_role(req, Some(role))?;
+
+                return Response::ok().into();
+            }
+        }
     }
-}
 
-pub fn logout(_req: Request) -> Result<Response> {
-    Response::ok()
-        .new_session_state(SessionState::Invalidate)
+    Response::new(401)
+        .body("Invalid username or password".into())
         .into()
 }
 
-pub fn with_session_auth(
-    login: impl Into<String>,
-) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
-    let login = login.into();
-
-    move |req, handler| {
-        if get_role(&req, None).is_some() {
-            handler(req)
-        } else {
-            Response::redirect(login.clone()).into()
-        }
-    }
+pub fn logout<'a>(_req: &mut impl Request<'a>) -> Result<Response> {
+    Response::ok()
+        .new_session_state(SessionState::Invalidate)
+        .into()
 }

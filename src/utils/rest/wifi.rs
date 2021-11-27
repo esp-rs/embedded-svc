@@ -1,24 +1,24 @@
 extern crate alloc;
 use alloc::sync::Arc;
 
-use super::role::Role;
+use anyhow::*;
 
-use crate::{httpd::registry::*, httpd::*, mutex::*, wifi};
+use crate::{http::server::registry::*, http::server::*, io, mutex::*, wifi};
 
-use super::*;
+use super::{role::Role, *};
 
 pub fn register<R, M, W>(
-    registry: R,
-    pref: &str,
+    registry: &mut R,
+    pref: impl AsRef<str>,
     wifi: Arc<M>,
     default_role: Option<Role>,
-) -> Result<R>
+) -> Result<(), R::Error>
 where
     R: Registry,
     M: Mutex<Data = W> + 'static,
     W: wifi::Wifi,
 {
-    let prefix = |s| [pref, s].concat();
+    let prefix = |s| [pref.as_ref(), s].concat();
 
     let wifi_get_status = wifi.clone();
     let wifi_scan = wifi.clone();
@@ -27,6 +27,10 @@ where
     let wifi_set_configuration = wifi;
 
     registry
+        .with_middleware(auth::WithRoleMiddleware {
+            role: Role::Admin,
+            default_role,
+        })
         .at(prefix(""))
         .get(move |req| get_status(req, &*wifi_get_status))?
         .at(prefix("/scan"))
@@ -36,12 +40,12 @@ where
         .at(prefix("/conf"))
         .get(move |req| get_configuration(req, &*wifi_get_configuration))?
         .at(prefix("/conf"))
-        .put(move |req| set_configuration(req, &*wifi_set_configuration))?
-        .at(pref)
-        .middleware(with_permissions(default_role))
+        .put(move |req| set_configuration(req, &*wifi_set_configuration))?;
+
+    Ok(())
 }
 
-fn get_capabilities<M, W>(_req: Request, wifi: &M) -> Result<Response>
+fn get_capabilities<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
@@ -50,20 +54,20 @@ where
         .with_lock(|wifi| wifi.get_capabilities())
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    json(&caps)
+    Response::from_json(&caps)?.into()
 }
 
-fn get_status<M, W>(_req: Request, wifi: &M) -> Result<Response>
+fn get_status<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
 {
     let status = wifi.with_lock(|wifi| wifi.get_status());
 
-    json(&status)
+    Response::from_json(&status)?.into()
 }
 
-fn scan<M, W>(_req: Request, wifi: &M) -> Result<Response>
+fn scan<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
@@ -72,10 +76,10 @@ where
         .with_lock(|wifi| wifi.scan())
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    json(&data)
+    Response::from_json(&data)?.into()
 }
 
-fn get_configuration<M, W>(_req: Request, wifi: &M) -> Result<Response>
+fn get_configuration<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
@@ -84,31 +88,22 @@ where
         .with_lock(|wifi| wifi.get_configuration())
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    json(&conf)
+    Response::from_json(&conf)?.into()
 }
 
-fn set_configuration<M, W>(mut req: Request, wifi: &M) -> Result<Response>
+fn set_configuration<'a, M, W>(req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
 {
-    let conf: wifi::Configuration = serde_json::from_slice(req.as_bytes()?.as_slice())?;
+    let bytes: Result<Vec<_>, _> = io::Bytes::<_, 64>::new(req.reader()).take(3000).collect();
+
+    let bytes = bytes?;
+
+    let conf: wifi::Configuration = serde_json::from_slice(&bytes)?;
 
     wifi.with_lock(|wifi| wifi.set_configuration(&conf))
         .map_err(|e| anyhow::anyhow!(e))?;
 
     Ok(().into())
-}
-
-fn with_permissions(
-    default_role: Option<Role>,
-) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
-    auth::with_role(Role::Admin, default_role)
-}
-
-fn json<T: ?Sized + serde::Serialize>(data: &T) -> Result<Response> {
-    Response::ok()
-        .content_type("application/json".to_string())
-        .body(serde_json::to_string(data)?.into())
-        .into()
 }
