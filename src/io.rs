@@ -1,8 +1,6 @@
 use core::fmt;
 use core::result::Result;
 
-pub use bytes::*;
-
 #[cfg(feature = "std")]
 pub use stdio::*;
 
@@ -19,59 +17,6 @@ pub struct IODynError(i32);
 impl fmt::Display for IODynError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "IO Error {}", self.0)
-    }
-}
-
-mod bytes {
-    use super::Read;
-
-    pub struct Bytes<R, const N: usize> {
-        reader: R,
-        buf: [u8; N],
-        index: usize,
-        read: usize,
-    }
-
-    impl<R, const N: usize> Bytes<R, N>
-    where
-        R: Read,
-    {
-        pub fn new(reader: R) -> Self {
-            Self {
-                reader,
-                buf: [0_u8; N],
-                index: 1,
-                read: 1,
-            }
-        }
-    }
-
-    impl<R, const N: usize> Iterator for Bytes<R, N>
-    where
-        R: Read,
-    {
-        type Item = Result<u8, R::Error>;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.index == self.read && self.read > 0 {
-                match self.reader.do_read(&mut self.buf) {
-                    Err(e) => return Some(Err(e)),
-                    Ok(read) => {
-                        self.read = read;
-                        self.index = 0;
-                    }
-                }
-            }
-
-            if self.read == 0 {
-                None
-            } else {
-                let result = self.buf[self.index];
-                self.index += 1;
-
-                Some(Ok(result))
-            }
-        }
     }
 }
 
@@ -202,6 +147,55 @@ where
 
     fn do_flush(&mut self) -> Result<(), Self::Error> {
         self.0.do_flush().map_err(Into::into)
+    }
+}
+
+pub struct Bytes<R, const N: usize> {
+    reader: R,
+    buf: [u8; N],
+    index: usize,
+    read: usize,
+}
+
+impl<R, const N: usize> Bytes<R, N>
+where
+    R: Read,
+{
+    pub fn new(reader: R) -> Self {
+        Self {
+            reader,
+            buf: [0_u8; N],
+            index: 1,
+            read: 1,
+        }
+    }
+}
+
+impl<R, const N: usize> Iterator for Bytes<R, N>
+where
+    R: Read,
+{
+    type Item = Result<u8, R::Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index == self.read && self.read > 0 {
+            match self.reader.do_read(&mut self.buf) {
+                Err(e) => return Some(Err(e)),
+                Ok(read) => {
+                    self.read = read;
+                    self.index = 0;
+                }
+            }
+        }
+
+        if self.read == 0 {
+            None
+        } else {
+            let result = self.buf[self.index];
+            self.index += 1;
+
+            Some(Ok(result))
+        }
     }
 }
 
