@@ -36,7 +36,7 @@ fn get_status<'a, M>(
     _req: &mut impl Request<'a>,
     portal_uri: impl AsRef<str>,
     captive: &M,
-) -> Result<Response>
+) -> Result<ResponseData>
 where
     M: Mutex<Data = bool>,
 {
@@ -50,7 +50,7 @@ where
         portal_uri.as_ref(),
     );
 
-    Response::ok()
+    ResponseData::ok()
         .content_type("application/captive+json")
         .body(data.into())
         .into()
@@ -74,12 +74,12 @@ where
     fn handle<'a, H, E>(
         &self,
         req: R::Request<'a>,
-        resp: R::InlineResponse<'a>,
+        resp: R::Response<'a>,
         handler: &H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
         let captive = self.captive.with_lock(|captive| *captive);

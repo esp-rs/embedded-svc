@@ -59,7 +59,7 @@ where
     Ok(())
 }
 
-fn get_status<'a, M, O>(_req: &mut impl Request<'a>, ota: &M) -> Result<Response>
+fn get_status<'a, M, O>(_req: &mut impl Request<'a>, ota: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = O>,
     O: ota::Ota,
@@ -70,10 +70,10 @@ where
             .and_then(|slot| slot.get_firmware_info().map_err(|e| anyhow::anyhow!(e)))
     })?;
 
-    Response::from_json(&info)?.into()
+    ResponseData::from_json(&info)?.into()
 }
 
-fn get_updates<'a, M, O>(_req: &mut impl Request<'a>, ota_server: &M) -> Result<Response>
+fn get_updates<'a, M, O>(_req: &mut impl Request<'a>, ota_server: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = O>,
     O: ota::OtaServer,
@@ -86,10 +86,10 @@ where
             .map_err(|e| anyhow::anyhow!(e))
     })?;
 
-    Response::from_json(&updates)?.into()
+    ResponseData::from_json(&updates)?.into()
 }
 
-fn get_latest_update<'a, M, O>(_req: &mut impl Request<'a>, ota_server: &M) -> Result<Response>
+fn get_latest_update<'a, M, O>(_req: &mut impl Request<'a>, ota_server: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = O>,
     O: ota::OtaServer,
@@ -100,17 +100,17 @@ where
             .map_err(|e| anyhow::anyhow!(e))
     })?;
 
-    Response::from_json(&update)?.into()
+    ResponseData::from_json(&update)?.into()
 }
 
-fn factory_reset<'a, M, O>(_req: &mut impl Request<'a>, ota: &M) -> Result<Response>
+fn factory_reset<'a, M, O>(_req: &mut impl Request<'a>, ota: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = O>,
     O: ota::Ota,
 {
     ota.with_lock(|ota| ota.factory_reset().map_err(|e| anyhow::anyhow!(e)))?;
 
-    Ok(Response::ok())
+    Ok(ResponseData::ok())
 }
 
 fn update<'a, MO, MS, MP, O, S>(
@@ -118,7 +118,7 @@ fn update<'a, MO, MS, MP, O, S>(
     ota: &MO,
     ota_server: &MS,
     progress: &MP,
-) -> Result<Response>
+) -> Result<ResponseData>
 where
     MO: Mutex<Data = O>,
     MS: Mutex<Data = S>,
@@ -165,9 +165,9 @@ where
     Ok(().into())
 }
 
-fn get_update_progress<'a, M>(_req: &mut impl Request<'a>, progress: &M) -> Result<Response>
+fn get_update_progress<'a, M>(_req: &mut impl Request<'a>, progress: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = Option<f32>>,
 {
-    Response::from_json(&progress.with_lock(|progress| *progress))?.into()
+    ResponseData::from_json(&progress.with_lock(|progress| *progress))?.into()
 }

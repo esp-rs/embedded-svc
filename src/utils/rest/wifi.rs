@@ -45,7 +45,7 @@ where
     Ok(())
 }
 
-fn get_capabilities<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
+fn get_capabilities<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
@@ -54,20 +54,20 @@ where
         .with_lock(|wifi| wifi.get_capabilities())
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    Response::from_json(&caps)?.into()
+    ResponseData::from_json(&caps)?.into()
 }
 
-fn get_status<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
+fn get_status<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
 {
     let status = wifi.with_lock(|wifi| wifi.get_status());
 
-    Response::from_json(&status)?.into()
+    ResponseData::from_json(&status)?.into()
 }
 
-fn scan<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
+fn scan<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
@@ -76,10 +76,10 @@ where
         .with_lock(|wifi| wifi.scan())
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    Response::from_json(&data)?.into()
+    ResponseData::from_json(&data)?.into()
 }
 
-fn get_configuration<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
+fn get_configuration<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
@@ -88,10 +88,10 @@ where
         .with_lock(|wifi| wifi.get_configuration())
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    Response::from_json(&conf)?.into()
+    ResponseData::from_json(&conf)?.into()
 }
 
-fn set_configuration<'a, M, W>(req: &mut impl Request<'a>, wifi: &M) -> Result<Response>
+fn set_configuration<'a, M, W>(req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
 where
     M: Mutex<Data = W>,
     W: wifi::Wifi,

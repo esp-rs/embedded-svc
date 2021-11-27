@@ -1,5 +1,7 @@
 use core::fmt;
 
+use serde::Serialize;
+
 use crate::io::{self, Write};
 
 use super::{Headers, Method, SendHeaders, Status};
@@ -21,6 +23,14 @@ pub trait Client {
 
     fn post(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
         self.request(Method::Post, url)
+    }
+
+    fn put(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
+        self.request(Method::Put, url)
+    }
+
+    fn delete(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
+        self.request(Method::Delete, url)
     }
 
     fn request(
@@ -111,14 +121,19 @@ pub trait Request<'a>: SendHeaders<'a> {
         self.send_bytes(s.as_ref().as_bytes())
     }
 
-    fn send_json<T>(
+    fn send_json<T: Serialize>(
         self,
-        _t: impl AsRef<T>,
-    ) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, Self::Error>
+        o: impl AsRef<T>,
+    ) -> Result<
+        <Self::Write<'a> as RequestWrite<'a>>::Response,
+        SendError<Self::Error, serde_json::Error>,
+    >
     where
         Self: Sized,
     {
-        todo!()
+        let s = serde_json::to_string(o.as_ref()).map_err(SendError::WriteError)?;
+
+        self.send_str(s).map_err(SendError::SendError)
     }
 
     fn send_reader<R: io::Read>(

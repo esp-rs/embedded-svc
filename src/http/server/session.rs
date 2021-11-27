@@ -87,12 +87,12 @@ where
     ) -> Result<Q, SessionError> {
         if let Some(session) = self.session.as_ref() {
             session.with_lock(|ss| match ss {
-                SessionState::Timeout => Err(SessionError::Timeout),
-                SessionState::Invalid => Err(SessionError::Invalidated),
+                SessionState::Timeout => Err(SessionError::TimeoutError),
+                SessionState::Invalid => Err(SessionError::InvalidatedError),
                 SessionState::Ok(sd) => f(sd),
             })
         } else {
-            Err(SessionError::Missing)
+            Err(SessionError::MissingError)
         }
     }
 
@@ -102,7 +102,8 @@ where
         if let Some(value) = slice {
             let value = value.as_ref();
 
-            let result = serde_json::from_slice::<T>(value).map_err(|_| SessionError::Serde)?;
+            let result =
+                serde_json::from_slice::<T>(value).map_err(|_| SessionError::SerdeError)?;
 
             Ok(Some(result))
         } else {
@@ -166,7 +167,7 @@ where
 
                     Ok(())
                 } else {
-                    Err(SessionError::MaxSessiuonsReached)
+                    Err(SessionError::MaxSessiuonsReachedError)
                 }
             })?;
 
@@ -189,7 +190,7 @@ where
         self.with_session(|sd| {
             Self::deserialize(sd.attributes.insert(
                 name.as_ref().to_owned(),
-                serde_json::to_vec(value).map_err(|_| SessionError::Serde)?,
+                serde_json::to_vec(value).map_err(|_| SessionError::SerdeError)?,
             ))
         })
     }
@@ -211,7 +212,7 @@ where
                 .attributes
                 .insert(
                     name.as_ref().to_owned(),
-                    serde_json::to_vec(value).map_err(|_| SessionError::Serde)?,
+                    serde_json::to_vec(value).map_err(|_| SessionError::SerdeError)?,
                 )
                 .is_some())
         })

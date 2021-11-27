@@ -28,12 +28,12 @@ where
     fn handle<'a, H, E>(
         &self,
         mut req: R::Request<'a>,
-        resp: R::InlineResponse<'a>,
+        resp: R::Response<'a>,
         handler: &H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
         let current_role = get_role(&mut req, self.default_role);
@@ -66,12 +66,12 @@ where
     fn handle<'a, H, E>(
         &self,
         mut req: R::Request<'a>,
-        resp: R::InlineResponse<'a>,
+        resp: R::Response<'a>,
         handler: &H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
         if let Some(role) = get_role(&mut req, None) {
@@ -120,12 +120,12 @@ where
     fn handle<'a, H, E>(
         &self,
         mut req: R::Request<'a>,
-        resp: R::InlineResponse<'a>,
+        resp: R::Response<'a>,
         handler: &H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
         if let Some(role) = get_role(&mut req, None) {
@@ -191,7 +191,7 @@ where
     Ok(())
 }
 
-pub fn login<'a, A>(authenticator: &A, req: &mut impl Request<'a>) -> Result<Response>
+pub fn login<'a, A>(authenticator: &A, req: &mut impl Request<'a>) -> Result<ResponseData>
 where
     A: Authenticator,
 {
@@ -226,18 +226,18 @@ where
 
                 set_session_role(req, Some(role))?;
 
-                return Response::ok().into();
+                return ResponseData::ok().into();
             }
         }
     }
 
-    Response::new(401)
+    ResponseData::new(401)
         .body("Invalid username or password".into())
         .into()
 }
 
-pub fn logout<'a>(_req: &mut impl Request<'a>) -> Result<Response> {
-    Response::ok()
+pub fn logout<'a>(_req: &mut impl Request<'a>) -> Result<ResponseData> {
+    ResponseData::ok()
         .new_session_state(SessionState::Invalidate)
         .into()
 }

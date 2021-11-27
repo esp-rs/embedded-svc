@@ -15,21 +15,21 @@ pub mod session;
 
 #[derive(Debug)]
 pub enum SessionError {
-    Missing,
-    Timeout,
-    Invalidated,
-    MaxSessiuonsReached,
-    Serde, // TODO
+    MissingError,
+    TimeoutError,
+    InvalidatedError,
+    MaxSessiuonsReachedError,
+    SerdeError, // TODO
 }
 
 impl fmt::Display for SessionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SessionError::Missing => write!(f, "No session"),
-            SessionError::Timeout => write!(f, "Session timed out"),
-            SessionError::Invalidated => write!(f, "Session invalidated"),
-            SessionError::MaxSessiuonsReached => write!(f, "Max number of sessions reached"),
-            SessionError::Serde => write!(f, "Serde error"),
+            SessionError::MissingError => write!(f, "No session"),
+            SessionError::TimeoutError => write!(f, "Session timed out"),
+            SessionError::InvalidatedError => write!(f, "Session invalidated"),
+            SessionError::MaxSessiuonsReachedError => write!(f, "Max number of sessions reached"),
+            SessionError::SerdeError => write!(f, "Serde error"),
         }
     }
 }
@@ -162,7 +162,7 @@ pub trait ResponseWrite<'a>: io::Write {
     fn complete(self) -> Result<Completion, Self::Error>;
 }
 
-pub trait InlineResponse<'a>: SendStatus<'a> + SendHeaders<'a> {
+pub trait Response<'a>: SendStatus<'a> + SendHeaders<'a> {
     type Write<'b>: ResponseWrite<'b, Error = Self::Error>;
 
     #[cfg(not(feature = "std"))]
@@ -197,15 +197,17 @@ pub trait InlineResponse<'a>: SendStatus<'a> + SendHeaders<'a> {
         self.send_bytes(request, s.as_ref().as_bytes())
     }
 
-    fn send_json<T>(
+    fn send_json<T: Serialize>(
         self,
-        _request: impl Request<'a>,
-        _t: impl AsRef<T>,
-    ) -> Result<Completion, Self::Error>
+        request: impl Request<'a>,
+        o: impl AsRef<T>,
+    ) -> Result<Completion, SendError<Self::Error, serde_json::Error>>
     where
         Self: Sized,
     {
-        todo!()
+        let s = serde_json::to_string(o.as_ref()).map_err(SendError::WriteError)?;
+
+        self.send_str(request, s).map_err(SendError::SendError)
     }
 
     fn send_reader<R: io::Read>(
@@ -320,7 +322,7 @@ pub enum SessionState {
     Invalidate,
 }
 
-pub struct Response {
+pub struct ResponseData {
     status: u16,
     status_message: Option<String>,
 
@@ -331,9 +333,9 @@ pub struct Response {
     new_session_state: Option<SessionState>,
 }
 
-impl Default for Response {
+impl Default for ResponseData {
     fn default() -> Self {
-        Response {
+        ResponseData {
             status: 200,
             status_message: None,
             headers: BTreeMap::new(),
@@ -343,44 +345,44 @@ impl Default for Response {
     }
 }
 
-impl From<()> for Response {
+impl From<()> for ResponseData {
     fn from(_: ()) -> Self {
         Default::default()
     }
 }
 
-impl From<u16> for Response {
+impl From<u16> for ResponseData {
     fn from(status: u16) -> Self {
         Self::new(status)
     }
 }
 
-impl From<Vec<u8>> for Response {
+impl From<Vec<u8>> for ResponseData {
     fn from(v: Vec<u8>) -> Self {
         Self::ok().body(v.into())
     }
 }
 
-impl From<&str> for Response {
+impl From<&str> for ResponseData {
     fn from(s: &str) -> Self {
         Self::ok().body(s.into())
     }
 }
 
-impl From<String> for Response {
+impl From<String> for ResponseData {
     fn from(s: String) -> Self {
         Self::ok().body(s.into())
     }
 }
 
 #[cfg(feature = "std")]
-impl From<std::fs::File> for Response {
+impl From<std::fs::File> for ResponseData {
     fn from(f: std::fs::File) -> Self {
         Self::ok().body(f.into())
     }
 }
 
-impl Response {
+impl ResponseData {
     pub fn ok() -> Self {
         Default::default()
     }
@@ -419,7 +421,7 @@ impl Response {
     }
 }
 
-impl SendStatus<'static> for Response {
+impl SendStatus<'static> for ResponseData {
     fn set_status(&mut self, status: u16) -> &mut Self {
         self.status = status;
         self
@@ -434,7 +436,7 @@ impl SendStatus<'static> for Response {
     }
 }
 
-impl SendHeaders<'static> for Response {
+impl SendHeaders<'static> for ResponseData {
     fn set_header<H, V>(&mut self, name: H, value: V) -> &mut Self
     where
         H: Into<Cow<'static, str>>,
@@ -446,8 +448,8 @@ impl SendHeaders<'static> for Response {
     }
 }
 
-impl<E> From<Response> for Result<Response, E> {
-    fn from(response: Response) -> Self {
+impl<E> From<ResponseData> for Result<ResponseData, E> {
+    fn from(response: ResponseData) -> Self {
         Ok(response)
     }
 }

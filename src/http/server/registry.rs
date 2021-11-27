@@ -37,12 +37,12 @@ where
     fn handle<'a, H, E>(
         &self,
         req: R::Request<'a>,
-        resp: R::InlineResponse<'a>,
+        resp: R::Response<'a>,
         handler: &H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug;
 }
 
@@ -57,12 +57,12 @@ where
 //     fn handle<'a, H, E>(
 //         &self,
 //         req: R::Request<'a>,
-//         resp: R::InlineResponse<'a>,
+//         resp: R::Response<'a>,
 //         handler: &H,
 //     ) -> Result<Completion, Self::Error>
 //     where
 //         R: Registry,
-//         H: for<'b> Fn(R::Request<'b>, R::InlineResponse<'b>) -> Result<Completion, E>,
+//         H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
 //         E: fmt::Display + fmt::Debug,
 //     {
 //         if req.header("foo").is_some() {
@@ -75,7 +75,7 @@ where
 
 pub trait Registry: Sized {
     type Request<'a>: Request<'a>;
-    type InlineResponse<'a>: InlineResponse<'a>;
+    type Response<'a>: Response<'a>;
 
     #[cfg(not(feature = "std"))]
     type Error: fmt::Debug + fmt::Display;
@@ -90,7 +90,7 @@ pub trait Registry: Sized {
         handler: H,
     ) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(Self::Request<'a>, Self::InlineResponse<'a>) -> Result<Completion, E>,
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug;
 
     fn set_handler<H, E>(
@@ -101,10 +101,10 @@ pub trait Registry: Sized {
     ) -> Result<&mut Self, Self::Error>
     where
         //Self: 'static,
-        H: for<'a, 'c> Fn(&'c mut Self::Request<'a>) -> Result<Response, E> + 'static,
+        H: for<'a, 'c> Fn(&'c mut Self::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<Self as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + for<'a> From<<<Self as Registry>::Response<'a> as Response<'a>>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -148,7 +148,7 @@ where
     M::Error: 'static,
 {
     type Request<'a> = R::Request<'a>;
-    type InlineResponse<'a> = R::InlineResponse<'a>;
+    type Response<'a> = R::Response<'a>;
 
     type Error = R::Error;
 
@@ -159,7 +159,7 @@ where
         handler: H,
     ) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(Self::Request<'a>, Self::InlineResponse<'a>) -> Result<Completion, E>,
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, E>,
         E: fmt::Debug + fmt::Display,
     {
         let middleware = self.middleware.clone();
@@ -184,7 +184,7 @@ where
 {
     pub fn get<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
+        H: for<'a> Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E> + 'static,
         E: fmt::Debug + fmt::Display,
     {
         self.handler(Method::Get, handler)
@@ -192,7 +192,7 @@ where
 
     pub fn put<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
+        H: for<'a> Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E> + 'static,
         E: fmt::Debug + fmt::Display,
     {
         self.handler(Method::Put, handler)
@@ -200,7 +200,7 @@ where
 
     pub fn post<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
+        H: for<'a> Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E> + 'static,
         E: fmt::Debug + fmt::Display,
     {
         self.handler(Method::Post, handler)
@@ -208,7 +208,7 @@ where
 
     pub fn delete<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
+        H: for<'a> Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E> + 'static,
         E: fmt::Debug + fmt::Display,
     {
         self.handler(Method::Delete, handler)
@@ -216,7 +216,7 @@ where
 
     pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E> + 'static,
+        H: for<'a> Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E> + 'static,
         E: fmt::Debug + fmt::Display,
     {
         self.registry
@@ -242,10 +242,10 @@ where
 
     pub fn get<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static,
+        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + for<'a> From<<<RR as Registry>::Response<'a> as Response<'a>>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -254,10 +254,10 @@ where
 
     pub fn put<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static,
+        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + for<'a> From<<<RR as Registry>::Response<'a> as Response<'a>>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -266,10 +266,10 @@ where
 
     pub fn post<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static,
+        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + for<'a> From<<<RR as Registry>::Response<'a> as Response<'a>>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -278,10 +278,10 @@ where
 
     pub fn delete<H, E>(self, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static,
+        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + for<'a> From<<<RR as Registry>::Response<'a> as Response<'a>>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -290,10 +290,10 @@ where
 
     pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut RR, RR::Error>
     where
-        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static,
+        H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+            + for<'a> From<<<RR as Registry>::Response<'a> as Response<'a>>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -306,13 +306,13 @@ where
 
 fn into_boxed_inline_handler<RR, H, E>(
     handler: H,
-) -> Box<dyn for<'a> Fn(RR::Request<'a>, RR::InlineResponse<'a>) -> Result<Completion, E>>
+) -> Box<dyn for<'a> Fn(RR::Request<'a>, RR::Response<'a>) -> Result<Completion, E>>
 where
     RR: Registry,
-    H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E> + 'static,
+    H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<ResponseData, E> + 'static,
     E: fmt::Debug
         + fmt::Display
-        + for<'a> From<<<RR as Registry>::InlineResponse<'a> as InlineResponse<'a>>::Error>
+        + for<'a> From<<<RR as Registry>::Response<'a> as Response<'a>>::Error>
         + From<io::IODynError>,
 {
     Box::new(move |req, resp| handle::<RR, _, _>(req, resp, &handler))
@@ -320,15 +320,15 @@ where
 
 fn handle<'b, RR, H, E>(
     mut req: RR::Request<'b>,
-    mut inline_resp: RR::InlineResponse<'b>,
+    mut inline_resp: RR::Response<'b>,
     handler: &H,
 ) -> Result<Completion, E>
 where
     RR: Registry,
-    H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<Response, E>,
+    H: for<'a, 'c> Fn(&'c mut RR::Request<'a>) -> Result<ResponseData, E>,
     E: fmt::Debug
         + fmt::Display
-        + From<<<RR as Registry>::InlineResponse<'b> as InlineResponse<'b>>::Error>
+        + From<<<RR as Registry>::Response<'b> as Response<'b>>::Error>
         + From<io::IODynError>,
 {
     let resp = handler(&mut req)?;
