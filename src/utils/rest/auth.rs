@@ -1,11 +1,16 @@
 use core::fmt;
-use std::borrow::Cow;
+
+extern crate alloc;
+use alloc::borrow::Cow;
+use alloc::rc::Rc;
 
 use anyhow::*;
 
 use http_auth_basic::Credentials;
 
-use crate::{http::server::registry::*, http::server::*, http::*, io};
+use crate::{
+    http::server::middleware::Middleware, http::server::registry::*, http::server::*, http::*, io,
+};
 
 use super::role::*;
 
@@ -29,11 +34,11 @@ where
         &self,
         mut req: R::Request<'a>,
         resp: R::Response<'a>,
-        handler: &H,
+        handler: H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
+        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
         let current_role = get_role(&mut req, self.default_role);
@@ -58,7 +63,7 @@ pub struct WithBasicAuthMiddleware<A> {
 
 impl<A, R> Middleware<R> for WithBasicAuthMiddleware<A>
 where
-    A: Authenticator,
+    A: Authenticator + Clone,
     R: Registry,
 {
     type Error = anyhow::Error;
@@ -67,11 +72,11 @@ where
         &self,
         mut req: R::Request<'a>,
         resp: R::Response<'a>,
-        handler: &H,
+        handler: H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
+        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
         if let Some(role) = get_role(&mut req, None) {
@@ -121,11 +126,11 @@ where
         &self,
         mut req: R::Request<'a>,
         resp: R::Response<'a>,
-        handler: &H,
+        handler: H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
+        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
         if let Some(role) = get_role(&mut req, None) {
@@ -152,7 +157,7 @@ pub fn get_role<'a>(req: &mut impl Request<'a>, default_role: Option<Role>) -> O
 
 pub fn set_request_role<'a>(req: &mut impl Request<'a>, role: Option<Role>) {
     if let Some(role) = role {
-        req.attrs().set("role", Box::new(role));
+        req.attrs().set("role", Rc::new(role));
     } else {
         req.attrs().remove("role");
     }

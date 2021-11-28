@@ -143,6 +143,14 @@ where
             .map_or_else(Option::Some, |_| None)
     }
 
+    fn id(&self) -> Option<Cow<'_, str>> {
+        if let Some(session_id) = self.session_id.as_ref() {
+            Some(Cow::Borrowed(session_id.as_ref()))
+        } else {
+            None
+        }
+    }
+
     fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError> {
         let valid = if let Some(session) = self.session.as_ref() {
             session.with_lock(|ss| matches!(ss, SessionState::Ok(_)))
@@ -250,6 +258,16 @@ where
     M: Mutex<Data = BTreeMap<String, Arc<S>>>,
     S: Mutex<Data = SessionState>;
 
+impl<'a, M, S> RequestScopedSessionReference<'a, M, S>
+where
+    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
+    S: Mutex<Data = SessionState>,
+{
+    pub fn new(session: &'a RefCell<RequestScopedSession<M, S>>) -> Self {
+        Self(session)
+    }
+}
+
 impl<'a, M, S> Session<'a> for RequestScopedSessionReference<'a, M, S>
 where
     M: Mutex<Data = BTreeMap<String, Arc<S>>>,
@@ -257,6 +275,13 @@ where
 {
     fn get_error(&self) -> Option<SessionError> {
         self.0.borrow().get_error()
+    }
+
+    fn id(&self) -> Option<Cow<'_, str>> {
+        self.0
+            .borrow()
+            .id()
+            .map(|value| Cow::Owned(value.into_owned())) // TODO
     }
 
     fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError> {

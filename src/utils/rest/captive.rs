@@ -7,7 +7,10 @@ use anyhow::*;
 
 use crate::{
     http::server::*,
-    http::{server::registry::*, Headers, SendHeaders, SendStatus},
+    http::{
+        server::{middleware::Middleware, registry::*},
+        Headers, SendHeaders, SendStatus,
+    },
     mutex::*,
 };
 
@@ -75,11 +78,11 @@ where
         &self,
         req: R::Request<'a>,
         resp: R::Response<'a>,
-        handler: &H,
+        handler: H,
     ) -> Result<Completion, Self::Error>
     where
         R: Registry,
-        H: for<'b> Fn(R::Request<'b>, R::Response<'b>) -> Result<Completion, E>,
+        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
         let captive = self.captive.with_lock(|captive| *captive);

@@ -2,7 +2,9 @@ use core::{any::Any, fmt};
 
 extern crate alloc;
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
+use alloc::rc::Rc;
 use alloc::string::String;
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -10,8 +12,16 @@ use crate::io::{self, Read, Write};
 
 use super::{Headers, Method, SendHeaders, SendStatus};
 
+pub mod attr;
+pub mod middleware;
 pub mod registry;
 pub mod session;
+
+pub trait Attributes<'a> {
+    fn get(&self, name: impl AsRef<str>) -> Option<Rc<dyn Any>>;
+    fn set(&mut self, name: impl AsRef<str>, value: Rc<dyn Any>) -> Option<Rc<dyn Any>>;
+    fn remove(&mut self, name: impl AsRef<str>) -> Option<Rc<dyn Any>>;
+}
 
 #[derive(Debug)]
 pub enum SessionError {
@@ -54,6 +64,8 @@ pub trait Session<'a> {
         self.get_error().is_none()
     }
 
+    fn id(&self) -> Option<Cow<'_, str>>;
+
     fn get<T: DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError>;
     fn set_and_get<S: Serialize, T: DeserializeOwned>(
         &mut self,
@@ -72,13 +84,7 @@ pub trait Session<'a> {
     fn invalidate(&mut self) -> Result<bool, SessionError>;
 }
 
-pub trait Attributes<'a> {
-    fn get(&self, name: impl AsRef<str>) -> Option<Box<dyn Any>>;
-    fn set(&mut self, name: impl AsRef<str>, value: Box<dyn Any>) -> Option<Box<dyn Any>>;
-    fn remove(&mut self, name: impl AsRef<str>) -> Option<Box<dyn Any>>;
-}
-
-pub trait Request<'a>: Headers + Attributes<'a> + Session<'a> {
+pub trait Request<'a>: Headers {
     type Read<'b>: io::Read<Error = Self::Error>
     where
         Self: 'b;
@@ -99,11 +105,11 @@ pub trait Request<'a>: Headers + Attributes<'a> + Session<'a> {
 
     fn query_string(&self) -> Cow<'_, str>;
 
-    fn reader(&self) -> Self::Read<'_>;
-
     fn attrs(&self) -> Self::Attributes<'_>;
 
     fn session(&self) -> Self::Session<'_>;
+
+    fn reader(&self) -> Self::Read<'_>;
 }
 
 #[derive(Debug)]
