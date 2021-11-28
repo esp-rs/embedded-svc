@@ -211,7 +211,7 @@ where
     }
 }
 
-pub(crate) fn handle<'b, R, H, E>(
+fn handle<'b, R, H, E>(
     mut req: R::Request<'b>,
     mut inline_resp: R::Response<'b>,
     handler: &H,
