@@ -23,6 +23,70 @@ where
         R: Registry,
         H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
         E: fmt::Display + fmt::Debug;
+
+    fn compose<M>(self, middleware: M) -> CompositeMiddleware<Self, M>
+    where
+        M: Middleware<R> + Clone + 'static,
+        Self::Error: From<M::Error>,
+        Self: Sized,
+    {
+        CompositeMiddleware::new(self, middleware)
+    }
+}
+
+pub struct CompositeMiddleware<M1, M2> {
+    middleware1: M1,
+    middleware2: M2,
+}
+
+impl<M1, M2> CompositeMiddleware<M1, M2> {
+    pub fn new(middleware1: M1, middleware2: M2) -> Self {
+        Self {
+            middleware1,
+            middleware2,
+        }
+    }
+}
+
+impl<M1, M2> Clone for CompositeMiddleware<M1, M2>
+where
+    M1: Clone,
+    M2: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            middleware1: self.middleware1.clone(),
+            middleware2: self.middleware2.clone(),
+        }
+    }
+}
+
+impl<M1, M2, R> Middleware<R> for CompositeMiddleware<M1, M2>
+where
+    R: Registry,
+    M1: Middleware<R>,
+    M2: Middleware<R> + Clone + 'static,
+    M1::Error: From<M2::Error>,
+{
+    type Error = M1::Error;
+
+    fn handle<'a, H, E>(
+        &self,
+        req: R::Request<'a>,
+        resp: R::Response<'a>,
+        handler: H,
+    ) -> Result<Completion, Self::Error>
+    where
+        R: Registry,
+        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
+        E: fmt::Display + fmt::Debug,
+    {
+        let middleware2 = self.middleware2.clone();
+
+        self.middleware1.handle(req, resp, move |req, resp| {
+            middleware2.handle(req, resp, handler).into()
+        })
+    }
 }
 
 pub struct MiddlewareRegistry<'r, R, M> {
@@ -98,11 +162,6 @@ where
             handle::<R, _, _>(req, resp, &handler)
         })
     }
-
-    // TODO
-    // fn combine(middleware1: M, middleware2: M) -> M {
-    //     todo!()
-    // }
 }
 
 pub struct MiddlewareInlineHandlerRegistrationBuilder<'m, 'r, R, M> {
