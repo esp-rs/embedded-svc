@@ -1,11 +1,7 @@
 extern crate alloc;
-use alloc::string::String;
 use alloc::sync::Arc;
 
-use super::{
-    registry::{handle, Registry},
-    *,
-};
+use super::{registry::*, *};
 
 pub trait Middleware<R>
 where
@@ -27,7 +23,6 @@ where
     fn compose<M>(self, middleware: M) -> CompositeMiddleware<Self, M>
     where
         M: Middleware<R> + Clone + 'static,
-        Self::Error: From<M::Error>,
         Self: Sized,
     {
         CompositeMiddleware::new(self, middleware)
@@ -61,12 +56,11 @@ where
     }
 }
 
-impl<M1, M2, R> Middleware<R> for CompositeMiddleware<M1, M2>
+impl<R, M1, M2> Middleware<R> for CompositeMiddleware<M1, M2>
 where
     R: Registry,
     M1: Middleware<R>,
     M2: Middleware<R> + Clone + 'static,
-    M1::Error: From<M2::Error>,
 {
     type Error = M1::Error;
 
@@ -77,7 +71,6 @@ where
         handler: H,
     ) -> Result<Completion, Self::Error>
     where
-        R: Registry,
         H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
         E: fmt::Display + fmt::Debug,
     {
@@ -106,17 +99,38 @@ where
             middleware,
         }
     }
+}
 
-    // TODO
-    // fn with_middleware(&mut self, middleware: M) -> middleware::MiddlewareRegistry<'r, R, M> {
-    //     middleware::MiddlewareRegistry::new(self.registry, Self::combine(self.middleware.clone(), middleware))
-    // }
+impl<'r, R, M> Registry for MiddlewareRegistry<'r, R, M>
+where
+    R: Registry,
+    M: Middleware<R> + Clone + 'static,
+    M::Error: 'static,
+{
+    type Request<'a> = R::Request<'a>;
 
-    pub fn at(&mut self, uri: impl ToString) -> MiddlewareHandlerRegistrationBuilder<'_, 'r, R, M> {
-        MiddlewareHandlerRegistrationBuilder {
-            uri: uri.to_string(),
-            middleware_registry: self,
-        }
+    type Response<'a> = R::Response<'a>;
+
+    type Error = R::Error;
+
+    type Root = R;
+
+    type MiddlewareRegistry<'q, M2>
+    where
+        Self: 'q,
+        M2: Middleware<Self::Root> + Clone + 'static + 'q,
+    = MiddlewareRegistry<'q, Self::Root, CompositeMiddleware<M, M2>>;
+
+    fn with_middleware<M2>(&mut self, middleware: M2) -> Self::MiddlewareRegistry<'_, M2>
+    where
+        M2: middleware::Middleware<Self::Root> + Clone + 'static,
+        M2::Error: 'static,
+        Self: Sized,
+    {
+        middleware::MiddlewareRegistry::new(
+            self.registry,
+            self.middleware.clone().compose(middleware),
+        )
     }
 
     fn set_inline_handler<H, E>(
@@ -124,9 +138,9 @@ where
         uri: &str,
         method: Method,
         handler: H,
-    ) -> Result<&mut Self, R::Error>
+    ) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, E> + 'static,
         E: fmt::Debug + fmt::Display,
     {
         let middleware = self.middleware.clone();
@@ -142,165 +156,5 @@ where
             })?;
 
         Ok(self)
-    }
-
-    fn set_handler<H, E>(
-        &mut self,
-        uri: &str,
-        method: Method,
-        handler: H,
-    ) -> Result<&mut Self, R::Error>
-    where
-        H: for<'a> Fn(&mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Response<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.set_inline_handler(uri, method, move |req, resp| {
-            handle::<R, _, _>(req, resp, &handler)
-        })
-    }
-}
-
-pub struct MiddlewareInlineHandlerRegistrationBuilder<'m, 'r, R, M> {
-    uri: String,
-    middleware_registry: &'m mut MiddlewareRegistry<'r, R, M>,
-}
-
-impl<'m, 'r, R, M> MiddlewareInlineHandlerRegistrationBuilder<'m, 'r, R, M>
-where
-    R: Registry,
-    M: Middleware<R> + Clone + 'static,
-    M::Error: 'static,
-{
-    pub fn get<H, E>(self, handler: H) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        self.handler(Method::Get, handler)
-    }
-
-    pub fn put<H, E>(self, handler: H) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        self.handler(Method::Put, handler)
-    }
-
-    pub fn post<H, E>(self, handler: H) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        self.handler(Method::Post, handler)
-    }
-
-    pub fn delete<H, E>(self, handler: H) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        self.handler(Method::Delete, handler)
-    }
-
-    pub fn handler<H, E>(
-        self,
-        method: Method,
-        handler: H,
-    ) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
-    {
-        self.middleware_registry
-            .set_inline_handler(self.uri.as_str(), method, handler)
-    }
-}
-
-pub struct MiddlewareHandlerRegistrationBuilder<'m, 'r, R, M> {
-    uri: String,
-    middleware_registry: &'m mut MiddlewareRegistry<'r, R, M>,
-}
-
-impl<'m, 'r, R, M> MiddlewareHandlerRegistrationBuilder<'m, 'r, R, M>
-where
-    R: Registry,
-    M: Middleware<R> + Clone + 'static,
-    M::Error: 'static,
-{
-    pub fn inline(self) -> MiddlewareInlineHandlerRegistrationBuilder<'m, 'r, R, M> {
-        MiddlewareInlineHandlerRegistrationBuilder {
-            uri: self.uri,
-            middleware_registry: self.middleware_registry,
-        }
-    }
-
-    pub fn get<H, E>(self, handler: H) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Response<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.handler(Method::Get, handler)
-    }
-
-    pub fn put<H, E>(self, handler: H) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Response<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.handler(Method::Put, handler)
-    }
-
-    pub fn post<H, E>(self, handler: H) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Response<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.handler(Method::Put, handler)
-    }
-
-    pub fn delete<H, E>(self, handler: H) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Response<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.handler(Method::Put, handler)
-    }
-
-    pub fn handler<H, E>(
-        self,
-        method: Method,
-        handler: H,
-    ) -> Result<&'m mut MiddlewareRegistry<'r, R, M>, R::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Response<'a>>::Error>
-            + From<io::IODynError>
-            + 'static,
-    {
-        self.middleware_registry
-            .set_handler(self.uri.as_str(), method, handler)
     }
 }
