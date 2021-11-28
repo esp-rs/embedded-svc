@@ -93,7 +93,7 @@ where
     M: Middleware<R> + Clone + 'static,
     M::Error: 'static,
 {
-    pub(crate) fn new(registry: &'r mut R, middleware: M) -> Self {
+    pub fn new(registry: &'r mut R, middleware: M) -> Self {
         Self {
             registry,
             middleware,
