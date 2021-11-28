@@ -43,6 +43,11 @@ where
         }
     }
 
+    // TODO
+    // fn with_middleware(&mut self, middleware: M) -> middleware::MiddlewareRegistry<'r, R, M> {
+    //     middleware::MiddlewareRegistry::new(self.registry, Self::combine(self.middleware.clone(), middleware))
+    // }
+
     pub fn at(&mut self, uri: impl ToString) -> MiddlewareHandlerRegistrationBuilder<'_, 'r, R, M> {
         MiddlewareHandlerRegistrationBuilder {
             uri: uri.to_string(),
@@ -93,6 +98,11 @@ where
             handle::<R, _, _>(req, resp, &handler)
         })
     }
+
+    // TODO
+    // fn combine(middleware1: M, middleware2: M) -> M {
+    //     todo!()
+    // }
 }
 
 pub struct MiddlewareInlineHandlerRegistrationBuilder<'m, 'r, R, M> {

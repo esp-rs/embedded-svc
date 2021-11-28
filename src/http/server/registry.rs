@@ -17,6 +17,14 @@ pub trait Registry: Sized {
     #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
+    fn with_middleware<M>(&mut self, middleware: M) -> middleware::MiddlewareRegistry<'_, Self, M>
+    where
+        M: middleware::Middleware<Self> + Clone + 'static,
+        M::Error: 'static,
+    {
+        middleware::MiddlewareRegistry::new(self, middleware)
+    }
+
     fn at(&mut self, uri: impl ToString) -> HandlerRegistrationBuilder<Self> {
         HandlerRegistrationBuilder {
             uri: uri.to_string(),
@@ -51,14 +59,6 @@ pub trait Registry: Sized {
         self.set_inline_handler(uri, method, move |req, resp| {
             handle::<Self, _, _>(req, resp, &handler)
         })
-    }
-
-    fn with_middleware<M>(&mut self, middleware: M) -> middleware::MiddlewareRegistry<'_, Self, M>
-    where
-        M: middleware::Middleware<Self> + Clone + 'static,
-        M::Error: 'static,
-    {
-        middleware::MiddlewareRegistry::new(self, middleware)
     }
 }
 
