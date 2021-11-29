@@ -159,6 +159,8 @@ struct PrivateData;
 pub struct Completion(PrivateData);
 
 impl Completion {
+    /// # Safety
+    /// This function is marked as unsafe because it is an internal API and is NOT supposed to be called by the user
     pub unsafe fn internal_new() -> Self {
         Self(PrivateData)
     }

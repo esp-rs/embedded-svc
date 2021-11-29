@@ -9,6 +9,12 @@ use super::Attributes;
 
 pub struct RequestScopedAttributes(BTreeMap<String, Rc<dyn Any>>);
 
+impl Default for RequestScopedAttributes {
+    fn default() -> Self {
+        RequestScopedAttributes::new()
+    }
+}
+
 impl RequestScopedAttributes {
     pub fn new() -> Self {
         Self(BTreeMap::new())
@@ -17,7 +23,7 @@ impl RequestScopedAttributes {
 
 impl<'a> Attributes<'a> for RequestScopedAttributes {
     fn get(&self, name: impl AsRef<str>) -> Option<Rc<dyn Any>> {
-        self.0.get(name.as_ref()).map(|value| value.clone())
+        self.0.get(name.as_ref()).cloned()
     }
 
     fn set(&mut self, name: impl AsRef<str>, value: Rc<dyn Any>) -> Option<Rc<dyn Any>> {

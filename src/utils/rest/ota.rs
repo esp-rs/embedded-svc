@@ -33,7 +33,7 @@ where
 
     let otas_get_updates = ota_server.clone();
     let otas_get_latest_update = ota_server.clone();
-    let otas_update = ota_server.clone();
+    let otas_update = ota_server;
     let ota_get_status = ota.clone();
     let ota_factory_reset = ota.clone();
     let progress_update = progress.clone();

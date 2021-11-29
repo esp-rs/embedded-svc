@@ -77,7 +77,7 @@ where
         let middleware2 = self.middleware2.clone();
 
         self.middleware1.handle(req, resp, move |req, resp| {
-            middleware2.handle(req, resp, handler).into()
+            middleware2.handle(req, resp, handler)
         })
     }
 }
@@ -133,6 +133,7 @@ where
         )
     }
 
+    #[allow(clippy::redundant_closure)]
     fn set_inline_handler<H, E>(
         &mut self,
         uri: &str,

@@ -136,6 +136,7 @@ pub trait Request<'a>: SendHeaders<'a> {
         self.send_str(s).map_err(SendError::SendError)
     }
 
+    #[allow(clippy::type_complexity)]
     fn send_reader<R: io::Read>(
         self,
         size: usize,

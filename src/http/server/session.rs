@@ -75,7 +75,7 @@ where
             .flatten();
 
         Self {
-            sessions: sessions.clone(),
+            sessions,
             session_id: session_id.map(|s| s.as_ref().to_owned()),
             session,
         }
@@ -144,11 +144,9 @@ where
     }
 
     fn id(&self) -> Option<Cow<'_, str>> {
-        if let Some(session_id) = self.session_id.as_ref() {
-            Some(Cow::Borrowed(session_id.as_ref()))
-        } else {
-            None
-        }
+        self.session_id
+            .as_ref()
+            .map(|session_id| Cow::Borrowed(session_id.as_ref()))
     }
 
     fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError> {
@@ -366,7 +364,7 @@ where
         )
     }
 
-    fn parse_session_cookie<'a>(cookies: &'a str) -> Option<&'a str> {
+    fn parse_session_cookie(cookies: &str) -> Option<&str> {
         CookieIterator::new(cookies)
             .find(|(name, _)| *name == "SESSIONID")
             .map(|(_, value)| value)
@@ -429,7 +427,7 @@ impl<'a> CookieIterator<'a> {
     pub fn collect<'b>(iter: impl Iterator<Item = (&'b str, &'b str)>) -> String {
         let mut result = String::new();
         for (key, value) in iter {
-            if result.len() > 0 {
+            if !result.is_empty() {
                 result.push(';');
             }
 

@@ -233,10 +233,10 @@ fn join<'a>(uri: impl Into<Cow<'a, str>>, path: impl AsRef<str>) -> Cow<'a, str>
     let uri = uri.into();
     let path = path.as_ref();
 
-    let uri_slash = uri.ends_with("/");
-    let path_slash = path.starts_with("/");
+    let uri_slash = uri.ends_with('/');
+    let path_slash = path.starts_with('/');
 
-    if path.len() == 0 || path.len() == 1 && uri_slash && path_slash {
+    if path.is_empty() || path.len() == 1 && uri_slash && path_slash {
         uri
     } else {
         let path = if uri_slash && path_slash {
@@ -248,7 +248,7 @@ fn join<'a>(uri: impl Into<Cow<'a, str>>, path: impl AsRef<str>) -> Cow<'a, str>
         let mut result = uri.into_owned();
 
         if !uri_slash && !path_slash {
-            result.push_str("/");
+            result.push('/');
         }
 
         result.push_str(path);
