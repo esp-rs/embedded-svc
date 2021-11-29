@@ -53,7 +53,11 @@ pub struct Summary {
 }
 
 pub trait Ping {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: core::fmt::Debug + core::fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
 

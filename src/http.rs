@@ -18,7 +18,7 @@ pub mod status {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Hash))]
-pub enum HttpMethod {
+pub enum Method {
     Delete,
     Get,
     Head,
@@ -54,7 +54,7 @@ pub enum HttpMethod {
     Unlink,
 }
 
-pub trait HttpHeaders {
+pub trait Headers {
     fn header(&self, name: impl AsRef<str>) -> Option<Cow<'_, str>>;
 
     fn content_type(&self) -> Option<Cow<'_, str>> {
@@ -71,7 +71,7 @@ pub trait HttpHeaders {
     }
 }
 
-pub trait HttpSendHeaders<'a> {
+pub trait SendHeaders<'a> {
     fn set_header<H, V>(&mut self, name: H, value: V) -> &mut Self
     where
         H: Into<Cow<'a, str>>,
@@ -132,12 +132,12 @@ pub trait HttpSendHeaders<'a> {
     }
 }
 
-pub trait HttpStatus {
+pub trait Status {
     fn status(&self) -> u16;
     fn status_message(&self) -> Option<Cow<'_, str>>;
 }
 
-pub trait HttpSendStatus<'a> {
+pub trait SendStatus<'a> {
     fn set_ok(&mut self) -> &mut Self {
         self.set_status(200)
     }

@@ -7,6 +7,10 @@ pub trait Mutex {
     /// Data protected by the mutex.
     type Data;
 
+    fn new(data: Self::Data) -> Self
+    where
+        Self: Sized;
+
     /// Creates a critical section and grants temporary access to the protected data.
     fn with_lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R;
 }
@@ -14,6 +18,13 @@ pub trait Mutex {
 #[cfg(feature = "std")]
 impl<T> Mutex for std::sync::Mutex<T> {
     type Data = T;
+
+    fn new(data: Self::Data) -> Self
+    where
+        Self: Sized,
+    {
+        std::sync::Mutex::new(data)
+    }
 
     #[inline(always)]
     fn with_lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R {

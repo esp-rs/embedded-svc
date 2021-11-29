@@ -1,100 +1,163 @@
-use core::cmp::min;
+use core::fmt;
+
+use serde::Serialize;
 
 use crate::io::{self, Write};
 
-use super::{HttpHeaders, HttpMethod, HttpSendHeaders, HttpStatus};
+use super::{Headers, Method, SendHeaders, Status};
 
-pub trait HttpClient {
-    type Request<'a>: HttpRequest<'a, Error = Self::Error>
+pub trait Client {
+    type Request<'a>: Request<'a, Error = Self::Error>
     where
         Self: 'a;
 
     #[cfg(not(feature = "std"))]
-    type Error;
+    type Error: fmt::Debug + fmt::Display;
 
     #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn get(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
-        self.request(HttpMethod::Get, url)
+        self.request(Method::Get, url)
     }
 
     fn post(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
-        self.request(HttpMethod::Post, url)
+        self.request(Method::Post, url)
+    }
+
+    fn put(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
+        self.request(Method::Put, url)
+    }
+
+    fn delete(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
+        self.request(Method::Delete, url)
     }
 
     fn request(
         &mut self,
-        method: HttpMethod,
+        method: Method,
         url: impl AsRef<str>,
     ) -> Result<Self::Request<'_>, Self::Error>;
 }
 
-pub trait HttpRequest<'a>: HttpSendHeaders<'a> {
-    type Response<'b>: HttpResponse<'b, Error = Self::Error>;
-    type Write<'b>: io::Write<Error = Self::Error>;
+#[derive(Debug)]
+pub enum SendError<S, W>
+where
+    S: fmt::Display + fmt::Debug,
+    W: fmt::Display + fmt::Debug,
+{
+    SendError(S),
+    WriteError(W),
+}
+
+impl<S, W> fmt::Display for SendError<S, W>
+where
+    S: fmt::Display + fmt::Debug,
+    W: fmt::Display + fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SendError::SendError(s) => write!(f, "Send Error {}", s),
+            SendError::WriteError(w) => write!(f, "Write Error {}", w),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<S, W> std::error::Error for SendError<S, W>
+where
+    S: fmt::Display + fmt::Debug,
+    W: fmt::Display + fmt::Debug,
+    // TODO
+    // where
+    //     S: std::error::Error + 'static,
+    //     W: std::error::Error + 'static,
+{
+    // TODO
+    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    //     match self {
+    //         SendError::SendError(s) => Some(s),
+    //         SendError::WriteError(w) => Some(w),
+    //     }
+    // }
+}
+
+pub trait RequestWrite<'a>: io::Write {
+    type Response: Response<Error = Self::Error>;
+
+    fn into_response(self) -> Result<Self::Response, Self::Error>;
+}
+
+pub trait Request<'a>: SendHeaders<'a> {
+    type Write<'b>: RequestWrite<'b, Error = Self::Error>;
 
     #[cfg(not(feature = "std"))]
-    type Error;
+    type Error: fmt::Debug + fmt::Display;
 
     #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
-    fn send_bytes(self, bytes: impl AsRef<[u8]>) -> Result<Self::Response<'a>, Self::Error>
+    fn send_bytes(
+        self,
+        bytes: impl AsRef<[u8]>,
+    ) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, Self::Error>
     where
         Self: Sized,
     {
-        self.send(bytes.as_ref().len(), |write| {
-            write.do_write_all(bytes.as_ref())
-        })
+        let mut write = self.into_writer(bytes.as_ref().len())?;
+
+        write.do_write_all(bytes.as_ref())?;
+
+        write.into_response()
     }
 
-    fn send_str(self, s: impl AsRef<str>) -> Result<Self::Response<'a>, Self::Error>
+    fn send_str(
+        self,
+        s: impl AsRef<str>,
+    ) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, Self::Error>
     where
         Self: Sized,
     {
         self.send_bytes(s.as_ref().as_bytes())
     }
 
-    fn send_json<T>(self, _t: impl AsRef<T>) -> Result<Self::Response<'a>, Self::Error>
+    fn send_json<T: Serialize>(
+        self,
+        o: impl AsRef<T>,
+    ) -> Result<
+        <Self::Write<'a> as RequestWrite<'a>>::Response,
+        SendError<Self::Error, serde_json::Error>,
+    >
     where
         Self: Sized,
     {
-        todo!()
+        let s = serde_json::to_string(o.as_ref()).map_err(SendError::WriteError)?;
+
+        self.send_str(s).map_err(SendError::SendError)
     }
 
-    fn send_reader<R: io::Read<Error = Self::Error>>(
+    #[allow(clippy::type_complexity)]
+    fn send_reader<R: io::Read>(
         self,
         size: usize,
-        mut read: R,
-    ) -> Result<Self::Response<'a>, Self::Error>
+        read: R,
+    ) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, SendError<Self::Error, R::Error>>
     where
         Self: Sized,
     {
-        self.send(size, |write| {
-            let mut size = size;
+        let mut write = self.into_writer(size).map_err(SendError::SendError)?;
 
-            let mut buf = [0; 128];
-            let buf_len = buf.len();
+        io::copy_len(read, &mut write, size as u64).map_err(|e| match e {
+            io::CopyError::ReadError(e) => SendError::WriteError(e),
+            io::CopyError::WriteError(e) => SendError::SendError(e),
+        })?;
 
-            while size > 0 {
-                let s = read.do_read(&mut buf[0..min(size, buf_len)])?;
-                write.do_write_all(&buf[0..s])?;
-
-                size -= s;
-            }
-
-            Ok(())
-        })
+        write.into_response().map_err(SendError::SendError)
     }
 
-    fn send(
-        self,
-        size: usize,
-        f: impl FnOnce(&mut Self::Write<'a>) -> Result<(), Self::Error>,
-    ) -> Result<Self::Response<'a>, Self::Error>;
+    fn into_writer(self, size: usize) -> Result<Self::Write<'a>, Self::Error>;
 
-    fn submit(self) -> Result<Self::Response<'a>, Self::Error>
+    fn submit(self) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, Self::Error>
     where
         Self: Sized,
     {
@@ -102,16 +165,16 @@ pub trait HttpRequest<'a>: HttpSendHeaders<'a> {
     }
 }
 
-pub trait HttpResponse<'a>: HttpStatus + HttpHeaders {
-    type Read<'b>: io::Read<Error = Self::Error>;
+pub trait Response: Status + Headers {
+    type Read<'a>: io::Read<Error = Self::Error>
+    where
+        Self: 'a;
 
     #[cfg(not(feature = "std"))]
-    type Error;
+    type Error: fmt::Debug + fmt::Display;
 
     #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;
 
-    fn payload<'b>(&'b mut self) -> &mut Self::Read<'b>;
-
-    fn into_payload(self) -> Self::Read<'a>;
+    fn reader(&self) -> Self::Read<'_>;
 }

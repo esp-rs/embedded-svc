@@ -1,14 +1,25 @@
 extern crate alloc;
+use core::fmt;
+
 use alloc::sync::Arc;
 
-use crate::{httpd::registry::*, httpd::*, mutex::*};
+use anyhow::Result;
+
+use crate::{
+    http::server::*,
+    http::{
+        server::{middleware::Middleware, registry::*},
+        Headers, SendHeaders, SendStatus,
+    },
+    mutex::*,
+};
 
 pub fn register<R, M>(
-    registry: R,
+    registry: &mut R,
     pref: impl AsRef<str>,
     portal_uri: impl AsRef<str> + 'static,
     captive: Arc<M>,
-) -> Result<R>
+) -> Result<()>
 where
     R: Registry,
     M: Mutex<Data = bool> + 'static,
@@ -19,10 +30,16 @@ where
 
     registry
         .at(prefix(""))
-        .get(move |req| get_status(req, portal_uri.as_ref(), &*captive))
+        .get(move |req| get_status(req, portal_uri.as_ref(), &*captive))?;
+
+    Ok(())
 }
 
-fn get_status<M>(_req: Request, portal_uri: impl AsRef<str>, captive: &M) -> Result<Response>
+fn get_status<'a, M>(
+    _req: &mut impl Request<'a>,
+    portal_uri: impl AsRef<str>,
+    captive: &M,
+) -> Result<ResponseData>
 where
     M: Mutex<Data = bool>,
 {
@@ -36,26 +53,43 @@ where
         portal_uri.as_ref(),
     );
 
-    Response::ok()
+    ResponseData::ok()
         .content_type("application/captive+json")
         .body(data.into())
         .into()
 }
 
-pub fn with_captive<M, H>(
-    portal_uri: impl AsRef<str> + 'static,
-    captive: Arc<M>,
-    allowed_hosts: Option<H>,
-) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response>
+#[derive(Clone)]
+pub struct WithCaptivePortalMiddleware<M, F: Clone> {
+    pub portal_uri: &'static str,
+    pub captive: Arc<M>,
+    pub allowed_hosts: Option<F>,
+}
+
+impl<M, F, R> Middleware<R> for WithCaptivePortalMiddleware<M, F>
 where
     M: Mutex<Data = bool>,
-    H: Fn(&str) -> bool,
+    F: Fn(&str) -> bool + Clone,
+    R: Registry,
 {
-    move |req, handler| {
-        let captive = captive.with_lock(|captive| *captive);
+    type Error = anyhow::Error;
+
+    fn handle<'a, H, E>(
+        &self,
+        req: R::Request<'a>,
+        resp: R::Response<'a>,
+        handler: H,
+    ) -> Result<Completion, Self::Error>
+    where
+        R: Registry,
+        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
+        E: fmt::Display + fmt::Debug,
+    {
+        let captive = self.captive.with_lock(|captive| *captive);
 
         let allow = !captive
-            || allowed_hosts
+            || self
+                .allowed_hosts
                 .as_ref()
                 .and_then(|allowed_hosts| {
                     req.header("host").map(|host| allowed_hosts(host.as_ref()))
@@ -63,11 +97,14 @@ where
                 .unwrap_or(true);
 
         if allow {
-            handler(req)
+            handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e))
         } else {
-            Response::new(307)
-                .header("Location", portal_uri.as_ref().to_owned())
-                .into()
+            let completion = resp
+                .status(307)
+                .header("Location", self.portal_uri.to_owned())
+                .submit(req)?;
+
+            Ok(completion)
         }
     }
 }

@@ -1,3 +1,5 @@
+use core::fmt;
+
 extern crate alloc;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
@@ -5,8 +7,6 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use async_trait::async_trait;
-
-use either::*;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,11 @@ pub enum LoadResult {
 }
 
 pub trait FirmwareInfoLoader {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: fmt::Debug + fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn load(&mut self, buf: &[u8]) -> Result<LoadResult, Self::Error>;
 
@@ -58,7 +62,11 @@ pub enum SlotState {
 }
 
 pub trait OtaSlot {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: fmt::Debug + fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn get_label(&self) -> Result<Cow<'_, str>, Self::Error>;
     fn get_state(&self) -> Result<SlotState, Self::Error>;
@@ -73,7 +81,12 @@ pub trait Ota {
     type Update<'a>: OtaUpdate
     where
         Self: 'a;
-    type Error;
+
+    #[cfg(not(feature = "std"))]
+    type Error: fmt::Debug + Fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn get_boot_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
 
@@ -91,6 +104,48 @@ pub trait Ota {
     fn mark_running_slot_invalid_and_reboot(&mut self) -> Self::Error;
 }
 
+#[derive(Debug)]
+pub enum OtaUpdateError<O, R>
+where
+    O: fmt::Display + fmt::Debug,
+    R: fmt::Display + fmt::Debug,
+{
+    UpdateError(O),
+    ReadError(R),
+}
+
+impl<O, R> fmt::Display for OtaUpdateError<O, R>
+where
+    O: fmt::Display + fmt::Debug,
+    R: fmt::Display + fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OtaUpdateError::UpdateError(o) => write!(f, "Update Error {}", o),
+            OtaUpdateError::ReadError(r) => write!(f, "Read Error {}", r),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<O, R> std::error::Error for OtaUpdateError<O, R>
+where
+    O: fmt::Display + fmt::Debug,
+    R: fmt::Display + fmt::Debug,
+    // TODO
+    // where
+    //     S: std::error::Error + 'static,
+    //     W: std::error::Error + 'static,
+{
+    // TODO
+    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    //     match self {
+    //         SendError::SendError(s) => Some(s),
+    //         SendError::WriteError(w) => Some(w),
+    //     }
+    // }
+}
+
 pub trait OtaUpdate: io::Write {
     fn complete(self) -> Result<(), Self::Error>;
     fn abort(self) -> Result<(), Self::Error>;
@@ -99,15 +154,21 @@ pub trait OtaUpdate: io::Write {
         mut self,
         read: R,
         progress: impl Fn(u64, u64),
-    ) -> Result<(), Either<R::Error, Self::Error>>
+    ) -> Result<(), OtaUpdateError<Self::Error, R::Error>>
     where
         R: io::Read,
         Self: Sized,
     {
         match io::copy_len_with_progress(read, &mut self, u64::MAX, progress) {
-            Ok(_) => self.complete().map_err(Either::Right),
+            Ok(_) => self.complete().map_err(OtaUpdateError::UpdateError),
             Err(e) => {
-                self.abort().map_err(Either::Right)?;
+                self.abort().map_err(OtaUpdateError::UpdateError)?;
+
+                let e = match e {
+                    io::CopyError::ReadError(e) => OtaUpdateError::ReadError(e),
+                    io::CopyError::WriteError(e) => OtaUpdateError::UpdateError(e),
+                };
+
                 Err(e)
             }
         }
@@ -116,7 +177,11 @@ pub trait OtaUpdate: io::Write {
 
 #[async_trait]
 pub trait OtaAsync {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: fmt::Debug + fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     async fn get_available_update(&self) -> Result<Option<FirmwareInfo>, Self::Error>;
 
@@ -138,7 +203,12 @@ pub trait OtaServer {
     where
         Self: 'a;
     type Iterator: Iterator<Item = FirmwareInfo>;
-    type Error;
+
+    #[cfg(not(feature = "std"))]
+    type Error: fmt::Debug + fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error>;
 

@@ -119,7 +119,7 @@ mod server {
         time::Duration,
     };
 
-    use anyhow::*;
+    use anyhow::{anyhow, Result};
 
     use log::*;
 

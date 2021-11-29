@@ -138,7 +138,11 @@ impl TransitionalState<ConnectionStatus> for Status {
 }
 
 pub trait Eth {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: core::fmt::Debug + core::fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
@@ -151,7 +155,11 @@ pub trait Eth {
 #[cfg(feature = "alloc")]
 #[async_trait]
 pub trait EthAsync {
-    type Error;
+    #[cfg(not(feature = "std"))]
+    type Error: core::fmt::Debug + core::fmt::Display;
+
+    #[cfg(feature = "std")]
+    type Error: std::error::Error + Send + Sync + 'static;
 
     async fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
