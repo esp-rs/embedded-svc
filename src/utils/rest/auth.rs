@@ -4,7 +4,7 @@ extern crate alloc;
 use alloc::borrow::Cow;
 use alloc::rc::Rc;
 
-use anyhow::*;
+use anyhow::Result;
 
 use http_auth_basic::Credentials;
 

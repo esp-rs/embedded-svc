@@ -3,7 +3,7 @@ use core::fmt;
 
 use alloc::sync::Arc;
 
-use anyhow::*;
+use anyhow::Result;
 
 use crate::{
     http::server::*,

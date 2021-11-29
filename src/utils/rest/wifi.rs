@@ -1,7 +1,7 @@
 extern crate alloc;
 use alloc::sync::Arc;
 
-use anyhow::*;
+use anyhow::Result;
 
 use crate::{http::server::registry::*, http::server::*, io, mutex::*, wifi};
 
