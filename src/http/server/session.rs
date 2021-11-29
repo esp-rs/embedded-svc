@@ -13,8 +13,8 @@ use super::*;
 
 pub struct Sessions<M, S>
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>,
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
     get_random: Box<dyn Fn() -> [u8; 16]>,
     current_time: Box<dyn Fn() -> Duration>,
@@ -23,25 +23,21 @@ where
     data: M,
 }
 
-#[derive(Debug)]
-pub enum SessionState {
-    Timeout,
-    Invalid,
-    Ok(SessionData),
-}
-
 #[derive(Debug, Default)]
-pub struct SessionData {
+pub struct SessionData<S>
+where
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
+{
     last_accessed: Duration,
     timeout: Duration,
     used: u32,
-    attributes: BTreeMap<String, Vec<u8>>,
+    state: Arc<S>,
 }
 
 pub struct RequestScopedSession<M, S>
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>,
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
     sessions: Arc<Sessions<M, S>>,
     session_id: Option<String>,
@@ -50,46 +46,118 @@ where
 
 impl<M, S> RequestScopedSession<M, S>
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>,
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
     pub fn new(sessions: Arc<Sessions<M, S>>, session_id: Option<impl AsRef<str>>) -> Self {
-        let session = session_id
-            .as_ref()
-            .map(|session_id| {
-                sessions.data.with_lock(|data| {
-                    data.get(session_id.as_ref()).map(|s| {
-                        s.with_lock(|ss| {
-                            if let SessionState::Ok(sd) = ss {
-                                sd.used += 1;
+        let session = session_id.as_ref().and_then(|session_id| {
+            sessions.data.with_lock(|data| {
+                let sd = data.get_mut(session_id.as_ref());
 
-                                Some(s.clone())
-                            } else {
-                                None
-                            }
-                        })
-                    })
-                })
+                if let Some(sd) = sd {
+                    sd.used += 1;
+                    Some(sd.state.clone())
+                } else {
+                    None
+                }
             })
-            .flatten()
-            .flatten();
+        });
 
         Self {
             sessions,
-            session_id: session_id.map(|s| s.as_ref().to_owned()),
+            session_id: if session.is_some() {
+                session_id.map(|s| s.as_ref().to_owned())
+            } else {
+                None
+            },
             session,
         }
     }
 
+    fn create(&mut self) -> Result<(), SessionError> {
+        let now = (self.sessions.current_time)();
+        let session_id = self.sessions.generate_session_id();
+        let max_sessions = self.sessions.max_sessions;
+
+        let session = self.sessions.data.with_lock(|sessions| {
+            if sessions.len() >= max_sessions {
+                Err(SessionError::MaxSessiuonsReachedError)
+            } else {
+                let session = Arc::new(S::new(Some(BTreeMap::new())));
+
+                let sd = SessionData {
+                    last_accessed: now,
+                    timeout: self.sessions.default_session_timeout,
+                    used: 1,
+                    state: session.clone(),
+                };
+
+                sessions.insert(session_id.clone(), sd);
+
+                Ok(session)
+            }
+        })?;
+
+        self.session_id = Some(session_id);
+        self.session = Some(session);
+
+        Ok(())
+    }
+
+    fn release(&mut self, only_if_invalid: bool) -> (Option<String>, bool) {
+        let result = if let Some(session) = self.session.as_ref() {
+            let now = (self.sessions.current_time)();
+
+            session.with_lock(|ss| {
+                let valid = ss.is_some();
+                if only_if_invalid && valid {
+                    return (None, false);
+                }
+
+                let session_id = self.session_id.as_ref().unwrap().clone();
+
+                self.sessions.data.with_lock(|sessions| {
+                    let sd = sessions.get_mut(&session_id);
+
+                    if let Some(sd) = sd {
+                        sd.used -= 1;
+                        sd.last_accessed = now;
+
+                        if sd.used == 0 && !valid {
+                            sessions.remove(&session_id);
+                        }
+                    } else if valid {
+                        let sd = SessionData {
+                            last_accessed: now,
+                            timeout: self.sessions.default_session_timeout,
+                            used: 0,
+                            state: session.clone(),
+                        };
+
+                        sessions.insert(session_id.clone(), sd);
+                    }
+                });
+
+                (Some(session_id), true)
+            })
+        } else {
+            (None, true)
+        };
+
+        self.session = None;
+        self.session_id = None;
+
+        result
+    }
+
     fn with_session<Q>(
         &self,
-        f: impl Fn(&mut SessionData) -> Result<Q, SessionError>,
+        f: impl Fn(&mut BTreeMap<String, Vec<u8>>) -> Result<Q, SessionError>,
     ) -> Result<Q, SessionError> {
         if let Some(session) = self.session.as_ref() {
             session.with_lock(|ss| match ss {
-                SessionState::Timeout => Err(SessionError::TimeoutError),
-                SessionState::Invalid => Err(SessionError::InvalidatedError),
-                SessionState::Ok(sd) => f(sd),
+                None => Err(SessionError::InvalidatedError),
+                Some(attrs) => f(attrs),
             })
         } else {
             Err(SessionError::MissingError)
@@ -114,20 +182,11 @@ where
 
 impl<M, S> Drop for RequestScopedSession<M, S>
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>,
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
     fn drop(&mut self) {
-        let now = (self.sessions.current_time)();
-
-        if let Some(session) = self.session.as_ref() {
-            session.with_lock(|ss| {
-                if let SessionState::Ok(sd) = ss {
-                    sd.last_accessed = now;
-                    sd.used -= 1;
-                }
-            });
-        }
+        let _ = self.release(false);
 
         self.sessions.cleanup();
     }
@@ -135,8 +194,8 @@ where
 
 impl<'a, M, S> Session<'a> for RequestScopedSession<M, S>
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>,
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
     fn get_error(&self) -> Option<SessionError> {
         self.with_session(|_| Ok(()))
@@ -150,42 +209,17 @@ where
     }
 
     fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError> {
-        let valid = if let Some(session) = self.session.as_ref() {
-            session.with_lock(|ss| matches!(ss, SessionState::Ok(_)))
-        } else {
-            false
-        };
+        let (_, released) = self.release(true);
 
-        if !valid {
-            let session_id = self.sessions.generate_session_id();
-            let last_accessed = (self.sessions.current_time)();
-            let timeout = self.sessions.default_session_timeout;
-
-            let session = Arc::new(S::new(SessionState::Ok(SessionData {
-                last_accessed,
-                timeout,
-                ..Default::default()
-            })));
-
-            self.sessions.data.with_lock(|data| {
-                if data.len() < self.sessions.max_sessions {
-                    data.insert(session_id.clone(), session.clone());
-
-                    Ok(())
-                } else {
-                    Err(SessionError::MaxSessiuonsReachedError)
-                }
-            })?;
-
-            self.session_id = Some(session_id);
-            self.session = Some(session);
+        if released {
+            self.create()?;
         }
 
         Ok(self)
     }
 
     fn get<T: DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError> {
-        self.with_session(|sd| Self::deserialize(sd.attributes.get(name.as_ref())))
+        self.with_session(|attributes| Self::deserialize(attributes.get(name.as_ref())))
     }
 
     fn set_and_get<I: Serialize, T: DeserializeOwned>(
@@ -193,8 +227,8 @@ where
         name: impl AsRef<str>,
         value: &I,
     ) -> Result<Option<T>, SessionError> {
-        self.with_session(|sd| {
-            Self::deserialize(sd.attributes.insert(
+        self.with_session(|attributes| {
+            Self::deserialize(attributes.insert(
                 name.as_ref().to_owned(),
                 serde_json::to_vec(value).map_err(|_| SessionError::SerdeError)?,
             ))
@@ -205,7 +239,7 @@ where
         &mut self,
         name: impl AsRef<str>,
     ) -> Result<Option<T>, SessionError> {
-        self.with_session(|sd| Self::deserialize(sd.attributes.remove(name.as_ref())))
+        self.with_session(|attributes| Self::deserialize(attributes.remove(name.as_ref())))
     }
 
     fn set<I: Serialize>(
@@ -213,9 +247,8 @@ where
         name: impl AsRef<str>,
         value: &I,
     ) -> Result<bool, SessionError> {
-        self.with_session(|sd| {
-            Ok(sd
-                .attributes
+        self.with_session(|attributes| {
+            Ok(attributes
                 .insert(
                     name.as_ref().to_owned(),
                     serde_json::to_vec(value).map_err(|_| SessionError::SerdeError)?,
@@ -225,15 +258,15 @@ where
     }
 
     fn remove(&mut self, name: impl AsRef<str>) -> Result<bool, SessionError> {
-        self.with_session(|sd| Ok(sd.attributes.remove(name.as_ref()).is_some()))
+        self.with_session(|attributes| Ok(attributes.remove(name.as_ref()).is_some()))
     }
 
     fn invalidate(&mut self) -> Result<bool, SessionError> {
         let valid = self.sessions.data.with_lock(|data| {
             if let Some(session) = self.session.as_ref() {
                 session.with_lock(|ss| {
-                    if matches!(ss, SessionState::Ok(_)) {
-                        *ss = SessionState::Invalid;
+                    if ss.is_some() {
+                        *ss = None;
 
                         data.remove(self.session_id.as_ref().unwrap());
 
@@ -253,13 +286,13 @@ where
 
 pub struct RequestScopedSessionReference<'a, M, S>(&'a RefCell<RequestScopedSession<M, S>>)
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>;
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>;
 
 impl<'a, M, S> RequestScopedSessionReference<'a, M, S>
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>,
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
     pub fn new(session: &'a RefCell<RequestScopedSession<M, S>>) -> Self {
         Self(session)
@@ -268,8 +301,8 @@ where
 
 impl<'a, M, S> Session<'a> for RequestScopedSessionReference<'a, M, S>
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>,
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
     fn get_error(&self) -> Option<SessionError> {
         self.0.borrow().get_error()
@@ -326,8 +359,8 @@ where
 
 impl<M, S> Sessions<M, S>
 where
-    M: Mutex<Data = BTreeMap<String, Arc<S>>>,
-    S: Mutex<Data = SessionState>,
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
     pub fn new(
         get_random: impl Fn() -> [u8; 16] + 'static,
@@ -394,29 +427,16 @@ where
     }
 
     fn cleanup(&self) {
-        info!("Performing sessions cleanup");
+        info!("Performing stale sessions cleanup");
 
         let now = (self.current_time)();
 
         self.data.with_lock(|data| {
-            data.retain(|_, v| {
-                v.with_lock(|ss| {
-                    if let SessionState::Ok(sd) = ss {
-                        if sd.used == 0 && now - sd.last_accessed > sd.timeout {
-                            *ss = SessionState::Timeout;
-
-                            false
-                        } else {
-                            true
-                        }
-                    } else {
-                        false
-                    }
-                })
-            });
+            data.retain(|_, sd| sd.used > 0 || now - sd.last_accessed < sd.timeout);
         });
     }
 }
+
 struct CookieIterator<'a>(Split<'a, char>);
 
 impl<'a> CookieIterator<'a> {

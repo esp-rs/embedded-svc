@@ -325,11 +325,6 @@ impl From<std::fs::File> for Body {
     }
 }
 
-pub enum SessionState {
-    New(BTreeMap<String, Box<dyn Any>>),
-    Invalidate,
-}
-
 pub struct ResponseData {
     status: u16,
     status_message: Option<String>,
@@ -337,8 +332,6 @@ pub struct ResponseData {
     headers: BTreeMap<String, String>,
 
     body: Body,
-
-    new_session_state: Option<SessionState>,
 }
 
 impl Default for ResponseData {
@@ -348,7 +341,6 @@ impl Default for ResponseData {
             status_message: None,
             headers: BTreeMap::new(),
             body: Default::default(),
-            new_session_state: None,
         }
     }
 }
@@ -418,12 +410,6 @@ impl ResponseData {
 
     pub fn body(mut self, body: Body) -> Self {
         self.body = body;
-
-        self
-    }
-
-    pub fn new_session_state(mut self, new_session_state: SessionState) -> Self {
-        self.new_session_state = Some(new_session_state);
 
         self
     }

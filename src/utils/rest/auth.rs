@@ -241,8 +241,8 @@ where
         .into()
 }
 
-pub fn logout<'a>(_req: &mut impl Request<'a>) -> Result<ResponseData> {
-    ResponseData::ok()
-        .new_session_state(SessionState::Invalidate)
-        .into()
+pub fn logout<'a>(req: &mut impl Request<'a>) -> Result<ResponseData> {
+    req.session().invalidate()?;
+
+    ResponseData::ok().into()
 }
