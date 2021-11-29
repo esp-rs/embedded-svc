@@ -1,6 +1,12 @@
 use core::fmt;
 use core::result::Result;
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+
 #[cfg(feature = "std")]
 pub use stdio::*;
 

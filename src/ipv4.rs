@@ -141,7 +141,11 @@ impl Default for ClientSettings {
 #[derive(Clone, Debug, PartialEq, Default)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct DHCPClientSettings {
-    pub hostname: Option<String>,
+    #[cfg(feature = "alloc")]
+    pub hostname: Option<alloc::string::String>,
+
+    #[cfg(not(feature = "alloc"))]
+    pub hostname: Option<&'static str>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
