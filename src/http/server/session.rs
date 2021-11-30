@@ -1,4 +1,4 @@
-use core::{cell::RefCell, fmt::Write, str::Split, time::Duration};
+use core::{cell::RefCell, fmt::Write, time::Duration};
 
 extern crate alloc;
 use alloc::collections::BTreeMap;
@@ -377,32 +377,6 @@ where
         }
     }
 
-    pub fn get_session_id(cookies: Option<impl AsRef<str>>) -> Option<String> {
-        cookies.and_then(|s| Self::parse_session_cookie(s.as_ref()).map(str::to_owned))
-    }
-
-    pub fn insert_session_cookie(
-        cookies: Option<impl AsRef<str>>,
-        session_id: impl AsRef<str>,
-    ) -> String {
-        let cookies = cookies
-            .as_ref()
-            .map(|cookies| cookies.as_ref())
-            .unwrap_or("");
-
-        CookieIterator::collect(
-            CookieIterator::new(cookies)
-                .filter(|(name, _)| *name != "SESSIONID")
-                .chain(core::iter::once(("SESSIONID", session_id.as_ref()))),
-        )
-    }
-
-    fn parse_session_cookie(cookies: &str) -> Option<&str> {
-        CookieIterator::new(cookies)
-            .find(|(name, _)| *name == "SESSIONID")
-            .map(|(_, value)| value)
-    }
-
     fn generate_session_id(&self) -> String {
         let new_session_id_bytes = (self.get_random)();
 
@@ -434,44 +408,5 @@ where
         self.data.with_lock(|data| {
             data.retain(|_, sd| sd.used > 0 || now - sd.last_accessed < sd.timeout);
         });
-    }
-}
-
-struct CookieIterator<'a>(Split<'a, char>);
-
-impl<'a> CookieIterator<'a> {
-    pub fn new(cookies: &'a str) -> Self {
-        Self(cookies.split(';'))
-    }
-
-    pub fn collect<'b>(iter: impl Iterator<Item = (&'b str, &'b str)>) -> String {
-        let mut result = String::new();
-        for (key, value) in iter {
-            if !result.is_empty() {
-                result.push(';');
-            }
-
-            result.push_str(key);
-            result.push('=');
-            result.push_str(value);
-        }
-
-        result
-    }
-}
-
-impl<'a> Iterator for CookieIterator<'a> {
-    type Item = (&'a str, &'a str);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0
-            .next()
-            .map(|cookie_pair| cookie_pair.split('='))
-            .and_then(|mut cookie_pair| {
-                cookie_pair
-                    .next()
-                    .map(|name| cookie_pair.next().map(|value| (name, value)))
-            })
-            .flatten()
     }
 }

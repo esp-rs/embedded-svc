@@ -3,7 +3,6 @@ use alloc::borrow::Cow;
 use alloc::string::ToString;
 
 pub mod client;
-#[cfg(feature = "std")] // TODO: Remove
 pub mod server;
 
 pub mod status {
@@ -162,5 +161,111 @@ pub trait SendStatus<'a> {
     {
         self.set_status_message(message);
         self
+    }
+}
+
+pub mod cookies {
+    use core::iter::{FromIterator, Iterator};
+    use core::str::Split;
+
+    extern crate alloc;
+    use alloc::borrow::Cow;
+    use alloc::string::String;
+
+    pub struct Cookies<'a>(Cow<'a, str>);
+
+    impl<'a> Cookies<'a> {
+        pub fn new(cookies_str: impl Into<Cow<'a, str>>) -> Self {
+            Self(cookies_str.into())
+        }
+
+        pub fn get<'b>(&'b self, name: impl AsRef<str>) -> Option<&'b str> {
+            let name = name.as_ref();
+
+            self.into_iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value)
+        }
+
+        pub fn insert(&self, name: impl AsRef<str>, value: impl AsRef<str>) -> Cookies<'static> {
+            let name = name.as_ref();
+
+            self.into_iter()
+                .chain(core::iter::once((name, value.as_ref())))
+                .filter(|(key, _)| *key != name)
+                .collect()
+        }
+
+        pub fn remove(&self, name: impl AsRef<str>) -> Cookies<'static> {
+            let name = name.as_ref();
+
+            self.into_iter().filter(|(key, _)| *key != name).collect()
+        }
+    }
+
+    impl<'a> AsRef<str> for Cookies<'a> {
+        fn as_ref(&self) -> &str {
+            self.0.as_ref()
+        }
+    }
+
+    impl<'a> From<Cookies<'a>> for Cow<'a, str> {
+        fn from(cookies: Cookies<'a>) -> Self {
+            cookies.0
+        }
+    }
+
+    impl<'a, 'b> IntoIterator for &'b Cookies<'a>
+    where
+        'a: 'b,
+    {
+        type Item = (&'b str, &'b str);
+
+        type IntoIter = CookieIterator<'b>;
+
+        fn into_iter(self) -> Self::IntoIter {
+            CookieIterator::new(self.0.as_ref())
+        }
+    }
+
+    impl<'a> FromIterator<(&'a str, &'a str)> for Cookies<'static> {
+        fn from_iter<T: IntoIterator<Item = (&'a str, &'a str)>>(iter: T) -> Self {
+            let mut result = String::new();
+            for (key, value) in iter {
+                if !result.is_empty() {
+                    result.push(';');
+                }
+
+                result.push_str(key);
+                result.push('=');
+                result.push_str(value);
+            }
+
+            Self(Cow::Owned(result))
+        }
+    }
+
+    pub struct CookieIterator<'a>(Split<'a, char>);
+
+    impl<'a> CookieIterator<'a> {
+        pub fn new(cookies: &'a str) -> Self {
+            Self(cookies.split(';'))
+        }
+    }
+
+    impl<'a> Iterator for CookieIterator<'a> {
+        type Item = (&'a str, &'a str);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.0
+                .next()
+                .map(|cookie_pair| cookie_pair.split('='))
+                .and_then(|mut cookie_pair| {
+                    cookie_pair
+                        .next()
+                        .map(|name| cookie_pair.next().map(|value| (name, value)))
+                })
+                .flatten()
+        }
     }
 }
