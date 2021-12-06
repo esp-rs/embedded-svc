@@ -138,7 +138,7 @@ impl Default for SecondaryChannel {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointInfo {
     pub ssid: alloc::string::String,
@@ -150,7 +150,7 @@ pub struct AccessPointInfo {
     pub auth_method: AuthMethod,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointConfiguration {
     pub ssid: alloc::string::String,
@@ -201,7 +201,7 @@ impl Default for AccessPointConfiguration {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
     pub ssid: alloc::string::String,
@@ -270,7 +270,7 @@ pub enum Capability {
     Mixed,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Configuration {
     None,
@@ -590,13 +590,18 @@ pub trait WifiAsync {
     async fn scan_fill(
         &mut self,
         access_points: &mut [AccessPointInfo],
-    ) -> Result<usize, Self::Error>;
+    ) -> Result<usize, Self::Error>
+    where
+        Self: Sized;
 
     #[cfg(feature = "alloc")]
     async fn scan_fill(
         &mut self,
         access_points: &mut [AccessPointInfo],
-    ) -> Result<usize, Self::Error> {
+    ) -> Result<usize, Self::Error>
+    where
+        Self: Sized,
+    {
         let result = self.scan().await?;
 
         let len = usize::min(access_points.len(), result.len());
