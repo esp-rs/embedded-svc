@@ -279,6 +279,10 @@ impl Response {
         self
     }
 
+    pub fn content_encoding(self, value: impl Into<String>) -> Self {
+        self.header("content-encoding", value.into())
+    }
+
     pub fn content_type(self, value: impl Into<String>) -> Self {
         self.header("content-type", value.into())
     }
