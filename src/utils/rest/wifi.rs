@@ -51,7 +51,8 @@ where
     W: wifi::Wifi,
 {
     let caps = wifi
-        .with_lock(|wifi| wifi.get_capabilities())
+        .lock()
+        .get_capabilities()
         .map_err(|e| anyhow::anyhow!(e))?;
 
     ResponseData::from_json(&caps)?.into()
@@ -62,7 +63,7 @@ where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
 {
-    let status = wifi.with_lock(|wifi| wifi.get_status());
+    let status = wifi.lock().get_status();
 
     ResponseData::from_json(&status)?.into()
 }
@@ -73,7 +74,8 @@ where
     W: wifi::Wifi,
 {
     let data = wifi
-        .with_lock(|wifi| wifi.scan())
+        .lock()
+        .scan()
         .map_err(|e| anyhow::anyhow!(e))?;
 
     ResponseData::from_json(&data)?.into()
@@ -85,7 +87,8 @@ where
     W: wifi::Wifi,
 {
     let conf = wifi
-        .with_lock(|wifi| wifi.get_configuration())
+        .lock()
+        .get_configuration()
         .map_err(|e| anyhow::anyhow!(e))?;
 
     ResponseData::from_json(&conf)?.into()
@@ -102,7 +105,9 @@ where
 
     let conf: wifi::Configuration = serde_json::from_slice(&bytes)?;
 
-    wifi.with_lock(|wifi| wifi.set_configuration(&conf))
+    wifi
+        .lock()
+        .set_configuration(&conf)
         .map_err(|e| anyhow::anyhow!(e))?;
 
     Ok(().into())

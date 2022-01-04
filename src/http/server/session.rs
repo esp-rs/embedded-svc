@@ -51,16 +51,16 @@ where
 {
     pub fn new(sessions: Arc<Sessions<M, S>>, session_id: Option<impl AsRef<str>>) -> Self {
         let session = session_id.as_ref().and_then(|session_id| {
-            sessions.data.with_lock(|data| {
-                let sd = data.get_mut(session_id.as_ref());
+            let mut data = sessions.data.lock();
 
-                if let Some(sd) = sd {
-                    sd.used += 1;
-                    Some(sd.state.clone())
-                } else {
-                    None
-                }
-            })
+            let sd = data.get_mut(session_id.as_ref());
+
+            if let Some(sd) = sd {
+                sd.used += 1;
+                Some(sd.state.clone())
+            } else {
+                None
+            }
         });
 
         Self {
@@ -79,24 +79,22 @@ where
         let session_id = self.sessions.generate_session_id();
         let max_sessions = self.sessions.max_sessions;
 
-        let session = self.sessions.data.with_lock(|sessions| {
-            if sessions.len() >= max_sessions {
-                Err(SessionError::MaxSessiuonsReachedError)
-            } else {
-                let session = Arc::new(S::new(Some(BTreeMap::new())));
+        let mut sessions = self.sessions.data.lock();
 
-                let sd = SessionData {
-                    last_accessed: now,
-                    timeout: self.sessions.default_session_timeout,
-                    used: 1,
-                    state: session.clone(),
-                };
+        if sessions.len() >= max_sessions {
+            Err(SessionError::MaxSessiuonsReachedError)?;
+        }
 
-                sessions.insert(session_id.clone(), sd);
+        let session = Arc::new(S::new(Some(BTreeMap::new())));
 
-                Ok(session)
-            }
-        })?;
+        let sd = SessionData {
+            last_accessed: now,
+            timeout: self.sessions.default_session_timeout,
+            used: 1,
+            state: session.clone(),
+        };
+
+        sessions.insert(session_id.clone(), sd);
 
         self.session_id = Some(session_id);
         self.session = Some(session);
@@ -108,38 +106,38 @@ where
         let result = if let Some(session) = self.session.as_ref() {
             let now = (self.sessions.current_time)();
 
-            session.with_lock(|ss| {
-                let valid = ss.is_some();
-                if only_if_invalid && valid {
-                    return (None, false);
+            let ss = session.lock();
+
+            let valid = ss.is_some();
+            if only_if_invalid && valid {
+                return (None, false);
+            }
+
+            let session_id = self.session_id.as_ref().unwrap().clone();
+
+            let mut sessions = self.sessions.data.lock();
+
+            let sd = sessions.get_mut(&session_id);
+
+            if let Some(sd) = sd {
+                sd.used -= 1;
+                sd.last_accessed = now;
+
+                if sd.used == 0 && !valid {
+                    sessions.remove(&session_id);
                 }
+            } else if valid {
+                let sd = SessionData {
+                    last_accessed: now,
+                    timeout: self.sessions.default_session_timeout,
+                    used: 0,
+                    state: session.clone(),
+                };
 
-                let session_id = self.session_id.as_ref().unwrap().clone();
+                sessions.insert(session_id.clone(), sd);
+            }
 
-                self.sessions.data.with_lock(|sessions| {
-                    let sd = sessions.get_mut(&session_id);
-
-                    if let Some(sd) = sd {
-                        sd.used -= 1;
-                        sd.last_accessed = now;
-
-                        if sd.used == 0 && !valid {
-                            sessions.remove(&session_id);
-                        }
-                    } else if valid {
-                        let sd = SessionData {
-                            last_accessed: now,
-                            timeout: self.sessions.default_session_timeout,
-                            used: 0,
-                            state: session.clone(),
-                        };
-
-                        sessions.insert(session_id.clone(), sd);
-                    }
-                });
-
-                (Some(session_id), true)
-            })
+            (Some(session_id), true)
         } else {
             (None, true)
         };
@@ -155,10 +153,11 @@ where
         f: impl Fn(&mut BTreeMap<String, Vec<u8>>) -> Result<Q, SessionError>,
     ) -> Result<Q, SessionError> {
         if let Some(session) = self.session.as_ref() {
-            session.with_lock(|ss| match ss {
+            let ss = &mut *session.lock();
+            match ss {
                 None => Err(SessionError::InvalidatedError),
                 Some(attrs) => f(attrs),
-            })
+            }
         } else {
             Err(SessionError::MissingError)
         }
@@ -262,23 +261,23 @@ where
     }
 
     fn invalidate(&mut self) -> Result<bool, SessionError> {
-        let valid = self.sessions.data.with_lock(|data| {
-            if let Some(session) = self.session.as_ref() {
-                session.with_lock(|ss| {
-                    if ss.is_some() {
-                        *ss = None;
+        let mut data = self.sessions.data.lock();
 
-                        data.remove(self.session_id.as_ref().unwrap());
+        let valid = if let Some(session) = self.session.as_ref() {
+            let mut ss = session.lock();
 
-                        true
-                    } else {
-                        false
-                    }
-                })
+            if ss.is_some() {
+                *ss = None;
+
+                data.remove(self.session_id.as_ref().unwrap());
+
+                true
             } else {
                 false
             }
-        });
+        } else {
+            false
+        };
 
         Ok(valid)
     }
@@ -405,8 +404,8 @@ where
 
         let now = (self.current_time)();
 
-        self.data.with_lock(|data| {
-            data.retain(|_, sd| sd.used > 0 || now - sd.last_accessed < sd.timeout);
-        });
+        self.data
+            .lock()
+            .retain(|_, sd| sd.used > 0 || now - sd.last_accessed < sd.timeout);
     }
 }

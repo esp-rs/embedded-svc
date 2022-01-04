@@ -64,11 +64,11 @@ where
     M: Mutex<Data = O>,
     O: ota::Ota,
 {
-    let info = ota.with_lock(|ota| {
-        ota.get_running_slot()
-            .map_err(|e| anyhow::anyhow!(e))
-            .and_then(|slot| slot.get_firmware_info().map_err(|e| anyhow::anyhow!(e)))
-    })?;
+    let info = ota
+        .lock()
+        .get_running_slot()
+        .map_err(|e| anyhow::anyhow!(e))
+        .and_then(|slot| slot.get_firmware_info().map_err(|e| anyhow::anyhow!(e)))?;
 
     ResponseData::from_json(&info)?.into()
 }
@@ -78,13 +78,11 @@ where
     M: Mutex<Data = O>,
     O: ota::OtaServer,
 {
-    // TODO: Not efficient
-    let updates = ota_server.with_lock(|ota_server| {
-        ota_server
-            .get_releases()
-            .map(|releases| releases.collect::<Vec<_>>())
-            .map_err(|e| anyhow::anyhow!(e))
-    })?;
+    let updates = ota_server
+        .lock()
+        .get_releases()
+        .map(|releases| releases.collect::<Vec<_>>())
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     ResponseData::from_json(&updates)?.into()
 }
@@ -94,11 +92,10 @@ where
     M: Mutex<Data = O>,
     O: ota::OtaServer,
 {
-    let update = ota_server.with_lock(|ota_server| {
-        ota_server
-            .get_latest_release()
-            .map_err(|e| anyhow::anyhow!(e))
-    })?;
+    let update = ota_server
+        .lock()
+        .get_latest_release()
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     ResponseData::from_json(&update)?.into()
 }
@@ -108,7 +105,7 @@ where
     M: Mutex<Data = O>,
     O: ota::Ota,
 {
-    ota.with_lock(|ota| ota.factory_reset().map_err(|e| anyhow::anyhow!(e)))?;
+    ota.lock().factory_reset().map_err(|e| anyhow::anyhow!(e))?;
 
     Ok(ResponseData::ok())
 }
@@ -134,33 +131,30 @@ where
         .find(|(key, _)| key.as_ref() == "download_id")
         .map(|(_, value)| value.into_owned());
 
-    ota_server.with_lock(|ota_server| {
-        let download_id = match download_id {
-            None => ota_server
-                .get_latest_release()
-                .map_err(|e| anyhow::anyhow!(e))?
-                .and_then(|release| release.download_id),
-            some => some,
-        };
+    let mut ota_server = ota_server.lock();
 
-        let download_id = download_id.ok_or_else(|| anyhow!("No update"))?;
+    let download_id = match download_id {
+        None => ota_server
+            .get_latest_release()
+            .map_err(|e| anyhow::anyhow!(e))?
+            .and_then(|release| release.download_id),
+        some => some,
+    };
 
-        let mut ota_update = ota_server
-            .open(download_id)
-            .map_err(|e| anyhow::anyhow!(e))?;
-        let size = ota_update.size();
+    let download_id = download_id.ok_or_else(|| anyhow!("No update"))?;
 
-        ota.with_lock(|ota| {
-            ota.initiate_update()
-                .map_err(|e| anyhow::anyhow!(e))?
-                .update(&mut ota_update, |_, copied| {
-                    progress.with_lock(|progress| {
-                        *progress = size.map(|size| copied as f32 / size as f32)
-                    })
-                }) // TODO: Take the progress mutex more rarely
-                .map_err(|e| anyhow!(e))
-        })
-    })?;
+    let mut ota_update = ota_server
+        .open(download_id)
+        .map_err(|e| anyhow::anyhow!(e))?;
+    let size = ota_update.size();
+
+    ota.lock()
+        .initiate_update()
+        .map_err(|e| anyhow::anyhow!(e))?
+        .update(&mut ota_update, |_, copied| {
+            *progress.lock() = size.map(|size| copied as f32 / size as f32)
+        }) // TODO: Take the progress mutex more rarely
+        .map_err(|e| anyhow!(e))?;
 
     Ok(().into())
 }
@@ -169,5 +163,5 @@ fn get_update_progress<'a, M>(_req: &mut impl Request<'a>, progress: &M) -> Resu
 where
     M: Mutex<Data = Option<f32>>,
 {
-    ResponseData::from_json(&progress.with_lock(|progress| *progress))?.into()
+    ResponseData::from_json(&*progress.lock())?.into()
 }

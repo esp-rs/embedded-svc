@@ -1,35 +1,42 @@
-/// A simple Mutex trait for no_std environments
+use core::ops::{Deref, DerefMut};
+
+/// A simple Mutex trait for no_std environments.
+///
 /// Unlike [mutex-trait](https://github.com/rust-embedded/wg/blob/master/rfcs/0377-mutex-trait.md)
 /// this one does NOT take &mut self in its locking method.
 ///
 /// This makes it compatible with core::sync::Arc, i.e. it can be passed around to threads freely.
+///
+/// Note that the implementation uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
 pub trait Mutex {
     /// Data protected by the mutex.
     type Data;
 
-    fn new(data: Self::Data) -> Self
+    type Guard<'a>: Deref<Target = Self::Data> + DerefMut<Target = Self::Data>
     where
-        Self: Sized;
+        Self::Data: 'a, Self: 'a;
 
-    /// Creates a critical section and grants temporary access to the protected data.
-    fn with_lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R;
+    fn new(data: Self::Data) -> Self;
+
+    fn lock(&self) -> Self::Guard<'_>;
 }
 
 #[cfg(feature = "std")]
 impl<T> Mutex for std::sync::Mutex<T> {
     type Data = T;
 
-    fn new(data: Self::Data) -> Self
+    type Guard<'a>
     where
-        Self: Sized,
-    {
+        T: 'a,
+    = std::sync::MutexGuard<'a, T>;
+
+    #[inline(always)]
+    fn new(data: Self::Data) -> Self {
         std::sync::Mutex::new(data)
     }
 
     #[inline(always)]
-    fn with_lock<R>(&self, f: impl FnOnce(&mut Self::Data) -> R) -> R {
-        let mut guard = self.lock().unwrap();
-
-        f(&mut guard)
+    fn lock(&self) -> Self::Guard<'_> {
+        std::sync::Mutex::lock(self).unwrap()
     }
 }

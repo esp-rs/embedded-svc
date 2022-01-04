@@ -49,7 +49,7 @@ where
             "captive": {},
             "user-portal-url": "{}"
         }}"#,
-        captive.with_lock(|captive| *captive),
+        *captive.lock(),
         portal_uri.as_ref(),
     );
 
@@ -85,7 +85,7 @@ where
         H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
         E: fmt::Display + fmt::Debug,
     {
-        let captive = self.captive.with_lock(|captive| *captive);
+        let captive = *self.captive.lock();
 
         let allow = !captive
             || self

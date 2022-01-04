@@ -1,5 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(feature = "experimental", feature(generic_associated_types))] // for http, http::client, http::server, ota and ghota
+#![feature(generic_associated_types)] // For mutex, http, http::client, http::server, ota and ghota
 
 pub mod eth;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
