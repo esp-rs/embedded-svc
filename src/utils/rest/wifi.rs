@@ -73,10 +73,7 @@ where
     M: Mutex<Data = W>,
     W: wifi::Wifi,
 {
-    let data = wifi
-        .lock()
-        .scan()
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let data = wifi.lock().scan().map_err(|e| anyhow::anyhow!(e))?;
 
     ResponseData::from_json(&data)?.into()
 }
@@ -105,8 +102,7 @@ where
 
     let conf: wifi::Configuration = serde_json::from_slice(&bytes)?;
 
-    wifi
-        .lock()
+    wifi.lock()
         .set_configuration(&conf)
         .map_err(|e| anyhow::anyhow!(e))?;
 

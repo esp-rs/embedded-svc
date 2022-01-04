@@ -14,7 +14,8 @@ pub trait Mutex {
 
     type Guard<'a>: Deref<Target = Self::Data> + DerefMut<Target = Self::Data>
     where
-        Self::Data: 'a, Self: 'a;
+        Self::Data: 'a,
+        Self: 'a;
 
     fn new(data: Self::Data) -> Self;
 
