@@ -28,5 +28,5 @@ jobs:
         run: cargo fmt -- --check
       - name: Build | Clippy
         run: cargo clippy --no-deps --target riscv32imc-esp-espidf -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
-      - name: Build | Compile
-        run: cargo build --target riscv32imc-esp-espidf -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
+      - name: Build | Compile no_std
+        run: cargo build --target riscv32imc-esp-espidf -Zbuild-std=core,panic_abort -Zbuild-std-features=panic_immediate_abort
