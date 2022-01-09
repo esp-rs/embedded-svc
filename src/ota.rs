@@ -83,7 +83,7 @@ pub trait Ota {
         Self: 'a;
 
     #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + Fmt::Display;
+    type Error: fmt::Debug + fmt::Display;
 
     #[cfg(feature = "std")]
     type Error: std::error::Error + Send + Sync + 'static;

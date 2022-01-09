@@ -6,9 +6,14 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use alloc::string::String;
+use alloc::vec::Vec;
+
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::io::{self, Read, Write};
+use crate::io::{self, Write};
+
+#[cfg(feature = "std")]
+use crate::io::Read;
 
 use super::{Headers, Method, SendHeaders, SendStatus};
 

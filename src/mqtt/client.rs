@@ -57,6 +57,8 @@ pub struct SubsequentChunkData {
 pub struct TopicToken(PhantomData<*const ()>);
 
 impl TopicToken {
+    /// # Safety
+    /// This function is marked as unsafe because it is an internal API and is NOT supposed to be called by the user
     pub unsafe fn new() -> Self {
         Self(PhantomData)
     }

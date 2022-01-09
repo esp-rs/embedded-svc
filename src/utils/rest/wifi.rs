@@ -1,4 +1,5 @@
 extern crate alloc;
+use alloc::vec::Vec;
 use alloc::sync::Arc;
 
 use anyhow::Result;

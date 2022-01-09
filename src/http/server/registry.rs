@@ -1,5 +1,5 @@
 extern crate alloc;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 
 use super::{middleware, *};
 
@@ -152,6 +152,7 @@ where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
+            // TODO: Remove the constraints below as they cannot be easily handled in no_std
             + for<'a> From<<<R as Registry>::Response<'a> as Response<'a>>::Error>
             + From<io::IODynError>
             + 'static,

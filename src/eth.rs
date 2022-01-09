@@ -11,7 +11,7 @@ use enumset::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "use_strum")]
-use strum_macros::{EnumIter, EnumMessage, EnumString, ToString};
+use strum_macros::{EnumIter, EnumMessage, EnumString, Display};
 
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
@@ -25,7 +25,7 @@ use crate::ipv4;
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, ToString, EnumMessage, EnumIter)
+    derive(EnumString, Display, EnumMessage, EnumIter)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]

@@ -1,14 +1,17 @@
 use core::mem;
 
 extern crate alloc;
-use alloc::borrow::Cow;
+use alloc::borrow::{Cow, ToOwned};
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::{
     http::{client::*, Headers},
-    io::{self, StdIO},
+    io,
     ota::*,
 };
 
@@ -103,11 +106,16 @@ where
 
         // TODO: Need to implement our own error type
         #[cfg(feature = "std")]
-        let releases = serde_json::from_reader::<_, Vec<Release>>(StdIO(&mut read)).unwrap();
+        let releases = serde_json::from_reader::<_, Vec<Release>>(io::StdIO(&mut read)).unwrap();
 
         #[cfg(not(feature = "std"))]
-        let releases =
-            serde_json::from_slice::<_, Vec<Release>>(&StdIO(&mut read).read_to_end().unwrap())?;
+        let releases = {
+            let body: Result<Vec<u8>, _> = io::Bytes::<_, 64>::new(&mut read).collect();
+
+            let bytes = body?;
+
+            serde_json::from_slice::<Vec<Release>>(&bytes).unwrap()
+        };
 
         Ok(releases.into_iter())
     }
@@ -122,11 +130,16 @@ where
 
         // TODO: Need to implement our own error type
         #[cfg(feature = "std")]
-        let release = serde_json::from_reader::<_, Option<Release>>(StdIO(&mut read)).unwrap();
+        let release = serde_json::from_reader::<_, Option<Release>>(io::StdIO(&mut read)).unwrap();
 
         #[cfg(not(feature = "std"))]
-        let releases =
-            serde_json::from_slice::<_, Option<Release>>(&StdIO(&mut read).read_to_end().unwrap())?;
+        let release = {
+            let body: Result<Vec<u8>, _> = io::Bytes::<_, 64>::new(&mut read).collect();
+
+            let bytes = body?;
+
+            serde_json::from_slice::<Option<Release>>(&bytes).unwrap()
+        };
 
         Ok(release)
     }

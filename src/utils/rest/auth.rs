@@ -3,6 +3,7 @@ use core::fmt;
 extern crate alloc;
 use alloc::borrow::Cow;
 use alloc::rc::Rc;
+use alloc::vec::Vec;
 
 use anyhow::Result;
 

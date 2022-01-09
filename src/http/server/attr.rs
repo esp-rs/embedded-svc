@@ -2,8 +2,10 @@ use core::any::Any;
 use core::cell::RefCell;
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
+use alloc::string::String;
 
 use super::Attributes;
 

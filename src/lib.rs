@@ -1,6 +1,11 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(generic_associated_types)] // For mutex, http, http::client, http::server, ota and ghota
 
+#[cfg(feature = "alloc")]
+#[allow(unused_imports)]
+#[macro_use]
+extern crate alloc;
+
 pub mod eth;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod http;

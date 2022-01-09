@@ -179,7 +179,7 @@ pub mod cookies {
             Self(cookies_str.into())
         }
 
-        pub fn get<'b>(&'b self, name: impl AsRef<str>) -> Option<&'b str> {
+        pub fn get(&self, name: impl AsRef<str>) -> Option<&'_ str> {
             let name = name.as_ref();
 
             self.into_iter()

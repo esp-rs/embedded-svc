@@ -1,6 +1,7 @@
 use core::{cell::RefCell, fmt::Write, time::Duration};
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 
@@ -82,7 +83,7 @@ where
         let mut sessions = self.sessions.data.lock();
 
         if sessions.len() >= max_sessions {
-            Err(SessionError::MaxSessiuonsReachedError)?;
+            return Err(SessionError::MaxSessiuonsReachedError);
         }
 
         let session = Arc::new(S::new(Some(BTreeMap::new())));
@@ -384,7 +385,7 @@ where
         struct ByteBuf<'a>(&'a [u8]);
 
         impl<'a> core::fmt::LowerHex for ByteBuf<'a> {
-            fn fmt(&self, fmtr: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+            fn fmt(&self, fmtr: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
                 for byte in self.0 {
                     fmtr.write_fmt(format_args!("{:02x}", byte))?;
                 }
