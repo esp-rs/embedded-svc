@@ -8,6 +8,8 @@ pub mod http;
 pub mod httpd;
 pub mod io;
 pub mod ipv4;
+#[cfg(all(feature = "experimental", feature = "alloc"))]
+pub mod mqtt;
 pub mod mutex;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod ota;
