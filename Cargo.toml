@@ -16,7 +16,7 @@ default = ["std", "use_serde", "use_strum", "use_numenum"]
 
 experimental = ["domain"]
 
-std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "url", "http-auth-basic"]
+std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "strum/std", "num_enum/std", "url", "http-auth-basic"]
 alloc = ["anyhow", "serde/alloc", "serde_json/alloc"]
 use_serde = ["enumset/serde", "no-std-net/serde"]
 use_strum = ["strum", "strum_macros"]
@@ -28,9 +28,9 @@ async-trait = "0.1"
 no-std-net = { version = "0.5", default-features = false }
 enumset = { version = "1", default-features = false }
 anyhow = { version = "1", default-features = false, optional = true }
-strum = { version = "0.21", optional = true }
+strum = { version = "0.21", default-features = false, optional = true, features = ["derive"] }
 strum_macros = { version = "0.21", optional = true }
-num_enum = { version = "0.5", optional = true }
+num_enum = { version = "0.5", default-features = false, optional = true }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, optional = true }
 url = { version = "2", optional = true }

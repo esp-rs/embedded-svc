@@ -137,8 +137,7 @@ impl Request {
 
     pub fn content_len(&self) -> Option<usize> {
         self.header("content-length")
-            .map(|v| v.as_str().parse::<usize>().ok())
-            .flatten()
+            .and_then(|v| v.as_str().parse::<usize>().ok())
     }
 
     pub fn query_string(&self) -> Option<String> {
@@ -261,42 +260,50 @@ impl Response {
         Self::ok().status(status_code)
     }
 
+    #[must_use]
     pub fn status(mut self, status: u16) -> Self {
         self.status = status;
 
         self
     }
 
+    #[must_use]
     pub fn status_message(mut self, message: impl Into<String>) -> Self {
         self.status_message = Some(message.into());
 
         self
     }
 
+    #[must_use]
     pub fn header(mut self, name: &str, value: impl Into<String>) -> Self {
         self.headers.insert(name.into(), value.into());
 
         self
     }
 
+    #[must_use]
     pub fn content_encoding(self, value: impl Into<String>) -> Self {
         self.header("content-encoding", value.into())
     }
 
+    #[must_use]
     pub fn content_type(self, value: impl Into<String>) -> Self {
         self.header("content-type", value.into())
     }
 
+    #[must_use]
     pub fn content_len(self, value: usize) -> Self {
         self.header("content-length", value.to_string())
     }
 
+    #[must_use]
     pub fn body(mut self, body: Body) -> Self {
         self.body = body;
 
         self
     }
 
+    #[must_use]
     pub fn new_session_state(mut self, new_session_state: SessionState) -> Self {
         self.new_session_state = Some(new_session_state);
 
@@ -623,8 +630,7 @@ pub mod sessions {
 
             let session = session_id
                 .as_ref()
-                .map(|s| sessions.lock().unwrap().get(s.as_str()))
-                .flatten();
+                .and_then(|s| sessions.lock().unwrap().get(s.as_str()));
 
             let response = handler(Request::new(
                 request.delegate,
@@ -647,8 +653,7 @@ pub mod sessions {
 
         fn get_session_id(req: &Request) -> Option<String> {
             req.header("cookie")
-                .map(|v| Self::parse_session_cookie(v.as_str()))
-                .flatten()
+                .and_then(|v| Self::parse_session_cookie(v.as_str()))
         }
 
         fn get(&mut self, session_id: &str) -> Option<State> {
