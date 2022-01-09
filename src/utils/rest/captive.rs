@@ -30,7 +30,7 @@ where
 
     registry
         .at(prefix(""))
-        .get(move |req| get_status(req, portal_uri.as_ref(), &*captive))
+        .get(move |req| get_status(req, portal_uri.as_ref(), &*captive))?;
 
     Ok(())
 }
