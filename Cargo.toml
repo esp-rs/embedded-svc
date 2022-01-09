@@ -28,8 +28,8 @@ async-trait = "0.1"
 no-std-net = { version = "0.5", default-features = false }
 enumset = { version = "1", default-features = false }
 anyhow = { version = "1", default-features = false, optional = true }
-strum = { version = "0.21", default-features = false, optional = true, features = ["derive"] }
-strum_macros = { version = "0.21", optional = true }
+strum = { version = "0.23", default-features = false, optional = true, features = ["derive"] }
+strum_macros = { version = "0.23", optional = true }
 num_enum = { version = "0.5", default-features = false, optional = true }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, optional = true }
