@@ -24,7 +24,7 @@ pub use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "use_strum")]
-use strum_macros::{EnumIter, EnumMessage, EnumString, Display};
+use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
