@@ -16,6 +16,7 @@ default = ["std", "use_serde", "use_strum", "use_numenum"]
 
 # Uncomment once 0.6.2 which has no_std support is released
 #experimental = ["domain"]
+experimental = []
 
 std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "strum/std", "num_enum/std", "url", "http-auth-basic"]
 alloc = ["anyhow", "serde/alloc", "serde_json/alloc"]
