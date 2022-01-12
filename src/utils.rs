@@ -1,8 +1,9 @@
 #[cfg(feature = "alloc")]
 pub mod anyerror;
 
-#[cfg(feature = "experimental")]
-pub mod captive;
+// Uncomment once domain 0.6.2 which has no_std support is released
+//#[cfg(feature = "experimental")]
+//pub mod captive;
 
 #[cfg(all(feature = "experimental", feature = "alloc", feature = "use_serde"))]
 pub mod ghota;
