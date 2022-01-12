@@ -90,7 +90,9 @@ pub trait Client: Send {
 pub trait Connection: Send {
     type Error;
 
-    type Message<'a>: Message;
+    type Message<'a>: Message
+    where
+        Self: 'a;
 
     /// GATs do not (yet) define a standard streaming iterator,
     /// so we have to put the next() method directly in the Connection trait
