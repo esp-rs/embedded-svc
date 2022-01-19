@@ -1,68 +1,67 @@
 use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::result::Result;
-
-pub use crate::timer::Priority;
-pub use crate::timer::Timer;
-pub use crate::timer::TimerService;
+use core::time::Duration;
 
 pub struct Source<P> {
-    id: &'static str,
-    _payload: PhantomData<P>,
+    id: &'static [u8],
+    _payload_meta: PhantomData<*const P>,
 }
 
 impl<P> Source<P> {
-    pub const fn new(id: &'static str) -> Self {
+    pub const fn new(id: &'static [u8]) -> Self {
         Self {
             id,
-            _payload: PhantomData,
+            _payload_meta: PhantomData,
         }
     }
 
-    pub fn id(&self) -> &'static str {
+    pub fn id(&self) -> &'static [u8] {
         self.id
     }
 }
 
-pub trait Subscription<'a, P> {
+unsafe impl<P> Send for Source<P> {}
+unsafe impl<P> Sync for Source<P> {}
+
+pub trait Subscription<P> {}
+
+pub trait Postbox {
     type Error: Display + Debug + Send + Sync + 'static;
 
-    fn callback<E>(
-        &mut self,
-        callback: Option<impl for<'b> Fn(&'b P) -> Result<(), E> + 'a>,
-    ) -> Result<(), Self::Error>
-    where
-        E: Display + Debug;
-}
-
-pub trait Poster {
-    type Error: Display + Debug + Send + Sync + 'static;
-
-    fn post<P>(
-        &self,
-        priority: Priority,
-        source: &Source<P>,
-        payload: &P,
-    ) -> Result<(), Self::Error>
+    fn post<P>(&self, source: &Source<P>, payload: &P) -> Result<(), Self::Error>
     where
         P: Copy;
 }
 
-pub trait EventBus<'a>:
-    Poster<Error = <Self as EventBus<'a>>::Error>
-    + TimerService<'a, Error = <Self as EventBus<'a>>::Error>
-{
+pub trait Spin {
     type Error: Display + Debug + Send + Sync + 'static;
 
-    type Subscription<'b, P>: Subscription<'b, P, Error = <Self as EventBus<'a>>::Error>
-    where
-        P: Clone,
-        Self: 'b;
+    fn spin(&self, duration: Option<Duration>) -> Result<(), Self::Error>;
+}
 
-    fn subscribe<P>(
+pub trait EventBus: Postbox {
+    type Subscription<P>: Subscription<P>;
+
+    fn subscribe<P, E>(
         &self,
         source: Source<P>,
-    ) -> Result<Self::Subscription<'a, P>, <Self as EventBus<'a>>::Error>
+        callback: impl for<'a> FnMut(&'a P) -> Result<(), E> + Send + 'static,
+    ) -> Result<Self::Subscription<P>, Self::Error>
     where
-        P: Clone;
+        E: Display + Debug + Send + Sync + 'static;
+}
+
+pub trait PinnedEventBus {
+    type Error: Display + Debug + Send + Sync + 'static;
+
+    type Subscription<P>: Subscription<P>;
+
+    fn subscribe<P, E>(
+        &self,
+        source: Source<P>,
+        callback: impl for<'a> FnMut(&'a P) -> Result<(), E> + 'static,
+    ) -> Result<Self::Subscription<P>, Self::Error>
+    where
+        E: Display + Debug + Send + Sync + 'static;
 }

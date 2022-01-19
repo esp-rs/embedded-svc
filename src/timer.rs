@@ -2,47 +2,48 @@ use core::fmt::{Debug, Display};
 use core::result::Result;
 use core::time::Duration;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum Priority {
-    VeryHigh,
-    High,
-    Medium,
-    Low,
+#[derive(Default, Clone, Debug)]
+pub struct TimerConfiguration<'a> {
+    pub name: Option<&'a str>,
+    pub skip_unhandled_events: bool,
 }
 
-impl Default for Priority {
-    fn default() -> Self {
-        Self::Medium
-    }
-}
-
-pub trait Timer<'a> {
+pub trait Timer {
     type Error: Display + Debug + Send + Sync + 'static;
 
-    fn callback<E>(
-        &mut self,
-        callback: Option<impl Fn() -> Result<(), E> + 'a>,
-    ) -> Result<(), Self::Error>
-    where
-        E: Display + Debug;
+    fn once(&mut self, after: Duration) -> Result<(), Self::Error>;
 
-    fn schedule(&mut self, after: Duration) -> Result<(), Self::Error>;
+    fn periodic(&mut self, after: Duration) -> Result<(), Self::Error>;
 
     fn is_scheduled(&self) -> Result<bool, Self::Error>;
 
     fn cancel(&mut self) -> Result<bool, Self::Error>;
 }
 
-pub trait TimerService<'a> {
+pub trait TimerService {
     type Error: Display + Debug + Send + Sync + 'static;
 
-    type Timer<'b>: Timer<'b, Error = Self::Error>
-    where
-        Self: 'b;
+    type Timer: Timer<Error = Self::Error> + 'static;
 
-    fn timer(
+    fn timer<E>(
         &self,
-        priority: Priority,
-        name: impl AsRef<str>,
-    ) -> Result<Self::Timer<'a>, Self::Error>;
+        conf: &TimerConfiguration<'_>,
+        callback: impl FnMut() -> Result<(), E> + Send + 'static,
+    ) -> Result<Self::Timer, Self::Error>
+    where
+        E: Display + Debug + Sync + Send + 'static;
+}
+
+pub trait PinnedTimerService {
+    type Error: Display + Debug + Send + Sync + 'static;
+
+    type Timer: Timer<Error = Self::Error> + 'static;
+
+    fn timer<E>(
+        &self,
+        conf: &TimerConfiguration<'_>,
+        callback: impl FnMut() -> Result<(), E> + 'static,
+    ) -> Result<Self::Timer, Self::Error>
+    where
+        E: Display + Debug + Sync + Send + 'static;
 }
