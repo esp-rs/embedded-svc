@@ -6,6 +6,9 @@ pub mod anyerror;
 //pub mod captive;
 
 #[cfg(feature = "experimental")]
+pub mod nonblocking;
+
+#[cfg(feature = "experimental")]
 pub mod pinned_timer;
 
 #[cfg(all(feature = "experimental", feature = "alloc", feature = "use_serde"))]

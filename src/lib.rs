@@ -1,5 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(generic_associated_types)] // For mutex, http, http::client, http::server, ota and ghota
+#![feature(async_stream)]
 
 #[cfg(feature = "alloc")]
 #[allow(unused_imports)]
@@ -21,6 +22,7 @@ pub mod mutex;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod ota;
 pub mod ping;
+pub mod service;
 #[cfg(feature = "alloc")]
 pub mod storage;
 pub mod sys_time;

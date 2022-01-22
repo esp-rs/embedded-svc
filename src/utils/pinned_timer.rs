@@ -1,20 +1,22 @@
+use core::cell::RefCell;
 use core::fmt::{Debug, Display, Formatter};
 use core::marker::PhantomData;
 use core::result::Result;
-use std::cell::RefCell;
-use std::rc::Rc;
+use core::time::Duration;
 
 extern crate alloc;
+use alloc::rc::Rc;
 use alloc::vec::Vec;
 
-use crate::event_bus;
+use crate::event_bus::{self, PinnedEventBus};
+use crate::service;
 use crate::timer;
 
 #[derive(Debug)]
 pub enum Error<E, T>
 where
-    E: Display + Debug,
-    T: Display + Debug,
+    E: Debug,
+    T: Debug,
 {
     EventBusError(E),
     TimerError(T),
@@ -22,8 +24,8 @@ where
 
 impl<E, T> Display for Error<E, T>
 where
-    E: Display + Debug,
-    T: Display + Debug,
+    E: Display + Debug + Send + Sync + 'static,
+    T: Display + Debug + Send + Sync + 'static,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -36,8 +38,8 @@ where
 #[cfg(feature = "std")]
 impl<E, T> std::error::Error for Error<E, T>
 where
-    E: Display + Debug,
-    T: Display + Debug,
+    E: Display + Debug + Send + Sync + 'static,
+    T: Display + Debug + Send + Sync + 'static,
     // TODO
     // where
     //     S: std::error::Error + 'static,
@@ -54,12 +56,12 @@ where
 
 type TimerId = u32;
 
-struct State {
-    timers_callbacks: Vec<(TimerId, Rc<RefCell<dyn FnMut() + 'static>>)>,
+struct State<C> {
+    timers_callbacks: Vec<(TimerId, C)>,
     next_id: TimerId,
 }
 
-impl State {
+impl<C> State<C> {
     fn new() -> Self {
         Self {
             timers_callbacks: Vec::new(),
@@ -67,19 +69,18 @@ impl State {
         }
     }
 
-    fn call(&self, timer_id: TimerId) {
-        let callback = self
-            .timers_callbacks
+    fn callback_ref(&self, timer_id: TimerId) -> C
+    where
+        C: Clone,
+    {
+        self.timers_callbacks
             .iter()
             .find(|(id, _)| *id == timer_id)
-            .map(|(_, callback)| callback.clone());
-
-        if let Some(callback) = callback {
-            (callback.borrow_mut())();
-        }
+            .map(|(_, callback)| callback.clone())
+            .unwrap_or_else(|| panic!("Unknown timer ID: {}", timer_id))
     }
 
-    fn add(&mut self, callback: Rc<RefCell<dyn FnMut() + 'static>>) -> TimerId {
+    fn add(&mut self, callback: C) -> TimerId {
         if self.next_id == TimerId::max_value() {
             panic!("Timer IDs exhausted");
         }
@@ -92,7 +93,7 @@ impl State {
         timer_id
     }
 
-    fn remove(&mut self, timer_id: TimerId) {
+    fn remove(&mut self, timer_id: TimerId) -> C {
         let index = self
             .timers_callbacks
             .iter()
@@ -101,30 +102,32 @@ impl State {
             .map(|(index, _)| index)
             .unwrap_or_else(|| panic!("Unknown timer ID: {}", timer_id));
 
-        self.timers_callbacks.remove(index);
+        self.timers_callbacks.remove(index).1
     }
 }
 
-pub struct Timer<T, ER> {
+pub struct Timer<C, T, ER> {
     inner_timer: T,
     id: TimerId,
-    state: Rc<RefCell<State>>,
+    state: Rc<RefCell<State<C>>>,
     _error_type: PhantomData<*const ER>,
 }
 
-impl<T, ER> timer::Timer for Timer<T, ER>
+impl<C, T, ER> service::Service for Timer<C, T, ER>
 where
     T: timer::Timer,
     ER: Debug + Display + Send + Sync + 'static,
 {
     type Error = Error<ER, T::Error>;
+}
 
-    fn once(&mut self, after: std::time::Duration) -> Result<(), Self::Error> {
-        self.inner_timer.once(after).map_err(Error::TimerError)
-    }
-
-    fn periodic(&mut self, after: std::time::Duration) -> Result<(), Self::Error> {
-        self.inner_timer.periodic(after).map_err(Error::TimerError)
+impl<C, T, ER> timer::Timer for Timer<C, T, ER>
+where
+    T: timer::Timer,
+    ER: Debug + Display + Send + Sync + 'static,
+{
+    fn start(&mut self) -> Result<(), Self::Error> {
+        self.inner_timer.start().map_err(Error::TimerError)
     }
 
     fn is_scheduled(&self) -> Result<bool, Self::Error> {
@@ -136,31 +139,43 @@ where
     }
 }
 
-impl<T, ER> Drop for Timer<T, ER> {
+impl<C, T, ER> Drop for Timer<C, T, ER> {
     fn drop(&mut self) {
         self.state.borrow_mut().remove(self.id);
     }
 }
 
-pub struct PinnedTimerService<T, E, P>
+pub struct Pinned<C, T, E, P>
 where
     E: event_bus::PinnedEventBus,
 {
     timer_service: T,
     postbox: P,
-    state: Rc<RefCell<State>>,
+    state: Rc<RefCell<State<C>>>,
     _subscription: E::Subscription<TimerId>,
 }
 
-impl<T, E, P> PinnedTimerService<T, E, P>
+pub type Once = Box<dyn FnOnce() + 'static>;
+pub type Periodic = Rc<RefCell<dyn FnMut() + 'static>>;
+
+impl<C, T, E, P> service::Service for Pinned<C, T, E, P>
 where
-    T: timer::TimerService,
+    T: service::Service,
+    E: PinnedEventBus,
+    P: service::Service,
+    P::Error: Into<E::Error>,
+{
+    type Error = Error<E::Error, T::Error>;
+}
+
+impl<T, E, P> Pinned<Once, T, E, P>
+where
+    T: timer::Once,
     E: event_bus::PinnedEventBus,
     P: event_bus::Postbox + Send + Clone,
     P::Error: Into<E::Error>,
 {
-    const EVENT_SOURCE: event_bus::Source<TimerId> =
-        event_bus::Source::new(b"PINNED_TIMER_SERVICE\0");
+    const EVENT_SOURCE: event_bus::Source<TimerId> = event_bus::Source::new(b"PINNED_ONCE\0");
 
     pub fn new(
         timer_service: T,
@@ -172,7 +187,11 @@ where
 
         let subscription = event_bus
             .subscribe(Self::EVENT_SOURCE, move |timer_id| {
-                Result::<_, E::Error>::Ok(state_subscription.borrow().call(*timer_id))
+                let callback: Once = state_subscription.borrow_mut().remove(*timer_id);
+
+                (callback)();
+
+                Result::<_, E::Error>::Ok(())
             })
             .map_err(Error::EventBusError)?;
 
@@ -185,20 +204,94 @@ where
     }
 }
 
-impl<T, E, P> timer::PinnedTimerService for PinnedTimerService<T, E, P>
+impl<T, E, P> timer::PinnedOnce for Pinned<Once, T, E, P>
 where
-    T: timer::TimerService,
+    T: timer::Once,
     E: event_bus::PinnedEventBus,
     P: event_bus::Postbox + Send + Clone + 'static,
     P::Error: Into<E::Error>,
 {
-    type Error = Error<E::Error, T::Error>;
+    type Timer = Timer<Once, T::Timer, E::Error>;
 
-    type Timer = Timer<T::Timer, E::Error>;
-
-    fn timer<ER>(
+    fn after<ER>(
         &self,
-        conf: &timer::TimerConfiguration<'_>,
+        duration: Duration,
+        callback: impl FnOnce() -> Result<(), ER> + 'static,
+    ) -> Result<Self::Timer, Self::Error>
+    where
+        ER: Display + Debug + Sync + Send + 'static,
+    {
+        let timer_id = self
+            .state
+            .borrow_mut()
+            .add(Box::new(move || (callback)().unwrap()));
+
+        let postbox = self.postbox.clone();
+
+        Ok(Timer {
+            inner_timer: self
+                .timer_service
+                .after(duration, move || {
+                    postbox
+                        .post(&Self::EVENT_SOURCE, &timer_id)
+                        .map_err(Error::<_, T::Error>::EventBusError)
+                })
+                .map_err(Error::TimerError)?,
+            id: timer_id,
+            state: self.state.clone(),
+            _error_type: PhantomData,
+        })
+    }
+}
+
+impl<T, E, P> Pinned<Periodic, T, E, P>
+where
+    T: timer::Periodic,
+    E: event_bus::PinnedEventBus,
+    P: event_bus::Postbox + Send + Clone,
+    P::Error: Into<E::Error>,
+{
+    const EVENT_SOURCE: event_bus::Source<TimerId> = event_bus::Source::new(b"PINNED_PERIODIC\0");
+
+    pub fn new(
+        timer_service: T,
+        event_bus: &E,
+        postbox: P,
+    ) -> Result<Self, Error<E::Error, T::Error>> {
+        let state = Rc::new(RefCell::new(State::new()));
+        let state_subscription = state.clone();
+
+        let subscription = event_bus
+            .subscribe(Self::EVENT_SOURCE, move |timer_id| {
+                let callback: Periodic = state_subscription.borrow().callback_ref(*timer_id);
+
+                (callback.borrow_mut())();
+
+                Result::<_, E::Error>::Ok(())
+            })
+            .map_err(Error::EventBusError)?;
+
+        Ok(Self {
+            timer_service,
+            postbox,
+            state,
+            _subscription: subscription,
+        })
+    }
+}
+
+impl<T, E, P> timer::PinnedPeriodic for Pinned<Periodic, T, E, P>
+where
+    T: timer::Periodic,
+    E: event_bus::PinnedEventBus,
+    P: event_bus::Postbox + Send + Clone + 'static,
+    P::Error: Into<E::Error>,
+{
+    type Timer = Timer<Periodic, T::Timer, E::Error>;
+
+    fn every<ER>(
+        &self,
+        duration: Duration,
         mut callback: impl FnMut() -> Result<(), ER> + 'static,
     ) -> Result<Self::Timer, Self::Error>
     where
@@ -214,7 +307,7 @@ where
         Ok(Timer {
             inner_timer: self
                 .timer_service
-                .timer(conf, move || {
+                .every(duration, move || {
                     postbox
                         .post(&Self::EVENT_SOURCE, &timer_id)
                         .map_err(Error::<_, T::Error>::EventBusError)
