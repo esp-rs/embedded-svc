@@ -152,7 +152,7 @@ where
     timer_service: T,
     postbox: P,
     state: Rc<RefCell<State<C>>>,
-    _subscription: E::Subscription<TimerId>,
+    _subscription: E::Subscription,
 }
 
 pub type Once = Box<dyn FnOnce() + 'static>;
@@ -171,12 +171,10 @@ where
 impl<T, E, P> Pinned<Once, T, E, P>
 where
     T: timer::Once,
-    E: event_bus::PinnedEventBus,
+    E: event_bus::PinnedEventBus<Data = TimerId>,
     P: event_bus::Postbox + Send + Clone,
     P::Error: Into<E::Error>,
 {
-    const EVENT_SOURCE: event_bus::Source<TimerId> = event_bus::Source::new(b"PINNED_ONCE\0");
-
     pub fn new(
         timer_service: T,
         event_bus: &E,
@@ -186,7 +184,7 @@ where
         let state_subscription = state.clone();
 
         let subscription = event_bus
-            .subscribe(Self::EVENT_SOURCE, move |timer_id| {
+            .subscribe(move |timer_id| {
                 let callback: Once = state_subscription.borrow_mut().remove(*timer_id);
 
                 (callback)();
@@ -208,7 +206,7 @@ impl<T, E, P> timer::PinnedOnce for Pinned<Once, T, E, P>
 where
     T: timer::Once,
     E: event_bus::PinnedEventBus,
-    P: event_bus::Postbox + Send + Clone + 'static,
+    P: event_bus::Postbox<Data = TimerId> + Send + Clone + 'static,
     P::Error: Into<E::Error>,
 {
     type Timer = Timer<Once, T::Timer, E::Error>;
@@ -233,7 +231,7 @@ where
                 .timer_service
                 .after(duration, move || {
                     postbox
-                        .post(&Self::EVENT_SOURCE, &timer_id)
+                        .post(timer_id)
                         .map_err(Error::<_, T::Error>::EventBusError)
                 })
                 .map_err(Error::TimerError)?,
@@ -247,12 +245,10 @@ where
 impl<T, E, P> Pinned<Periodic, T, E, P>
 where
     T: timer::Periodic,
-    E: event_bus::PinnedEventBus,
+    E: event_bus::PinnedEventBus<Data = TimerId>,
     P: event_bus::Postbox + Send + Clone,
     P::Error: Into<E::Error>,
 {
-    const EVENT_SOURCE: event_bus::Source<TimerId> = event_bus::Source::new(b"PINNED_PERIODIC\0");
-
     pub fn new(
         timer_service: T,
         event_bus: &E,
@@ -262,7 +258,7 @@ where
         let state_subscription = state.clone();
 
         let subscription = event_bus
-            .subscribe(Self::EVENT_SOURCE, move |timer_id| {
+            .subscribe(move |timer_id| {
                 let callback: Periodic = state_subscription.borrow().callback_ref(*timer_id);
 
                 (callback.borrow_mut())();
@@ -284,7 +280,7 @@ impl<T, E, P> timer::PinnedPeriodic for Pinned<Periodic, T, E, P>
 where
     T: timer::Periodic,
     E: event_bus::PinnedEventBus,
-    P: event_bus::Postbox + Send + Clone + 'static,
+    P: event_bus::Postbox<Data = TimerId> + Send + Clone + 'static,
     P::Error: Into<E::Error>,
 {
     type Timer = Timer<Periodic, T::Timer, E::Error>;
@@ -309,7 +305,7 @@ where
                 .timer_service
                 .every(duration, move || {
                     postbox
-                        .post(&Self::EVENT_SOURCE, &timer_id)
+                        .post(timer_id)
                         .map_err(Error::<_, T::Error>::EventBusError)
                 })
                 .map_err(Error::TimerError)?,

@@ -12,7 +12,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [features]
-default = ["std", "use_serde", "use_strum", "use_numenum"]
+default = ["std", "use_serde", "use_strum", "use_numenum", "experimental"]
 
 # Uncomment once 0.6.2 which has no_std support is released
 #experimental = ["domain"]

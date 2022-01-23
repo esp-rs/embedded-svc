@@ -4,11 +4,12 @@ use core::result::Result;
 use core::stream::Stream;
 use core::task::{Poll, Waker};
 use core::time::Duration;
+use std::marker::PhantomData;
 
 extern crate alloc;
 use alloc::sync::Arc;
 
-use std::sync::Mutex;
+use crate::mutex::Mutex;
 
 pub struct OnceState<T> {
     timer: Option<T>,
@@ -16,16 +17,19 @@ pub struct OnceState<T> {
     waker: Option<Waker>,
 }
 
-pub struct Once<T>(Arc<Mutex<OnceState<T>>>);
+pub struct OnceFuture<T, MX>(Arc<MX>)
+where
+    MX: Mutex<Data = OnceState<T>>;
 
-impl<T> Future for Once<T>
+impl<T, MX> Future for OnceFuture<T, MX>
 where
     T: crate::timer::Timer,
+    MX: Mutex<Data = OnceState<T>>,
 {
     type Output = Result<(), T::Error>;
 
     fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.lock();
 
         if state.due {
             Poll::Ready(Ok(()))
@@ -48,15 +52,28 @@ where
     }
 }
 
-impl<T> crate::timer::nonblocking::Once for T
+pub struct Once<T, MX> {
+    blocking_once: T,
+    _mutex_type: PhantomData<fn() -> MX>,
+}
+
+impl<T, MX> crate::service::Service for Once<T, MX>
+where
+    T: crate::service::Service,
+{
+    type Error = T::Error;
+}
+
+impl<T, MX> crate::timer::nonblocking::Once for Once<T, MX>
 where
     T: crate::timer::Once,
     T::Timer: Send,
+    MX: Mutex<Data = OnceState<T::Timer>> + 'static,
 {
-    type AfterFuture = Once<T::Timer>;
+    type AfterFuture = OnceFuture<T::Timer, MX>;
 
     fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture, Self::Error> {
-        let state = Arc::new(Mutex::new(OnceState {
+        let state = Arc::new(MX::new(OnceState {
             timer: None,
             due: false,
             waker: None,
@@ -64,9 +81,9 @@ where
 
         let timer_state = Arc::downgrade(&state);
 
-        let timer = crate::timer::Once::after(self, duration, move || {
+        let timer = self.blocking_once.after(duration, move || {
             if let Some(state) = timer_state.upgrade() {
-                let mut state = state.lock().unwrap();
+                let mut state = state.lock();
 
                 state.due = true;
 
@@ -76,9 +93,9 @@ where
             Result::<_, Self::Error>::Ok(())
         })?;
 
-        state.lock().unwrap().timer = Some(timer);
+        state.lock().timer = Some(timer);
 
-        Ok(Once(state))
+        Ok(OnceFuture(state))
     }
 }
 
@@ -88,11 +105,14 @@ pub struct EveryState<T> {
     waker: Option<Waker>,
 }
 
-pub struct Every<T>(Arc<Mutex<EveryState<T>>>);
+pub struct EveryStream<T, MX>(Arc<MX>)
+where
+    MX: Mutex<Data = EveryState<T>>;
 
-impl<T> Stream for Every<T>
+impl<T, MX> Stream for EveryStream<T, MX>
 where
     T: crate::timer::Timer,
+    MX: Mutex<Data = EveryState<T>>,
 {
     type Item = Result<(), T::Error>;
 
@@ -100,7 +120,7 @@ where
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
-        let mut state = self.0.lock().unwrap();
+        let mut state = self.0.lock();
 
         if state.due {
             Poll::Ready(Some(Ok(())))
@@ -123,15 +143,28 @@ where
     }
 }
 
-impl<T> crate::timer::nonblocking::Periodic for T
+pub struct Periodic<T, MX> {
+    blocking_periodic: T,
+    _mutex_type: PhantomData<fn() -> MX>,
+}
+
+impl<T, MX> crate::service::Service for Periodic<T, MX>
+where
+    T: crate::service::Service,
+{
+    type Error = T::Error;
+}
+
+impl<T, MX> crate::timer::nonblocking::Periodic for Periodic<T, MX>
 where
     T: crate::timer::Periodic,
     T::Timer: Send,
+    MX: Mutex<Data = EveryState<T::Timer>> + 'static,
 {
-    type EveryStream = Every<T::Timer>;
+    type EveryStream = EveryStream<T::Timer, MX>;
 
     fn every(&mut self, duration: std::time::Duration) -> Result<Self::EveryStream, Self::Error> {
-        let state = Arc::new(Mutex::new(EveryState {
+        let state = Arc::new(MX::new(EveryState {
             timer: None,
             due: false,
             waker: None,
@@ -139,9 +172,9 @@ where
 
         let timer_state = Arc::downgrade(&state);
 
-        let timer = crate::timer::Periodic::every(self, duration, move || {
+        let timer = self.blocking_periodic.every(duration, move || {
             if let Some(state) = timer_state.upgrade() {
-                let mut state = state.lock().unwrap();
+                let mut state = state.lock();
 
                 state.due = true;
 
@@ -151,8 +184,8 @@ where
             Result::<_, Self::Error>::Ok(())
         })?;
 
-        state.lock().unwrap().timer = Some(timer);
+        state.lock().timer = Some(timer);
 
-        Ok(Every(state))
+        Ok(EveryStream(state))
     }
 }
