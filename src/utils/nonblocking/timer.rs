@@ -68,7 +68,7 @@ impl<T, MX> crate::timer::nonblocking::Once for Once<T, MX>
 where
     T: crate::timer::Once,
     T::Timer: Send,
-    MX: Mutex<Data = OnceState<T::Timer>> + 'static,
+    MX: Mutex<Data = OnceState<T::Timer>> + Send + Sync + 'static,
 {
     type AfterFuture = OnceFuture<T::Timer, MX>;
 
@@ -159,7 +159,7 @@ impl<T, MX> crate::timer::nonblocking::Periodic for Periodic<T, MX>
 where
     T: crate::timer::Periodic,
     T::Timer: Send,
-    MX: Mutex<Data = EveryState<T::Timer>> + 'static,
+    MX: Mutex<Data = EveryState<T::Timer>> + Send + Sync + 'static,
 {
     type EveryStream = EveryStream<T::Timer, MX>;
 

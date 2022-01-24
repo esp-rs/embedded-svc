@@ -9,29 +9,31 @@ use alloc::sync::Arc;
 
 use crate::mutex::{Condvar, Mutex};
 
-pub struct SubscriptionState<E>
+pub struct SubscriptionState<E, P>
 where
-    E: crate::event_bus::EventBus,
+    E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
 {
     subscription: Option<E::Subscription>,
-    value: Option<E::Data>,
+    value: Option<P>,
     waker: Option<Waker>,
 }
 
-pub struct Subscription<E, CV>(Arc<(CV::Mutex<SubscriptionState<E>>, CV)>)
+pub struct Subscription<E, P, CV>(Arc<(CV::Mutex<SubscriptionState<E, P>>, CV)>)
 where
-    E: crate::event_bus::EventBus,
+    E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
+    P: Send,
     CV: Condvar;
 
-impl<E, CV> Stream for Subscription<E, CV>
+impl<E, P, CV> Stream for Subscription<E, P, CV>
 where
-    E: crate::event_bus::EventBus,
+    E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
+    P: Clone + Send,
     CV: Condvar,
 {
-    type Item = Result<E::Data, E::Error>;
+    type Item = Result<P, E::Error>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,
@@ -39,7 +41,9 @@ where
     ) -> std::task::Poll<Option<Self::Item>> {
         let mut state = self.0 .0.lock();
 
-        if let Some(value) = state.value {
+        if let Some(value) = state.value.as_ref() {
+            let value = value.clone();
+
             state.value = None;
 
             self.0 .1.notify_all();
@@ -65,19 +69,19 @@ where
     type Error = E::Error;
 }
 
-impl<E, CV> crate::event_bus::nonblocking::EventBus for EventBus<E, CV>
+impl<E, P, CV> crate::event_bus::nonblocking::EventBus<P> for EventBus<E, CV>
 where
-    E: crate::event_bus::EventBus + 'static,
+    E: crate::event_bus::EventBus<P> + 'static,
     E::Subscription: Send,
-    CV: Condvar + 'static,
+    P: Clone + Send,
+    CV: Condvar + Send + Sync + 'static,
+    CV::Mutex<SubscriptionState<E, P>>: Send + Sync + 'static,
 {
-    type Data = E::Data;
-
-    type SubscriptionStream = Subscription<E, CV>;
+    type SubscriptionStream = Subscription<E, P, CV>;
 
     type Postbox = E::Postbox;
 
-    fn subscribe<ER>(&self) -> Result<Self::SubscriptionStream, Self::Error>
+    fn subscribe<ER>(&mut self) -> Result<Self::SubscriptionStream, Self::Error>
     where
         ER: Display + Debug + Send + Sync + 'static,
     {
@@ -102,7 +106,7 @@ where
                     state = condvar.wait(state);
                 }
 
-                state.value = Some(*payload);
+                state.value = Some(payload.clone());
             }
 
             Result::<_, Self::Error>::Ok(())
@@ -113,7 +117,7 @@ where
         Ok(Subscription(state))
     }
 
-    fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
+    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
         self.blocking_event_bus.postbox()
     }
 }

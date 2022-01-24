@@ -147,7 +147,7 @@ impl<C, T, ER> Drop for Timer<C, T, ER> {
 
 pub struct Pinned<C, T, E, P>
 where
-    E: event_bus::PinnedEventBus,
+    E: event_bus::PinnedEventBus<TimerId>,
 {
     timer_service: T,
     postbox: P,
@@ -161,7 +161,7 @@ pub type Periodic = Rc<RefCell<dyn FnMut() + 'static>>;
 impl<C, T, E, P> service::Service for Pinned<C, T, E, P>
 where
     T: service::Service,
-    E: PinnedEventBus,
+    E: PinnedEventBus<TimerId>,
     P: service::Service,
     P::Error: Into<E::Error>,
 {
@@ -171,13 +171,13 @@ where
 impl<T, E, P> Pinned<Once, T, E, P>
 where
     T: timer::Once,
-    E: event_bus::PinnedEventBus<Data = TimerId>,
-    P: event_bus::Postbox + Send + Clone,
+    E: event_bus::PinnedEventBus<TimerId>,
+    P: event_bus::Postbox<TimerId> + Send + Clone,
     P::Error: Into<E::Error>,
 {
     pub fn new(
         timer_service: T,
-        event_bus: &E,
+        event_bus: &mut E,
         postbox: P,
     ) -> Result<Self, Error<E::Error, T::Error>> {
         let state = Rc::new(RefCell::new(State::new()));
@@ -205,14 +205,14 @@ where
 impl<T, E, P> timer::PinnedOnce for Pinned<Once, T, E, P>
 where
     T: timer::Once,
-    E: event_bus::PinnedEventBus,
-    P: event_bus::Postbox<Data = TimerId> + Send + Clone + 'static,
+    E: event_bus::PinnedEventBus<TimerId>,
+    P: event_bus::Postbox<TimerId> + Send + Clone + 'static,
     P::Error: Into<E::Error>,
 {
     type Timer = Timer<Once, T::Timer, E::Error>;
 
     fn after<ER>(
-        &self,
+        &mut self,
         duration: Duration,
         callback: impl FnOnce() -> Result<(), ER> + 'static,
     ) -> Result<Self::Timer, Self::Error>
@@ -224,7 +224,7 @@ where
             .borrow_mut()
             .add(Box::new(move || (callback)().unwrap()));
 
-        let postbox = self.postbox.clone();
+        let mut postbox = self.postbox.clone();
 
         Ok(Timer {
             inner_timer: self
@@ -245,13 +245,13 @@ where
 impl<T, E, P> Pinned<Periodic, T, E, P>
 where
     T: timer::Periodic,
-    E: event_bus::PinnedEventBus<Data = TimerId>,
-    P: event_bus::Postbox + Send + Clone,
+    E: event_bus::PinnedEventBus<TimerId>,
+    P: event_bus::Postbox<TimerId> + Send + Clone,
     P::Error: Into<E::Error>,
 {
     pub fn new(
         timer_service: T,
-        event_bus: &E,
+        event_bus: &mut E,
         postbox: P,
     ) -> Result<Self, Error<E::Error, T::Error>> {
         let state = Rc::new(RefCell::new(State::new()));
@@ -279,14 +279,14 @@ where
 impl<T, E, P> timer::PinnedPeriodic for Pinned<Periodic, T, E, P>
 where
     T: timer::Periodic,
-    E: event_bus::PinnedEventBus,
-    P: event_bus::Postbox<Data = TimerId> + Send + Clone + 'static,
+    E: event_bus::PinnedEventBus<TimerId>,
+    P: event_bus::Postbox<TimerId> + Send + Clone + 'static,
     P::Error: Into<E::Error>,
 {
     type Timer = Timer<Periodic, T::Timer, E::Error>;
 
     fn every<ER>(
-        &self,
+        &mut self,
         duration: Duration,
         mut callback: impl FnMut() -> Result<(), ER> + 'static,
     ) -> Result<Self::Timer, Self::Error>
@@ -298,7 +298,7 @@ where
             .borrow_mut()
             .add(Rc::new(RefCell::new(move || (callback)().unwrap())));
 
-        let postbox = self.postbox.clone();
+        let mut postbox = self.postbox.clone();
 
         Ok(Timer {
             inner_timer: self

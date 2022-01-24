@@ -4,48 +4,42 @@ use core::time::Duration;
 
 use crate::service::Service;
 
-pub trait Postbox: Service {
-    type Data: Copy + Send;
-
-    fn post(&self, payload: Self::Data) -> Result<(), Self::Error>;
-}
-
 pub trait Spin: Service {
-    fn spin(&self, duration: Option<Duration>) -> Result<(), Self::Error>;
+    fn spin(&mut self, duration: Option<Duration>) -> Result<(), Self::Error>;
 }
 
-pub trait EventBus: Service {
-    type Data: Copy + Send;
-
-    type Subscription: Send;
-
-    type Postbox: Postbox<Data = Self::Data>;
-
-    fn subscribe<E>(
-        &self,
-        callback: impl for<'a> FnMut(&'a Self::Data) -> Result<(), E> + Send + 'static,
-    ) -> Result<Self::Subscription, Self::Error>
-    where
-        E: Display + Debug + Send + Sync + 'static;
-
-    fn postbox(&self) -> Result<Self::Postbox, Self::Error>;
+pub trait Postbox<P>: Service {
+    fn post(&mut self, payload: P) -> Result<(), Self::Error>;
 }
 
-pub trait PinnedEventBus: Service {
-    type Data: Copy + Send;
-
+pub trait EventBus<P>: Service {
     type Subscription;
 
-    type Postbox: Postbox<Data = Self::Data>;
+    type Postbox: Postbox<P>;
 
     fn subscribe<E>(
-        &self,
-        callback: impl for<'a> FnMut(&'a Self::Data) -> Result<(), E> + 'static,
+        &mut self,
+        callback: impl for<'a> FnMut(&'a P) -> Result<(), E> + Send + 'static,
     ) -> Result<Self::Subscription, Self::Error>
     where
         E: Display + Debug + Send + Sync + 'static;
 
-    fn postbox(&self) -> Result<Self::Postbox, Self::Error>;
+    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
+}
+
+pub trait PinnedEventBus<P>: Service {
+    type Subscription;
+
+    type Postbox: Postbox<P>;
+
+    fn subscribe<E>(
+        &mut self,
+        callback: impl for<'a> FnMut(&'a P) -> Result<(), E> + 'static,
+    ) -> Result<Self::Subscription, Self::Error>
+    where
+        E: Display + Debug + Send + Sync + 'static;
+
+    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
 }
 
 pub mod nonblocking {
@@ -55,18 +49,17 @@ pub mod nonblocking {
     use crate::service::Service;
 
     pub use super::Postbox;
+    pub use super::Spin;
 
-    pub trait EventBus: Service {
-        type Data: Copy + Send;
+    pub trait EventBus<P>: Service {
+        type SubscriptionStream: Stream<Item = Result<P, Self::Error>>;
 
-        type SubscriptionStream: Stream<Item = Result<Self::Data, Self::Error>>;
+        type Postbox: Postbox<P>;
 
-        type Postbox: Postbox<Data = Self::Data>;
-
-        fn subscribe<E>(&self) -> Result<Self::SubscriptionStream, Self::Error>
+        fn subscribe<E>(&mut self) -> Result<Self::SubscriptionStream, Self::Error>
         where
             E: Display + Debug + Send + Sync + 'static;
 
-        fn postbox(&self) -> Result<Self::Postbox, Self::Error>;
+        fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
     }
 }

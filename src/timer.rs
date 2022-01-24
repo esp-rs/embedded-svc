@@ -16,7 +16,7 @@ pub trait Once: Service {
     type Timer: Timer<Error = Self::Error> + 'static;
 
     fn after<E>(
-        &self,
+        &mut self,
         duration: Duration,
         callback: impl FnOnce() -> Result<(), E> + Send + 'static,
     ) -> Result<Self::Timer, Self::Error>
@@ -28,7 +28,7 @@ pub trait Periodic: Service {
     type Timer: Timer<Error = Self::Error> + 'static;
 
     fn every<E>(
-        &self,
+        &mut self,
         duration: Duration,
         callback: impl FnMut() -> Result<(), E> + Send + 'static,
     ) -> Result<Self::Timer, Self::Error>
@@ -40,7 +40,7 @@ pub trait PinnedOnce: Service {
     type Timer: Timer<Error = Self::Error> + 'static;
 
     fn after<E>(
-        &self,
+        &mut self,
         duration: Duration,
         callback: impl FnOnce() -> Result<(), E> + 'static,
     ) -> Result<Self::Timer, Self::Error>
@@ -52,7 +52,7 @@ pub trait PinnedPeriodic: Service {
     type Timer: Timer<Error = Self::Error> + 'static;
 
     fn every<E>(
-        &self,
+        &mut self,
         duration: Duration,
         callback: impl FnMut() -> Result<(), E> + 'static,
     ) -> Result<Self::Timer, Self::Error>

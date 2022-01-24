@@ -9,7 +9,7 @@ use core::time::Duration;
 /// This makes it compatible with core::sync::Arc, i.e. it can be passed around to threads freely.
 ///
 /// Note that it uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
-pub trait Mutex: Send + Sync {
+pub trait Mutex {
     /// Data protected by the mutex.
     type Data;
 
@@ -25,7 +25,7 @@ pub trait Mutex: Send + Sync {
 
 /// A "std-like" Condvar trait for no_std environments.
 /// Note that it uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
-pub trait Condvar: Send + Sync {
+pub trait Condvar {
     type Mutex<T>: Mutex<Data = T>
     where
         T: Send;
