@@ -114,6 +114,7 @@ pub trait Connection: Service {
 
 pub mod nonblocking {
     use core::future::Future;
+    use core::ops::Deref;
 
     extern crate alloc;
     use alloc::borrow::Cow;
@@ -138,11 +139,13 @@ pub mod nonblocking {
     }
 
     pub trait Connection: Service {
-        type Message<'a>: Message
+        type Message: Message;
+
+        type Reference<'a>: Deref<Target = Option<Result<Event<Self::Message>, Self::Error>>>
         where
             Self: 'a;
 
-        type NextFuture<'a>: Future<Output = Option<Result<Event<Self::Message<'a>>, Self::Error>>>
+        type NextFuture<'a>: Future<Output = Self::Reference<'a>>
         where
             Self: 'a;
 
