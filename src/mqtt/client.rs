@@ -76,7 +76,7 @@ pub trait Client: Service {
         S: Into<Cow<'a, str>>;
 }
 
-pub trait Outgoing: Service {
+pub trait Publish: Service {
     fn publish<'a, S, V>(
         &'a mut self,
         topic: S,
@@ -89,7 +89,7 @@ pub trait Outgoing: Service {
         V: Into<Cow<'a, [u8]>>;
 }
 
-pub trait OutgoingQueue: Service {
+pub trait Enqueue: Service {
     fn enqueue<'a, S, V>(
         &'a mut self,
         topic: S,
@@ -102,7 +102,7 @@ pub trait OutgoingQueue: Service {
         V: Into<Cow<'a, [u8]>>;
 }
 
-pub trait Incoming: Service {
+pub trait Connection: Service {
     type Message<'a>: Message
     where
         Self: 'a;
@@ -122,7 +122,7 @@ pub mod nonblocking {
 
     use crate::service::Service;
 
-    pub trait Outgoing: Service {
+    pub trait Publish: Service {
         type PublishFuture: Future<Output = Result<MessageId, Self::Error>>;
 
         fn publish<'a, S, V>(
@@ -137,7 +137,7 @@ pub mod nonblocking {
             V: Into<Cow<'a, [u8]>>;
     }
 
-    pub trait Incoming: Service {
+    pub trait Connection: Service {
         type Message<'a>: Message
         where
             Self: 'a;

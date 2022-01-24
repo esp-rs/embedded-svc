@@ -46,6 +46,8 @@ pub trait Condvar {
     where
         T: Send;
 
+    fn notify_one(&self);
+
     fn notify_all(&self);
 }
 
@@ -109,6 +111,10 @@ impl Condvar for std::sync::Condvar {
             std::sync::Condvar::wait_timeout(self, guard, duration).unwrap();
 
         (guard, timeout_result.timed_out())
+    }
+
+    fn notify_one(&self) {
+        std::sync::Condvar::notify_one(self);
     }
 
     fn notify_all(&self) {
