@@ -3,7 +3,7 @@ use core::future::Future;
 use core::mem;
 use core::ops::Deref;
 use core::pin::Pin;
-use core::task::{Poll, Waker};
+use core::task::{Context, Poll, Waker};
 
 extern crate alloc;
 use alloc::borrow::Cow;
@@ -20,7 +20,7 @@ where
 {
     type Output = Result<MessageId, E>;
 
-    fn poll(self: Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.0.as_ref() {
             Ok(message_id) => Poll::Ready(Ok(*message_id)),
             Err(err) => Poll::Ready(Err(err.clone())),
@@ -126,7 +126,7 @@ where
 {
     type Output = EventRef<'a, CV, M, E>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut payload = self.0.payload.lock();
 
         if payload.event.is_some() {

@@ -1,8 +1,9 @@
 use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::mem;
+use core::pin::Pin;
 use core::stream::Stream;
-use core::task::{Poll, Waker};
+use core::task::{Context, Poll, Waker};
 
 extern crate alloc;
 use alloc::sync::Arc;
@@ -35,10 +36,7 @@ where
 {
     type Item = Result<P, E::Error>;
 
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut state = self.0 .0.lock();
 
         if let Some(value) = state.value.as_ref() {

@@ -1,10 +1,11 @@
 use core::future::Future;
+use core::marker::PhantomData;
 use core::mem;
+use core::pin::Pin;
 use core::result::Result;
 use core::stream::Stream;
-use core::task::{Poll, Waker};
+use core::task::{Context, Poll, Waker};
 use core::time::Duration;
-use std::marker::PhantomData;
 
 extern crate alloc;
 use alloc::sync::Arc;
@@ -28,7 +29,7 @@ where
 {
     type Output = Result<(), T::Error>;
 
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.0.lock();
 
         if state.due {
@@ -116,10 +117,7 @@ where
 {
     type Item = Result<(), T::Error>;
 
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut state = self.0.lock();
 
         if state.due {
@@ -163,7 +161,7 @@ where
 {
     type EveryStream = EveryStream<T::Timer, MX>;
 
-    fn every(&mut self, duration: std::time::Duration) -> Result<Self::EveryStream, Self::Error> {
+    fn every(&mut self, duration: Duration) -> Result<Self::EveryStream, Self::Error> {
         let state = Arc::new(MX::new(EveryState {
             timer: None,
             due: false,
