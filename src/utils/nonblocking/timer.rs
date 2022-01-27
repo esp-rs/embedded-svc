@@ -3,7 +3,6 @@ use core::marker::PhantomData;
 use core::mem;
 use core::pin::Pin;
 use core::result::Result;
-use core::stream::Stream;
 use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 
@@ -100,28 +99,67 @@ where
     }
 }
 
-pub struct EveryState<T> {
+pub struct TimerState<T> {
     timer: Option<T>,
     due: bool,
     waker: Option<Waker>,
 }
 
-pub struct EveryStream<T, MX>(Arc<MX>)
+pub struct Timer<T, MX>(Arc<MX>)
 where
-    MX: Mutex<Data = EveryState<T>>;
+    MX: Mutex<Data = TimerState<T>>;
 
-impl<T, MX> Stream for EveryStream<T, MX>
+impl<T, MX> crate::service::Service for Timer<T, MX>
 where
     T: crate::timer::Timer,
-    MX: Mutex<Data = EveryState<T>>,
+    MX: Mutex<Data = TimerState<T>>,
 {
-    type Item = Result<(), T::Error>;
+    type Error = T::Error;
+}
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut state = self.0.lock();
+impl<T, MX> crate::timer::nonblocking::Timer for Timer<T, MX>
+where
+    T: crate::timer::Timer,
+    MX: Mutex<Data = TimerState<T>>,
+{
+    type NextFuture<'a>
+    where
+        Self: 'a,
+    = NextFuture<'a, T, MX>;
+
+    fn next(&mut self) -> Self::NextFuture<'_> {
+        NextFuture(self)
+    }
+}
+
+pub struct NextFuture<'a, T, MX>(&'a Timer<T, MX>)
+where
+    MX: Mutex<Data = TimerState<T>>;
+
+impl<'a, T, MX> Drop for NextFuture<'a, T, MX>
+where
+    MX: Mutex<Data = TimerState<T>>,
+{
+    fn drop(&mut self) {
+        let mut state = self.0 .0.lock();
+
+        state.due = false;
+        state.waker = None;
+    }
+}
+
+impl<'a, T, MX> Future for NextFuture<'a, T, MX>
+where
+    T: crate::timer::Timer,
+    MX: Mutex<Data = TimerState<T>>,
+{
+    type Output = Result<(), T::Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut state = self.0 .0.lock();
 
         if state.due {
-            Poll::Ready(Some(Ok(())))
+            Poll::Ready(Ok(()))
         } else {
             let first_waker = mem::replace(&mut state.waker, Some(cx.waker().clone())).is_none();
 
@@ -129,7 +167,7 @@ where
                 if let Some(timer) = &mut state.timer {
                     let result = timer.start();
                     if result.is_err() {
-                        return Poll::Ready(Some(result));
+                        return Poll::Ready(result);
                     }
                 } else {
                     panic!();
@@ -157,12 +195,12 @@ impl<T, MX> crate::timer::nonblocking::Periodic for Periodic<T, MX>
 where
     T: crate::timer::Periodic,
     T::Timer: Send,
-    MX: Mutex<Data = EveryState<T::Timer>> + Send + Sync + 'static,
+    MX: Mutex<Data = TimerState<T::Timer>> + Send + Sync + 'static,
 {
-    type EveryStream = EveryStream<T::Timer, MX>;
+    type Timer = Timer<T::Timer, MX>;
 
-    fn every(&mut self, duration: Duration) -> Result<Self::EveryStream, Self::Error> {
-        let state = Arc::new(MX::new(EveryState {
+    fn every(&mut self, duration: Duration) -> Result<Self::Timer, Self::Error> {
+        let state = Arc::new(MX::new(TimerState {
             timer: None,
             due: false,
             waker: None,
@@ -184,6 +222,6 @@ where
 
         state.lock().timer = Some(timer);
 
-        Ok(EveryStream(state))
+        Ok(Timer(state))
     }
 }

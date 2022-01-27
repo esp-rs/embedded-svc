@@ -44,19 +44,28 @@ pub trait PinnedEventBus<P>: Service {
 
 pub mod nonblocking {
     use core::fmt::{Debug, Display};
-    use core::stream::Stream;
+    use std::future::Future;
 
     use crate::service::Service;
 
     pub use super::Postbox;
     pub use super::Spin;
 
+    /// core.stream.Stream is not stable yet. Therefore, we have to use a Future instead
+    pub trait Subscription<P>: Service {
+        type NextFuture<'a>: Future<Output = Result<P, Self::Error>>
+        where
+            Self: 'a;
+
+        fn next(&mut self) -> Self::NextFuture<'_>;
+    }
+
     pub trait EventBus<P>: Service {
-        type SubscriptionStream: Stream<Item = Result<P, Self::Error>>;
+        type Subscription: Subscription<P>;
 
         type Postbox: Postbox<P>;
 
-        fn subscribe<E>(&mut self) -> Result<Self::SubscriptionStream, Self::Error>
+        fn subscribe<E>(&mut self) -> Result<Self::Subscription, Self::Error>
         where
             E: Display + Debug + Send + Sync + 'static;
 

@@ -138,6 +138,8 @@ pub mod nonblocking {
             V: Into<Cow<'a, [u8]>>;
     }
 
+    /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
+    /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
     pub trait Connection: Service {
         type Message: Message;
 
@@ -149,8 +151,6 @@ pub mod nonblocking {
         where
             Self: 'a;
 
-        /// core.stream.Stream has an Item which is not parameterizable by lifetime (GATs)
-        /// Therefore, we have to use a Future instead
         fn next(&mut self) -> Self::NextFuture<'_>;
     }
 }

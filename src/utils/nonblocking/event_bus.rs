@@ -2,8 +2,8 @@ use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 use core::mem;
 use core::pin::Pin;
-use core::stream::Stream;
 use core::task::{Context, Poll, Waker};
+use std::future::Future;
 
 extern crate alloc;
 use alloc::sync::Arc;
@@ -27,26 +27,75 @@ where
     P: Send,
     CV: Condvar;
 
-impl<E, P, CV> Stream for Subscription<E, P, CV>
+impl<E, P, CV> crate::service::Service for Subscription<E, P, CV>
 where
     E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
     P: Clone + Send,
     CV: Condvar,
 {
-    type Item = Result<P, E::Error>;
+    type Error = E::Error;
+}
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut state = self.0 .0.lock();
+impl<E, P, CV> crate::event_bus::nonblocking::Subscription<P> for Subscription<E, P, CV>
+where
+    E: crate::event_bus::EventBus<P>,
+    E::Subscription: Send,
+    P: Clone + Send,
+    CV: Condvar,
+{
+    type NextFuture<'a>
+    where
+        Self: 'a,
+    = NextFuture<'a, E, P, CV>;
+
+    fn next(&mut self) -> Self::NextFuture<'_> {
+        NextFuture(self)
+    }
+}
+
+pub struct NextFuture<'a, E, P, CV>(&'a Subscription<E, P, CV>)
+where
+    E: crate::event_bus::EventBus<P>,
+    E::Subscription: Send,
+    P: Clone + Send,
+    CV: Condvar;
+
+impl<'a, E, P, CV> Drop for NextFuture<'a, E, P, CV>
+where
+    E: crate::event_bus::EventBus<P>,
+    E::Subscription: Send,
+    P: Clone + Send,
+    CV: Condvar,
+{
+    fn drop(&mut self) {
+        let mut state = self.0 .0 .0.lock();
+
+        state.value = None;
+        state.waker = None;
+    }
+}
+
+impl<'a, E, P, CV> Future for NextFuture<'a, E, P, CV>
+where
+    E: crate::event_bus::EventBus<P>,
+    E::Subscription: Send,
+    P: Clone + Send,
+    CV: Condvar,
+{
+    type Output = Result<P, E::Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut state = self.0 .0 .0.lock();
 
         if let Some(value) = state.value.as_ref() {
             let value = value.clone();
 
             state.value = None;
 
-            self.0 .1.notify_all();
+            self.0 .0 .1.notify_all();
 
-            Poll::Ready(Some(Ok(value)))
+            Poll::Ready(Ok(value))
         } else {
             state.waker = Some(cx.waker().clone());
 
@@ -75,11 +124,11 @@ where
     CV: Condvar + Send + Sync + 'static,
     CV::Mutex<SubscriptionState<E, P>>: Send + Sync + 'static,
 {
-    type SubscriptionStream = Subscription<E, P, CV>;
+    type Subscription = Subscription<E, P, CV>;
 
     type Postbox = E::Postbox;
 
-    fn subscribe<ER>(&mut self) -> Result<Self::SubscriptionStream, Self::Error>
+    fn subscribe<ER>(&mut self) -> Result<Self::Subscription, Self::Error>
     where
         ER: Display + Debug + Send + Sync + 'static,
     {
