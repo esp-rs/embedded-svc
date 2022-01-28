@@ -3,6 +3,8 @@ use core::marker::PhantomData;
 extern crate alloc;
 use alloc::borrow::Cow;
 
+use crate::service::Service;
+
 /// Quality of service
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
@@ -64,9 +66,17 @@ impl TopicToken {
     }
 }
 
-pub trait Client: Send {
-    type Error;
+pub trait Client: Service {
+    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>;
 
+    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>;
+}
+
+pub trait Publish: Service {
     fn publish<'a, S, V>(
         &'a mut self,
         topic: S,
@@ -77,19 +87,22 @@ pub trait Client: Send {
     where
         S: Into<Cow<'a, str>>,
         V: Into<Cow<'a, [u8]>>;
-
-    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>;
-
-    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>;
 }
 
-pub trait Connection: Send {
-    type Error;
+pub trait Enqueue: Service {
+    fn enqueue<'a, S, V>(
+        &'a mut self,
+        topic: S,
+        qos: QoS,
+        retain: bool,
+        payload: V,
+    ) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+        V: Into<Cow<'a, [u8]>>;
+}
 
+pub trait Connection: Service {
     type Message<'a>: Message
     where
         Self: 'a;
@@ -97,4 +110,47 @@ pub trait Connection: Send {
     /// GATs do not (yet) define a standard streaming iterator,
     /// so we have to put the next() method directly in the Connection trait
     fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>>;
+}
+
+pub mod nonblocking {
+    use core::future::Future;
+    use core::ops::Deref;
+
+    extern crate alloc;
+    use alloc::borrow::Cow;
+
+    pub use super::{Client, Event, Message, MessageId, QoS};
+
+    use crate::service::Service;
+
+    pub trait Publish: Service {
+        type PublishFuture: Future<Output = Result<MessageId, Self::Error>>;
+
+        fn publish<'a, S, V>(
+            &'a mut self,
+            topic: S,
+            qos: QoS,
+            retain: bool,
+            payload: V,
+        ) -> Self::PublishFuture
+        where
+            S: Into<Cow<'a, str>>,
+            V: Into<Cow<'a, [u8]>>;
+    }
+
+    /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
+    /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
+    pub trait Connection: Service {
+        type Message: Message;
+
+        type Reference<'a>: Deref<Target = Option<Result<Event<Self::Message>, Self::Error>>>
+        where
+            Self: 'a;
+
+        type NextFuture<'a>: Future<Output = Self::Reference<'a>>
+        where
+            Self: 'a;
+
+        fn next(&mut self) -> Self::NextFuture<'_>;
+    }
 }

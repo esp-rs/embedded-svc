@@ -1,67 +1,81 @@
 use core::fmt::{Debug, Display};
-use core::marker::PhantomData;
 use core::result::Result;
 use core::time::Duration;
 
-pub struct Source<P> {
-    id: &'static [u8],
-    _payload_meta: PhantomData<*const P>,
+use crate::service::Service;
+
+pub trait Spin: Service {
+    fn spin(&mut self, duration: Option<Duration>) -> Result<(), Self::Error>;
 }
 
-impl<P> Source<P> {
-    pub const fn new(id: &'static [u8]) -> Self {
-        Self {
-            id,
-            _payload_meta: PhantomData,
-        }
-    }
-
-    pub fn id(&self) -> &'static [u8] {
-        self.id
-    }
+pub trait Postbox<P>: Service {
+    fn post(&mut self, payload: P) -> Result<(), Self::Error>;
 }
 
-unsafe impl<P> Send for Source<P> {}
-unsafe impl<P> Sync for Source<P> {}
+pub trait EventBus<P>: Service {
+    type Subscription;
 
-pub trait Subscription<P> {}
+    type Postbox: Postbox<P>;
 
-pub trait Postbox {
-    type Error: Display + Debug + Send + Sync + 'static;
-
-    fn post<P>(&self, source: &Source<P>, payload: &P) -> Result<(), Self::Error>
-    where
-        P: Copy;
-}
-
-pub trait Spin {
-    type Error: Display + Debug + Send + Sync + 'static;
-
-    fn spin(&self, duration: Option<Duration>) -> Result<(), Self::Error>;
-}
-
-pub trait EventBus: Postbox {
-    type Subscription<P>: Subscription<P>;
-
-    fn subscribe<P, E>(
-        &self,
-        source: Source<P>,
+    fn subscribe<E>(
+        &mut self,
         callback: impl for<'a> FnMut(&'a P) -> Result<(), E> + Send + 'static,
-    ) -> Result<Self::Subscription<P>, Self::Error>
+    ) -> Result<Self::Subscription, Self::Error>
     where
         E: Display + Debug + Send + Sync + 'static;
+
+    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
 }
 
-pub trait PinnedEventBus {
-    type Error: Display + Debug + Send + Sync + 'static;
+pub trait PinnedEventBus<P>: Service {
+    type Subscription;
 
-    type Subscription<P>: Subscription<P>;
+    type Postbox: Postbox<P>;
 
-    fn subscribe<P, E>(
-        &self,
-        source: Source<P>,
+    fn subscribe<E>(
+        &mut self,
         callback: impl for<'a> FnMut(&'a P) -> Result<(), E> + 'static,
-    ) -> Result<Self::Subscription<P>, Self::Error>
+    ) -> Result<Self::Subscription, Self::Error>
     where
         E: Display + Debug + Send + Sync + 'static;
+
+    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
+}
+
+pub mod nonblocking {
+    use core::fmt::{Debug, Display};
+    use core::future::Future;
+
+    use crate::service::Service;
+
+    pub use super::Spin;
+
+    pub trait Postbox<P>: Service {
+        type PostFuture<'a>: Future<Output = Result<(), Self::Error>>
+        where
+            Self: 'a;
+
+        fn post(&mut self, payload: P) -> Self::PostFuture<'_>;
+    }
+
+    /// core.stream.Stream is not stable yet. Therefore, we have to use a Future instead
+    pub trait Subscription<P>: Service {
+        type NextFuture<'a>: Future<Output = Result<P, Self::Error>>
+        where
+            Self: 'a;
+
+        fn next(&mut self) -> Self::NextFuture<'_>;
+    }
+
+    pub trait EventBus<P>: Service {
+        type Subscription: Subscription<P>;
+
+        type Postbox: Postbox<P>;
+
+        fn subscribe<E>(&mut self) -> Result<Self::Subscription, Self::Error>
+        where
+            E: Display + Debug + Send + Sync + 'static;
+
+        fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
+    }
 }
