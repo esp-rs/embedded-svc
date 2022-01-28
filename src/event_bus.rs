@@ -48,8 +48,15 @@ pub mod nonblocking {
 
     use crate::service::Service;
 
-    pub use super::Postbox;
     pub use super::Spin;
+
+    pub trait Postbox<P>: Service {
+        type PostFuture<'a>: Future<Output = Result<(), Self::Error>>
+        where
+            Self: 'a;
+
+        fn post(&mut self, payload: P) -> Self::PostFuture<'_>;
+    }
 
     /// core.stream.Stream is not stable yet. Therefore, we have to use a Future instead
     pub trait Subscription<P>: Service {

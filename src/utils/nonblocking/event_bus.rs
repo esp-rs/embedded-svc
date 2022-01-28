@@ -1,14 +1,28 @@
 use core::fmt::{Debug, Display};
+use core::future::{ready, Future, Ready};
 use core::marker::PhantomData;
 use core::mem;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
-use std::future::Future;
 
 extern crate alloc;
 use alloc::sync::Arc;
 
 use crate::mutex::{Condvar, Mutex};
+
+impl<PB, P> crate::event_bus::nonblocking::Postbox<P> for PB
+where
+    PB: crate::event_bus::Postbox<P>,
+{
+    type PostFuture<'a>
+    where
+        Self: 'a,
+    = Ready<Result<(), Self::Error>>;
+
+    fn post(&mut self, payload: P) -> Self::PostFuture<'_> {
+        ready(crate::event_bus::Postbox::post(self, payload))
+    }
+}
 
 pub struct SubscriptionState<E, P>
 where
