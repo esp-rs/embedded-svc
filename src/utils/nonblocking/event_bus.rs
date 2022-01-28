@@ -34,6 +34,7 @@ where
     waker: Option<Waker>,
 }
 
+#[allow(clippy::type_complexity)]
 pub struct Subscription<E, P, CV>(Arc<(CV::Mutex<SubscriptionState<E, P>>, CV)>)
 where
     E: crate::event_bus::EventBus<P>,
@@ -161,7 +162,9 @@ where
             if let Some(state) = subscription_state.upgrade() {
                 let (mut state, condvar) = (state.0.lock(), &state.1);
 
-                mem::replace(&mut state.waker, None).map(Waker::wake);
+                if let Some(a) = mem::replace(&mut state.waker, None) {
+                    Waker::wake(a);
+                }
 
                 while state.value.is_some() {
                     state = condvar.wait(state);

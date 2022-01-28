@@ -5,6 +5,7 @@ use core::result::Result;
 use core::time::Duration;
 
 extern crate alloc;
+use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 

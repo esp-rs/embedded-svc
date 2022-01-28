@@ -44,7 +44,7 @@ pub trait PinnedEventBus<P>: Service {
 
 pub mod nonblocking {
     use core::fmt::{Debug, Display};
-    use std::future::Future;
+    use core::future::Future;
 
     use crate::service::Service;
 

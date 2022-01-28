@@ -87,7 +87,9 @@ where
 
                 state.due = true;
 
-                mem::replace(&mut state.waker, None).map(Waker::wake);
+                if let Some(a) = mem::replace(&mut state.waker, None) {
+                    Waker::wake(a);
+                }
             }
 
             Result::<_, Self::Error>::Ok(())
@@ -214,7 +216,9 @@ where
 
                 state.due = true;
 
-                mem::replace(&mut state.waker, None).map(Waker::wake);
+                if let Some(a) = mem::replace(&mut state.waker, None) {
+                    Waker::wake(a);
+                }
             }
 
             Result::<_, Self::Error>::Ok(())

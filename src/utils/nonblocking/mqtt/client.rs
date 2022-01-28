@@ -172,6 +172,17 @@ where
     }
 }
 
+impl<CV, M, E> Default for Connection<CV, M, E>
+where
+    CV: Condvar,
+    M: Message + Send,
+    E: Send,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<CV, M, E> crate::service::Service for Connection<CV, M, E>
 where
     CV: Condvar,
