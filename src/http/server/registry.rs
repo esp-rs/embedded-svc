@@ -15,14 +15,14 @@ pub trait Registry {
     type Error: std::error::Error + Send + Sync + 'static;
 
     type Root: for<'a> Registry<
-        Request = Self::Request<'a>,
-        Response = Self::Response<'a>,
+        Request<'a> = Self::Request<'a>,
+        Response<'a> = Self::Response<'a>,
         Error = Self::Error,
     >;
 
     type MiddlewareRegistry<'q, M>: for<'a> Registry<
-        Request = Self::Request<'a>,
-        Response = Self::Response<'a>,
+        Request<'a> = Self::Request<'a>,
+        Response<'a> = Self::Response<'a>,
         Error = Self::Error,
     >
     where
