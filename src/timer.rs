@@ -4,6 +4,7 @@ use core::time::Duration;
 
 use crate::service::Service;
 
+#[must_use]
 pub trait Timer: Service {
     fn start(&mut self) -> Result<(), Self::Error>;
 
