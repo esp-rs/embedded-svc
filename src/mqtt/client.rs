@@ -1,3 +1,4 @@
+use core::fmt::{Debug, Display};
 use core::marker::PhantomData;
 
 extern crate alloc;
@@ -30,6 +31,53 @@ where
     Deleted(MessageId),
 }
 
+impl<M: Message> Display for Event<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BeforeConnect => write!(f, "BeforeConnect"),
+            Self::Connected(connected) => write!(f, "Connected(session: {})", connected),
+            Self::Disconnected => write!(f, "Disconnected"),
+            Self::Subscribed(message_id) => write!(f, "Subscribed({})", message_id),
+            Self::Unsubscribed(message_id) => write!(f, "Unsubscribed({})", message_id),
+            Self::Published(message_id) => write!(f, "Published({})", message_id),
+            Self::Received(message) => write!(f, "Received({})", message.id()),
+            Self::Deleted(message_id) => write!(f, "Deleted({})", message_id),
+        }
+    }
+}
+
+impl<M: Message> Debug for Event<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Received(message) => {
+                let topic_token = match message.details() {
+                    Details::Complete(topic_token) => Some(topic_token),
+                    Details::InitialChunk(data) => Some(&data.topic_token),
+                    _ => None,
+                };
+
+                let topic = topic_token.map(|topic_token| message.topic(topic_token));
+
+                write!(
+                    f,
+                    "
+[
+    id: {},
+    topic: {:?},
+    data: {:?},
+    details: {:?}
+]",
+                    message.id(),
+                    topic,
+                    message.data(),
+                    message.details()
+                )
+            }
+            other => write!(f, "{}", other),
+        }
+    }
+}
+
 pub trait Message {
     fn id(&self) -> MessageId;
 
@@ -40,22 +88,26 @@ pub trait Message {
     fn details(&self) -> &Details;
 }
 
+#[derive(Debug)]
 pub enum Details {
     Complete(TopicToken),
     InitialChunk(InitialChunkData),
     SubsequentChunk(SubsequentChunkData),
 }
 
+#[derive(Debug)]
 pub struct InitialChunkData {
     pub topic_token: TopicToken,
     pub total_data_size: usize,
 }
 
+#[derive(Debug)]
 pub struct SubsequentChunkData {
     pub current_data_offset: usize,
     pub total_data_size: usize,
 }
 
+#[derive(Debug)]
 pub struct TopicToken(PhantomData<*const ()>);
 
 impl TopicToken {
