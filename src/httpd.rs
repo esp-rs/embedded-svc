@@ -763,7 +763,7 @@ pub mod sessions {
                 }
             }
 
-            write!(&mut new_session_id, "{:x}", ByteBuf(&new_session_id_bytes))
+            write!(new_session_id, "{:x}", ByteBuf(&new_session_id_bytes))
                 .expect("Unable to write");
 
             new_session_id
@@ -787,7 +787,7 @@ pub mod sessions {
 
         fn insert_session_cookie(_cookies: &str, session_id: &str) -> String {
             let mut cookie_str = String::new();
-            write!(&mut cookie_str, "SESSIONID={}", session_id).unwrap();
+            write!(cookie_str, "SESSIONID={}", session_id).unwrap();
 
             cookie_str
         }
