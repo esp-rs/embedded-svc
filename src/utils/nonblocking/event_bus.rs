@@ -20,7 +20,10 @@ where
     = Ready<Result<(), Self::Error>>;
 
     fn post(&mut self, payload: P) -> Self::PostFuture<'_> {
-        ready(crate::event_bus::Postbox::post(self, payload))
+        // TODO: This will block if the queue is full.
+        // Fix this by taking a notifier as to when the queue is
+        // processed and awake the future when notified
+        ready(crate::event_bus::Postbox::post(self, payload, None).map(|_| ()))
     }
 }
 

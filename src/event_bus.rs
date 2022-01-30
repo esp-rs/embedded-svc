@@ -9,7 +9,7 @@ pub trait Spin: Service {
 }
 
 pub trait Postbox<P>: Service {
-    fn post(&mut self, payload: P) -> Result<(), Self::Error>;
+    fn post(&mut self, payload: P, wait: Option<Duration>) -> Result<bool, Self::Error>;
 }
 
 pub trait EventBus<P>: Service {
