@@ -6,6 +6,8 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(feature = "experimental")]
+pub mod channel;
 pub mod eth;
 #[cfg(feature = "experimental")]
 pub mod event_bus;

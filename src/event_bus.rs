@@ -15,7 +15,7 @@ pub trait Postbox<P>: Service {
 pub trait EventBus<P>: Service {
     type Subscription;
 
-    type Postbox: Postbox<P>;
+    type Postbox: Postbox<P, Error = Self::Error>;
 
     fn subscribe<E>(
         &mut self,
@@ -30,7 +30,7 @@ pub trait EventBus<P>: Service {
 pub trait PinnedEventBus<P>: Service {
     type Subscription;
 
-    type Postbox: Postbox<P>;
+    type Postbox: Postbox<P, Error = Self::Error>;
 
     fn subscribe<E>(
         &mut self,
@@ -44,33 +44,16 @@ pub trait PinnedEventBus<P>: Service {
 
 pub mod nonblocking {
     use core::fmt::{Debug, Display};
-    use core::future::Future;
 
+    use crate::channel::nonblocking::{Receiver, Sender};
     use crate::service::Service;
 
     pub use super::Spin;
 
-    pub trait Postbox<P>: Service {
-        type PostFuture<'a>: Future<Output = Result<(), Self::Error>>
-        where
-            Self: 'a;
-
-        fn post(&mut self, payload: P) -> Self::PostFuture<'_>;
-    }
-
-    /// core.stream.Stream is not stable yet. Therefore, we have to use a Future instead
-    pub trait Subscription<P>: Service {
-        type NextFuture<'a>: Future<Output = Result<P, Self::Error>>
-        where
-            Self: 'a;
-
-        fn next(&mut self) -> Self::NextFuture<'_>;
-    }
-
     pub trait EventBus<P>: Service {
-        type Subscription: Subscription<P>;
+        type Subscription: Receiver<Data = P, Error = Self::Error>;
 
-        type Postbox: Postbox<P>;
+        type Postbox: Sender<Data = P, Error = Self::Error>;
 
         fn subscribe<E>(&mut self) -> Result<Self::Subscription, Self::Error>
         where

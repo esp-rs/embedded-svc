@@ -65,6 +65,7 @@ pub mod nonblocking {
     use core::future::Future;
     use core::time::Duration;
 
+    use crate::channel::nonblocking::Receiver;
     use crate::service::Service;
 
     pub trait Once: Service {
@@ -73,17 +74,8 @@ pub mod nonblocking {
         fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture, Self::Error>;
     }
 
-    /// core.stream.Stream is not stable yet. Therefore, we have to use a Future instead
-    pub trait Timer: Service {
-        type NextFuture<'a>: Future<Output = Result<(), Self::Error>>
-        where
-            Self: 'a;
-
-        fn next(&mut self) -> Self::NextFuture<'_>;
-    }
-
     pub trait Periodic: Service {
-        type Timer: Timer;
+        type Timer: Receiver<Data = (), Error = Self::Error>;
 
         fn every(&mut self, duration: Duration) -> Result<Self::Timer, Self::Error>;
     }

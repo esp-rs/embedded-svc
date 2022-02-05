@@ -119,17 +119,19 @@ where
     type Error = T::Error;
 }
 
-impl<T, MX> crate::timer::nonblocking::Timer for Timer<T, MX>
+impl<T, MX> crate::channel::nonblocking::Receiver for Timer<T, MX>
 where
     T: crate::timer::Timer,
     MX: Mutex<Data = TimerState<T>>,
 {
-    type NextFuture<'a>
+    type Data = ();
+
+    type RecvFuture<'a>
     where
         Self: 'a,
     = NextFuture<'a, T, MX>;
 
-    fn next(&mut self) -> Self::NextFuture<'_> {
+    fn recv(&mut self) -> Self::RecvFuture<'_> {
         NextFuture(self)
     }
 }

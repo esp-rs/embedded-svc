@@ -10,20 +10,46 @@ use alloc::sync::Arc;
 
 use crate::mutex::{Condvar, Mutex};
 
-impl<PB, P> crate::event_bus::nonblocking::Postbox<P> for PB
+pub struct Postbox<PB, P> {
+    blocking_postbox: PB,
+    _payload_type: PhantomData<fn() -> P>,
+}
+
+impl<PB, P> Postbox<PB, P> {
+    pub fn new(blocking_postbox: PB) -> Self
+    where
+        PB: crate::event_bus::Postbox<P>,
+    {
+        Self {
+            blocking_postbox,
+            _payload_type: PhantomData,
+        }
+    }
+}
+
+impl<PB, P> crate::service::Service for Postbox<PB, P>
+where
+    PB: crate::service::Service,
+{
+    type Error = PB::Error;
+}
+
+impl<PB, P> crate::channel::nonblocking::Sender for Postbox<PB, P>
 where
     PB: crate::event_bus::Postbox<P>,
 {
-    type PostFuture<'a>
+    type Data = P;
+
+    type SendFuture<'a>
     where
         Self: 'a,
     = Ready<Result<(), Self::Error>>;
 
-    fn post(&mut self, payload: P) -> Self::PostFuture<'_> {
+    fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
         // TODO: This will block if the queue is full.
         // Fix this by taking a notifier as to when the queue is
         // processed and awake the future when notified
-        ready(crate::event_bus::Postbox::post(self, payload, None).map(|_| ()))
+        ready(self.blocking_postbox.post(value, None).map(|_| ()))
     }
 }
 
@@ -55,19 +81,21 @@ where
     type Error = E::Error;
 }
 
-impl<E, P, CV> crate::event_bus::nonblocking::Subscription<P> for Subscription<E, P, CV>
+impl<E, P, CV> crate::channel::nonblocking::Receiver for Subscription<E, P, CV>
 where
     E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
     P: Clone + Send,
     CV: Condvar,
 {
-    type NextFuture<'a>
+    type Data = P;
+
+    type RecvFuture<'a>
     where
         Self: 'a,
     = NextFuture<'a, E, P, CV>;
 
-    fn next(&mut self) -> Self::NextFuture<'_> {
+    fn recv(&mut self) -> Self::RecvFuture<'_> {
         NextFuture(self)
     }
 }
@@ -127,6 +155,18 @@ pub struct EventBus<E, CV> {
     _condvar_type: PhantomData<fn() -> CV>,
 }
 
+impl<E, CV> EventBus<E, CV> {
+    pub fn new<P>(blocking_event_bus: E) -> Self
+    where
+        E: crate::event_bus::EventBus<P>,
+    {
+        Self {
+            blocking_event_bus,
+            _condvar_type: PhantomData,
+        }
+    }
+}
+
 impl<E, CV> crate::service::Service for EventBus<E, CV>
 where
     E: crate::service::Service,
@@ -144,7 +184,7 @@ where
 {
     type Subscription = Subscription<E, P, CV>;
 
-    type Postbox = E::Postbox;
+    type Postbox = Postbox<E::Postbox, P>;
 
     fn subscribe<ER>(&mut self) -> Result<Self::Subscription, Self::Error>
     where
@@ -185,6 +225,6 @@ where
     }
 
     fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
-        self.blocking_event_bus.postbox()
+        self.blocking_event_bus.postbox().map(Postbox::new)
     }
 }
