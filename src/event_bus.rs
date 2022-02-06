@@ -9,7 +9,7 @@ pub trait Spin: Service {
 }
 
 pub trait Postbox<P>: Service {
-    fn post(&mut self, payload: P, wait: Option<Duration>) -> Result<bool, Self::Error>;
+    fn post(&mut self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error>;
 }
 
 pub trait EventBus<P>: Service {
@@ -43,8 +43,6 @@ pub trait PinnedEventBus<P>: Service {
 }
 
 pub mod nonblocking {
-    use core::fmt::{Debug, Display};
-
     use crate::channel::nonblocking::{Receiver, Sender};
     use crate::service::Service;
 
@@ -55,9 +53,7 @@ pub mod nonblocking {
 
         type Postbox: Sender<Data = P, Error = Self::Error>;
 
-        fn subscribe<E>(&mut self) -> Result<Self::Subscription, Self::Error>
-        where
-            E: Display + Debug + Send + Sync + 'static;
+        fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error>;
 
         fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
     }

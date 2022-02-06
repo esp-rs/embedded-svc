@@ -17,11 +17,11 @@ pub struct OnceState<T> {
     waker: Option<Waker>,
 }
 
-pub struct OnceFuture<T, MX>(Arc<MX>)
+pub struct OnceFuture<MX, T>(Arc<MX>)
 where
     MX: Mutex<Data = OnceState<T>>;
 
-impl<T, MX> Future for OnceFuture<T, MX>
+impl<MX, T> Future for OnceFuture<MX, T>
 where
     T: crate::timer::Timer,
     MX: Mutex<Data = OnceState<T>>,
@@ -52,25 +52,49 @@ where
     }
 }
 
-pub struct Once<T, MX> {
+pub struct Once<MX, T> {
     blocking_once: T,
     _mutex_type: PhantomData<fn() -> MX>,
 }
 
-impl<T, MX> crate::service::Service for Once<T, MX>
+impl<MX, T> Once<MX, T>
+where
+    T: crate::timer::Once,
+{
+    pub fn new(blocking_once: T) -> Self {
+        Self {
+            blocking_once,
+            _mutex_type: PhantomData,
+        }
+    }
+}
+
+impl<MX, T> Clone for Once<MX, T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            blocking_once: self.blocking_once.clone(),
+            _mutex_type: PhantomData,
+        }
+    }
+}
+
+impl<MX, T> crate::service::Service for Once<MX, T>
 where
     T: crate::service::Service,
 {
     type Error = T::Error;
 }
 
-impl<T, MX> crate::timer::nonblocking::Once for Once<T, MX>
+impl<MX, T> crate::timer::nonblocking::Once for Once<MX, T>
 where
     T: crate::timer::Once,
     T::Timer: Send,
     MX: Mutex<Data = OnceState<T::Timer>> + Send + Sync + 'static,
 {
-    type AfterFuture = OnceFuture<T::Timer, MX>;
+    type AfterFuture = OnceFuture<MX, T::Timer>;
 
     fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture, Self::Error> {
         let state = Arc::new(MX::new(OnceState {
@@ -107,11 +131,11 @@ pub struct TimerState<T> {
     waker: Option<Waker>,
 }
 
-pub struct Timer<T, MX>(Arc<MX>)
+pub struct Timer<MX, T>(Arc<MX>)
 where
     MX: Mutex<Data = TimerState<T>>;
 
-impl<T, MX> crate::service::Service for Timer<T, MX>
+impl<MX, T> crate::service::Service for Timer<MX, T>
 where
     T: crate::timer::Timer,
     MX: Mutex<Data = TimerState<T>>,
@@ -119,7 +143,7 @@ where
     type Error = T::Error;
 }
 
-impl<T, MX> crate::channel::nonblocking::Receiver for Timer<T, MX>
+impl<MX, T> crate::channel::nonblocking::Receiver for Timer<MX, T>
 where
     T: crate::timer::Timer,
     MX: Mutex<Data = TimerState<T>>,
@@ -129,18 +153,18 @@ where
     type RecvFuture<'a>
     where
         Self: 'a,
-    = NextFuture<'a, T, MX>;
+    = NextFuture<'a, MX, T>;
 
     fn recv(&mut self) -> Self::RecvFuture<'_> {
         NextFuture(self)
     }
 }
 
-pub struct NextFuture<'a, T, MX>(&'a Timer<T, MX>)
+pub struct NextFuture<'a, MX, T>(&'a Timer<MX, T>)
 where
     MX: Mutex<Data = TimerState<T>>;
 
-impl<'a, T, MX> Drop for NextFuture<'a, T, MX>
+impl<'a, MX, T> Drop for NextFuture<'a, MX, T>
 where
     MX: Mutex<Data = TimerState<T>>,
 {
@@ -152,7 +176,7 @@ where
     }
 }
 
-impl<'a, T, MX> Future for NextFuture<'a, T, MX>
+impl<'a, MX, T> Future for NextFuture<'a, MX, T>
 where
     T: crate::timer::Timer,
     MX: Mutex<Data = TimerState<T>>,
@@ -183,25 +207,49 @@ where
     }
 }
 
-pub struct Periodic<T, MX> {
+pub struct Periodic<MX, T> {
     blocking_periodic: T,
     _mutex_type: PhantomData<fn() -> MX>,
 }
 
-impl<T, MX> crate::service::Service for Periodic<T, MX>
+impl<MX, T> Periodic<MX, T>
+where
+    T: crate::timer::Periodic,
+{
+    pub fn new(blocking_periodic: T) -> Self {
+        Self {
+            blocking_periodic,
+            _mutex_type: PhantomData,
+        }
+    }
+}
+
+impl<MX, T> Clone for Periodic<MX, T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            blocking_periodic: self.blocking_periodic.clone(),
+            _mutex_type: PhantomData,
+        }
+    }
+}
+
+impl<MX, T> crate::service::Service for Periodic<MX, T>
 where
     T: crate::service::Service,
 {
     type Error = T::Error;
 }
 
-impl<T, MX> crate::timer::nonblocking::Periodic for Periodic<T, MX>
+impl<MX, T> crate::timer::nonblocking::Periodic for Periodic<MX, T>
 where
     T: crate::timer::Periodic,
     T::Timer: Send,
     MX: Mutex<Data = TimerState<T::Timer>> + Send + Sync + 'static,
 {
-    type Timer = Timer<T::Timer, MX>;
+    type Timer = Timer<MX, T::Timer>;
 
     fn every(&mut self, duration: Duration) -> Result<Self::Timer, Self::Error> {
         let state = Arc::new(MX::new(TimerState {

@@ -232,7 +232,7 @@ where
                 .timer_service
                 .after(duration, move || {
                     postbox
-                        .post(timer_id, None)
+                        .post(&timer_id, None)
                         .map(|_| ())
                         .map_err(Error::<_, T::Error>::EventBusError)
                 })
@@ -307,7 +307,7 @@ where
                 .timer_service
                 .every(duration, move || {
                     postbox
-                        .post(timer_id, None)
+                        .post(&timer_id, None)
                         .map(|_| ())
                         .map_err(Error::<_, T::Error>::EventBusError)
                 })

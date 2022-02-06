@@ -1,4 +1,3 @@
-use core::fmt::{Debug, Display};
 use core::future::{ready, Future, Ready};
 use core::marker::PhantomData;
 use core::mem;
@@ -10,16 +9,16 @@ use alloc::sync::Arc;
 
 use crate::mutex::{Condvar, Mutex};
 
-pub struct Postbox<PB, P> {
+pub struct Postbox<P, PB> {
     blocking_postbox: PB,
     _payload_type: PhantomData<fn() -> P>,
 }
 
-impl<PB, P> Postbox<PB, P> {
-    pub fn new(blocking_postbox: PB) -> Self
-    where
-        PB: crate::event_bus::Postbox<P>,
-    {
+impl<P, PB> Postbox<P, PB>
+where
+    PB: crate::event_bus::Postbox<P>,
+{
+    pub fn new(blocking_postbox: PB) -> Self {
         Self {
             blocking_postbox,
             _payload_type: PhantomData,
@@ -27,14 +26,26 @@ impl<PB, P> Postbox<PB, P> {
     }
 }
 
-impl<PB, P> crate::service::Service for Postbox<PB, P>
+impl<P, PB> Clone for Postbox<P, PB>
+where
+    PB: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            blocking_postbox: self.blocking_postbox.clone(),
+            _payload_type: PhantomData,
+        }
+    }
+}
+
+impl<P, PB> crate::service::Service for Postbox<P, PB>
 where
     PB: crate::service::Service,
 {
     type Error = PB::Error;
 }
 
-impl<PB, P> crate::channel::nonblocking::Sender for Postbox<PB, P>
+impl<P, PB> crate::channel::nonblocking::Sender for Postbox<P, PB>
 where
     PB: crate::event_bus::Postbox<P>,
 {
@@ -49,11 +60,11 @@ where
         // TODO: This will block if the queue is full.
         // Fix this by taking a notifier as to when the queue is
         // processed and awake the future when notified
-        ready(self.blocking_postbox.post(value, None).map(|_| ()))
+        ready(self.blocking_postbox.post(&value, None).map(|_| ()))
     }
 }
 
-pub struct SubscriptionState<E, P>
+pub struct SubscriptionState<P, E>
 where
     E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
@@ -64,14 +75,14 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-pub struct Subscription<E, P, CV>(Arc<(CV::Mutex<SubscriptionState<E, P>>, CV)>)
+pub struct Subscription<CV, P, E>(Arc<(CV::Mutex<SubscriptionState<P, E>>, CV)>)
 where
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
+    CV: Condvar,
     P: Send,
-    CV: Condvar;
+    E: crate::event_bus::EventBus<P>,
+    E::Subscription: Send;
 
-impl<E, P, CV> crate::service::Service for Subscription<E, P, CV>
+impl<CV, P, E> crate::service::Service for Subscription<CV, P, E>
 where
     E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
@@ -81,38 +92,38 @@ where
     type Error = E::Error;
 }
 
-impl<E, P, CV> crate::channel::nonblocking::Receiver for Subscription<E, P, CV>
+impl<CV, P, E> crate::channel::nonblocking::Receiver for Subscription<CV, P, E>
 where
+    CV: Condvar,
+    P: Clone + Send,
     E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
-    P: Clone + Send,
-    CV: Condvar,
 {
     type Data = P;
 
     type RecvFuture<'a>
     where
         Self: 'a,
-    = NextFuture<'a, E, P, CV>;
+    = NextFuture<'a, CV, P, E>;
 
     fn recv(&mut self) -> Self::RecvFuture<'_> {
         NextFuture(self)
     }
 }
 
-pub struct NextFuture<'a, E, P, CV>(&'a Subscription<E, P, CV>)
+pub struct NextFuture<'a, CV, P, E>(&'a Subscription<CV, P, E>)
 where
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
-    P: Clone + Send,
-    CV: Condvar;
-
-impl<'a, E, P, CV> Drop for NextFuture<'a, E, P, CV>
-where
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
-    P: Clone + Send,
     CV: Condvar,
+    P: Clone + Send,
+    E: crate::event_bus::EventBus<P>,
+    E::Subscription: Send;
+
+impl<'a, CV, P, E> Drop for NextFuture<'a, CV, P, E>
+where
+    CV: Condvar,
+    P: Clone + Send,
+    E: crate::event_bus::EventBus<P>,
+    E::Subscription: Send,
 {
     fn drop(&mut self) {
         let mut state = self.0 .0 .0.lock();
@@ -122,12 +133,12 @@ where
     }
 }
 
-impl<'a, E, P, CV> Future for NextFuture<'a, E, P, CV>
+impl<'a, CV, P, E> Future for NextFuture<'a, CV, P, E>
 where
+    CV: Condvar,
+    P: Clone + Send,
     E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
-    P: Clone + Send,
-    CV: Condvar,
 {
     type Output = Result<P, E::Error>;
 
@@ -150,12 +161,12 @@ where
     }
 }
 
-pub struct EventBus<E, CV> {
+pub struct EventBus<CV, E> {
     blocking_event_bus: E,
     _condvar_type: PhantomData<fn() -> CV>,
 }
 
-impl<E, CV> EventBus<E, CV> {
+impl<CV, E> EventBus<CV, E> {
     pub fn new<P>(blocking_event_bus: E) -> Self
     where
         E: crate::event_bus::EventBus<P>,
@@ -167,29 +178,38 @@ impl<E, CV> EventBus<E, CV> {
     }
 }
 
-impl<E, CV> crate::service::Service for EventBus<E, CV>
+impl<CV, E> Clone for EventBus<CV, E>
+where
+    E: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            blocking_event_bus: self.blocking_event_bus.clone(),
+            _condvar_type: PhantomData,
+        }
+    }
+}
+
+impl<CV, E> crate::service::Service for EventBus<CV, E>
 where
     E: crate::service::Service,
 {
     type Error = E::Error;
 }
 
-impl<E, P, CV> crate::event_bus::nonblocking::EventBus<P> for EventBus<E, CV>
+impl<CV, P, E> crate::event_bus::nonblocking::EventBus<P> for EventBus<CV, E>
 where
+    CV: Condvar + Send + Sync + 'static,
+    CV::Mutex<SubscriptionState<P, E>>: Send + Sync + 'static,
+    P: Clone + Send,
     E: crate::event_bus::EventBus<P> + 'static,
     E::Subscription: Send,
-    P: Clone + Send,
-    CV: Condvar + Send + Sync + 'static,
-    CV::Mutex<SubscriptionState<E, P>>: Send + Sync + 'static,
 {
-    type Subscription = Subscription<E, P, CV>;
+    type Subscription = Subscription<CV, P, E>;
 
-    type Postbox = Postbox<E::Postbox, P>;
+    type Postbox = Postbox<P, E::Postbox>;
 
-    fn subscribe<ER>(&mut self) -> Result<Self::Subscription, Self::Error>
-    where
-        ER: Display + Debug + Send + Sync + 'static,
-    {
+    fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error> {
         let state = Arc::new((
             CV::Mutex::new(SubscriptionState {
                 subscription: None,
