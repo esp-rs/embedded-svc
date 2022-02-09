@@ -23,15 +23,6 @@ pub mod nonblocking {
         fn recv(&mut self) -> Self::RecvFuture<'_>;
     }
 
-    pub trait Channel: Service {
-        type Data;
-
-        type Sender: Sender<Data = Self::Data, Error = Self::Error>;
-        type Receiver: Receiver<Data = Self::Data, Error = Self::Error>;
-
-        fn split(self) -> (Self::Sender, Self::Receiver);
-    }
-
     // TODO: Not clear yet if necessary
     // pub mod adapter {
     //     use core::future::Future;

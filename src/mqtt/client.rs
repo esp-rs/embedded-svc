@@ -193,9 +193,11 @@ pub mod nonblocking {
     /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
     /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
     pub trait Connection: Service {
-        type Message: Message;
+        type Message<'a>: Message
+        where
+            Self: 'a;
 
-        type Reference<'a>: Deref<Target = Option<Result<Event<Self::Message>, Self::Error>>>
+        type Reference<'a>: Deref<Target = Option<Result<Event<Self::Message<'a>>, Self::Error>>>
         where
             Self: 'a;
 

@@ -1,5 +1,6 @@
 use core::fmt::{Debug, Display};
 use core::future::Future;
+use core::marker::PhantomData;
 use core::mem;
 use core::ops::Deref;
 use core::pin::Pin;
@@ -50,87 +51,98 @@ where
     }
 }
 
-pub struct Payload<M, E>
-where
-    M: Message,
-{
-    event: Option<Option<Result<Event<M>, E>>>,
+pub struct Payload {
+    event: Option<*const core::ffi::c_void>,
     waker: Option<Waker>,
+    processed: bool,
 }
 
-struct ConnectionState<CV, M, E>
+unsafe impl Send for Payload {}
+unsafe impl Sync for Payload {}
+
+struct ConnectionState<CV>
 where
     CV: Condvar,
-    M: Message + Send,
-    E: Send,
 {
-    payload: CV::Mutex<Payload<M, E>>,
+    payload: CV::Mutex<Payload>,
     processed: CV,
 }
 
-#[derive(Clone)]
-pub struct Connection<CV, M, E>(Arc<ConnectionState<CV, M, E>>)
+pub struct EventRef<'a, CV, M, E>
 where
     CV: Condvar,
-    M: Message + Send,
-    E: Send;
-
-pub struct NextFuture<'a, CV, M, E>(&'a ConnectionState<CV, M, E>)
-where
-    CV: Condvar,
-    M: Message + Send,
-    E: Send;
-
-impl<'a, CV, M, E> Drop for NextFuture<'a, CV, M, E>
-where
-    CV: Condvar,
-    M: Message + Send,
-    E: Send,
+    <CV as Condvar>::Mutex<Payload>: 'a,
+    M: Message + 'a,
+    E: 'a,
 {
-    fn drop(&mut self) {
-        let mut payload = self.0.payload.lock();
-
-        payload.event = None;
-        payload.waker = None;
-
-        self.0.processed.notify_all();
-    }
+    payload: <<CV as Condvar>::Mutex<Payload> as Mutex>::Guard<'a>,
+    _message: PhantomData<fn() -> M>,
+    _error: PhantomData<fn() -> E>,
 }
-
-pub struct EventRef<'a, CV, M, E>(<<CV as Condvar>::Mutex<Payload<M, E>> as Mutex>::Guard<'a>)
-where
-    CV: Condvar,
-    <CV as Condvar>::Mutex<Payload<M, E>>: 'a,
-    M: Message + Send + 'a,
-    E: Send + 'a;
 
 impl<'a, CV, M, E> Deref for EventRef<'a, CV, M, E>
 where
     CV: Condvar,
-    <CV as Condvar>::Mutex<Payload<M, E>>: 'a,
-    M: Message + Send + 'a,
-    E: Send + 'a,
+    <CV as Condvar>::Mutex<Payload>: 'a,
+    M: Message + 'a,
+    E: 'a,
 {
     type Target = Option<Result<Event<M>, E>>;
 
     fn deref(&self) -> &Self::Target {
-        self.0.event.as_ref().unwrap()
+        let event = self.payload.event.unwrap() as *const Self::Target;
+
+        unsafe { event.as_ref().unwrap() }
+    }
+}
+
+pub struct NextFuture<'a, CV, M, E>
+where
+    CV: Condvar + 'a,
+    M: Message + 'a,
+    E: Send + 'a,
+{
+    connection_state: &'a ConnectionState<CV>,
+    _message: PhantomData<fn() -> M>,
+    _error: PhantomData<fn() -> E>,
+}
+
+impl<'a, CV, M, E> Drop for NextFuture<'a, CV, M, E>
+where
+    CV: Condvar + 'a,
+    M: Message + 'a,
+    E: Send + 'a,
+{
+    fn drop(&mut self) {
+        let mut payload = self.connection_state.payload.lock();
+
+        payload.waker = None;
+
+        if payload.processed {
+            payload.event = None;
+            self.connection_state.processed.notify_all();
+        }
     }
 }
 
 impl<'a, CV, M, E> Future for NextFuture<'a, CV, M, E>
 where
-    CV: Condvar,
-    M: Message + Send,
-    E: Send,
+    CV: Condvar + 'a,
+    M: Message + 'a,
+    E: Send + 'a,
 {
     type Output = EventRef<'a, CV, M, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut payload = self.0.payload.lock();
+        let mut payload = self.connection_state.payload.lock();
 
         if payload.event.is_some() {
-            Poll::Ready(EventRef(payload))
+            payload.processed = true;
+            Poll::Ready(EventRef {
+                payload,
+                _message: PhantomData,
+                _error: PhantomData,
+            })
         } else {
             payload.waker = Some(cx.waker().clone());
 
@@ -139,35 +151,59 @@ where
     }
 }
 
+pub struct Connection<CV, M, E>
+where
+    CV: Condvar,
+    M: Message,
+    E: Send,
+{
+    connection_state: Arc<ConnectionState<CV>>,
+    _message: PhantomData<fn() -> M>,
+    _error: PhantomData<fn() -> E>,
+}
+
 impl<CV, M, E> Connection<CV, M, E>
 where
     CV: Condvar,
-    M: Message + Send,
+    M: Message,
     E: Send,
 {
     pub fn new() -> Self {
-        Self(Arc::new(ConnectionState {
-            payload: CV::Mutex::new(Payload {
-                event: None,
-                waker: None,
+        Self {
+            connection_state: Arc::new(ConnectionState {
+                payload: CV::Mutex::new(Payload {
+                    event: None,
+                    waker: None,
+                    processed: false,
+                }),
+                processed: CV::new(),
             }),
-            processed: CV::new(),
-        }))
+            _message: PhantomData,
+            _error: PhantomData,
+        }
     }
 
-    pub fn post(&self, event: Option<Result<Event<M>, E>>) {
-        let mut payload = self.0.payload.lock();
+    pub fn post<'a>(&'a self, event: Option<Result<Event<M>, E>>)
+    where
+        M: 'a,
+        E: 'a,
+    {
+        let mut payload = self.connection_state.payload.lock();
 
         while payload.event.is_some() {
-            payload = self.0.processed.wait(payload);
+            payload = self.connection_state.processed.wait(payload);
         }
 
-        payload.event = Some(event);
+        payload.event = Some(&event as *const _ as *const _);
 
         let waker = mem::replace(&mut payload.waker, None);
 
         if let Some(waker) = waker {
             waker.wake();
+        }
+
+        while payload.event.is_some() {
+            payload = self.connection_state.processed.wait(payload);
         }
     }
 }
@@ -175,7 +211,7 @@ where
 impl<CV, M, E> Default for Connection<CV, M, E>
 where
     CV: Condvar,
-    M: Message + Send,
+    M: Message,
     E: Send,
 {
     fn default() -> Self {
@@ -183,10 +219,25 @@ where
     }
 }
 
+impl<CV, M, E> Clone for Connection<CV, M, E>
+where
+    CV: Condvar,
+    M: Message,
+    E: Send,
+{
+    fn clone(&self) -> Self {
+        Self {
+            connection_state: self.connection_state.clone(),
+            _message: PhantomData,
+            _error: PhantomData,
+        }
+    }
+}
+
 impl<CV, M, E> crate::service::Service for Connection<CV, M, E>
 where
     CV: Condvar,
-    M: Message + Send,
+    M: Message,
     E: Debug + Display + Send + Sync + 'static,
 {
     type Error = E;
@@ -195,25 +246,33 @@ where
 impl<CV, M, E> crate::mqtt::client::nonblocking::Connection for Connection<CV, M, E>
 where
     CV: Condvar,
-    M: Message + Send,
+    M: Message,
     E: Debug + Display + Send + Sync + 'static,
 {
-    type Message = M;
+    type Message<'a>
+    where
+        CV: 'a,
+        M: 'a,
+    = M;
 
     type Reference<'a>
     where
         CV: 'a,
-        <CV as Condvar>::Mutex<Payload<M, E>>: 'a,
-        M: Message + Send + 'a,
+        <CV as Condvar>::Mutex<Payload>: 'a,
+        M: Message + 'a,
         E: Send + 'a,
-    = EventRef<'a, CV, Self::Message, Self::Error>;
+    = EventRef<'a, CV, Self::Message<'a>, Self::Error>;
 
     type NextFuture<'a>
     where
         Self: 'a,
-    = NextFuture<'a, CV, Self::Message, Self::Error>;
+    = NextFuture<'a, CV, Self::Message<'a>, Self::Error>;
 
     fn next(&mut self) -> Self::NextFuture<'_> {
-        NextFuture(&self.0)
+        NextFuture {
+            connection_state: &self.connection_state,
+            _message: PhantomData,
+            _error: PhantomData,
+        }
     }
 }
