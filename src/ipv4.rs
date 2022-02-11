@@ -14,7 +14,7 @@ use alloc::string::ToString;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Mask(pub u8);
@@ -75,7 +75,7 @@ impl From<Mask> for Ipv4Addr {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Subnet {
@@ -115,7 +115,7 @@ impl FromStr for Subnet {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientSettings {
     pub ip: Ipv4Addr,
@@ -180,7 +180,7 @@ impl Default for ClientConfiguration {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct RouterConfiguration {
     pub subnet: Subnet,

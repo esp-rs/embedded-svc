@@ -25,6 +25,24 @@ pub trait Once: Service {
         E: Display + Debug + Sync + Send + 'static;
 }
 
+impl<'a, O> Once for &'a mut O
+where
+    O: Once,
+{
+    type Timer = O::Timer;
+
+    fn after<E>(
+        &mut self,
+        duration: Duration,
+        callback: impl FnOnce() -> Result<(), E> + Send + 'static,
+    ) -> Result<Self::Timer, Self::Error>
+    where
+        E: Display + Debug + Sync + Send + 'static,
+    {
+        (*self).after(duration, callback)
+    }
+}
+
 pub trait Periodic: Service {
     type Timer: Timer<Error = Self::Error> + 'static;
 
@@ -35,6 +53,24 @@ pub trait Periodic: Service {
     ) -> Result<Self::Timer, Self::Error>
     where
         E: Display + Debug + Sync + Send + 'static;
+}
+
+impl<'a, P> Periodic for &'a mut P
+where
+    P: Periodic,
+{
+    type Timer = P::Timer;
+
+    fn every<E>(
+        &mut self,
+        duration: Duration,
+        callback: impl FnMut() -> Result<(), E> + Send + 'static,
+    ) -> Result<Self::Timer, Self::Error>
+    where
+        E: Display + Debug + Sync + Send + 'static,
+    {
+        (*self).every(duration, callback)
+    }
 }
 
 pub trait PinnedOnce: Service {
@@ -49,6 +85,24 @@ pub trait PinnedOnce: Service {
         E: Display + Debug + Sync + Send + 'static;
 }
 
+impl<'a, O> PinnedOnce for &'a mut O
+where
+    O: PinnedOnce,
+{
+    type Timer = O::Timer;
+
+    fn after<E>(
+        &mut self,
+        duration: Duration,
+        callback: impl FnOnce() -> Result<(), E> + 'static,
+    ) -> Result<Self::Timer, Self::Error>
+    where
+        E: Display + Debug + Sync + Send + 'static,
+    {
+        (*self).after(duration, callback)
+    }
+}
+
 pub trait PinnedPeriodic: Service {
     type Timer: Timer<Error = Self::Error> + 'static;
 
@@ -59,6 +113,24 @@ pub trait PinnedPeriodic: Service {
     ) -> Result<Self::Timer, Self::Error>
     where
         E: Display + Debug + Sync + Send + 'static;
+}
+
+impl<'a, P> PinnedPeriodic for &'a mut P
+where
+    P: PinnedPeriodic,
+{
+    type Timer = P::Timer;
+
+    fn every<E>(
+        &mut self,
+        duration: Duration,
+        callback: impl FnMut() -> Result<(), E> + 'static,
+    ) -> Result<Self::Timer, Self::Error>
+    where
+        E: Display + Debug + Sync + Send + 'static,
+    {
+        (*self).every(duration, callback)
+    }
 }
 
 pub mod nonblocking {

@@ -1,3 +1,4 @@
+use core::fmt::{Debug, Display};
 use core::future::{ready, Future, Ready};
 use core::marker::PhantomData;
 use core::mem;
@@ -14,10 +15,7 @@ pub struct Postbox<P, PB> {
     _payload_type: PhantomData<fn() -> P>,
 }
 
-impl<P, PB> Postbox<P, PB>
-where
-    PB: crate::event_bus::Postbox<P>,
-{
+impl<P, PB> Postbox<P, PB> {
     pub fn new(blocking_postbox: PB) -> Self {
         Self {
             blocking_postbox,
@@ -64,66 +62,62 @@ where
     }
 }
 
-pub struct SubscriptionState<P, E>
-where
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
-{
-    subscription: Option<E::Subscription>,
+pub struct SubscriptionState<P, S> {
+    subscription: Option<S>,
     value: Option<P>,
     waker: Option<Waker>,
 }
 
 #[allow(clippy::type_complexity)]
-pub struct Subscription<CV, P, E>(Arc<(CV::Mutex<SubscriptionState<P, E>>, CV)>)
+pub struct Subscription<CV, P, S, E>(
+    Arc<(CV::Mutex<SubscriptionState<P, S>>, CV)>,
+    PhantomData<fn() -> E>,
+)
 where
     CV: Condvar,
     P: Send,
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send;
+    S: Send;
 
-impl<CV, P, E> crate::service::Service for Subscription<CV, P, E>
+impl<CV, P, S, E> crate::service::Service for Subscription<CV, P, S, E>
 where
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
-    P: Clone + Send,
     CV: Condvar,
+    P: Send,
+    S: Send,
+    E: Display + Debug + Send + Sync + 'static,
 {
-    type Error = E::Error;
+    type Error = E;
 }
 
-impl<CV, P, E> crate::channel::nonblocking::Receiver for Subscription<CV, P, E>
+impl<CV, P, S, E> crate::channel::nonblocking::Receiver for Subscription<CV, P, S, E>
 where
     CV: Condvar,
+    S: Send,
     P: Clone + Send,
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
+    E: Display + Debug + Send + Sync + 'static,
 {
     type Data = P;
 
     type RecvFuture<'a>
     where
         Self: 'a,
-    = NextFuture<'a, CV, P, E>;
+    = NextFuture<'a, CV, P, S, E>;
 
     fn recv(&mut self) -> Self::RecvFuture<'_> {
         NextFuture(self)
     }
 }
 
-pub struct NextFuture<'a, CV, P, E>(&'a Subscription<CV, P, E>)
+pub struct NextFuture<'a, CV, P, S, E>(&'a Subscription<CV, P, S, E>)
 where
     CV: Condvar,
     P: Clone + Send,
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send;
+    S: Send;
 
-impl<'a, CV, P, E> Drop for NextFuture<'a, CV, P, E>
+impl<'a, CV, P, S, E> Drop for NextFuture<'a, CV, P, S, E>
 where
     CV: Condvar,
     P: Clone + Send,
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
+    S: Send,
 {
     fn drop(&mut self) {
         let mut state = self.0 .0 .0.lock();
@@ -133,14 +127,13 @@ where
     }
 }
 
-impl<'a, CV, P, E> Future for NextFuture<'a, CV, P, E>
+impl<'a, CV, P, S, E> Future for NextFuture<'a, CV, P, S, E>
 where
     CV: Condvar,
     P: Clone + Send,
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
+    S: Send,
 {
-    type Output = Result<P, E::Error>;
+    type Output = Result<P, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.0 .0 .0.lock();
@@ -161,53 +154,54 @@ where
     }
 }
 
-pub struct EventBus<CV, E> {
-    blocking_event_bus: E,
+pub struct Channel<CV, E> {
+    blocking_channel: E,
     _condvar_type: PhantomData<fn() -> CV>,
 }
 
-impl<CV, E> EventBus<CV, E> {
-    pub fn new<P>(blocking_event_bus: E) -> Self
-    where
-        E: crate::event_bus::EventBus<P>,
-    {
+impl<CV, E> Channel<CV, E> {
+    pub fn new(blocking_channel: E) -> Self {
         Self {
-            blocking_event_bus,
+            blocking_channel,
             _condvar_type: PhantomData,
         }
     }
 }
 
-impl<CV, E> Clone for EventBus<CV, E>
+impl<CV, E> Clone for Channel<CV, E>
 where
     E: Clone,
 {
     fn clone(&self) -> Self {
         Self {
-            blocking_event_bus: self.blocking_event_bus.clone(),
+            blocking_channel: self.blocking_channel.clone(),
             _condvar_type: PhantomData,
         }
     }
 }
 
-impl<CV, E> crate::service::Service for EventBus<CV, E>
+impl<CV, E> super::AsyncWrapper<E> for Channel<CV, E> {
+    fn new(sync: E) -> Self {
+        Channel::new(sync)
+    }
+}
+
+impl<CV, E> crate::service::Service for Channel<CV, E>
 where
     E: crate::service::Service,
 {
     type Error = E::Error;
 }
 
-impl<CV, P, E> crate::event_bus::nonblocking::EventBus<P> for EventBus<CV, E>
+impl<CV, P, E> crate::event_bus::nonblocking::EventBus<P> for Channel<CV, E>
 where
     CV: Condvar + Send + Sync + 'static,
-    CV::Mutex<SubscriptionState<P, E>>: Send + Sync + 'static,
+    CV::Mutex<SubscriptionState<P, E::Subscription>>: Send + Sync + 'static,
     P: Clone + Send,
-    E: crate::event_bus::EventBus<P> + 'static,
+    E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
 {
-    type Subscription = Subscription<CV, P, E>;
-
-    type Postbox = Postbox<P, E::Postbox>;
+    type Subscription = Subscription<CV, P, E::Subscription, E::Error>;
 
     fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error> {
         let state = Arc::new((
@@ -221,7 +215,7 @@ where
 
         let subscription_state = Arc::downgrade(&state);
 
-        let subscription = self.blocking_event_bus.subscribe(move |payload| {
+        let subscription = self.blocking_channel.subscribe(move |payload| {
             if let Some(state) = subscription_state.upgrade() {
                 let (mut state, condvar) = (state.0.lock(), &state.1);
 
@@ -241,10 +235,19 @@ where
 
         state.0.lock().subscription = Some(subscription);
 
-        Ok(Subscription(state))
+        Ok(Subscription(state, PhantomData))
     }
+}
+
+impl<CV, P, E> crate::event_bus::nonblocking::PostboxProvider<P> for Channel<CV, E>
+where
+    CV: Condvar + Send + Sync + 'static,
+    P: Clone + Send,
+    E: crate::event_bus::PostboxProvider<P>,
+{
+    type Postbox = Postbox<P, E::Postbox>;
 
     fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
-        self.blocking_event_bus.postbox().map(Postbox::new)
+        self.blocking_channel.postbox().map(Postbox::new)
     }
 }

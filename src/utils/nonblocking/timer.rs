@@ -57,10 +57,7 @@ pub struct Once<MX, T> {
     _mutex_type: PhantomData<fn() -> MX>,
 }
 
-impl<MX, T> Once<MX, T>
-where
-    T: crate::timer::Once,
-{
+impl<MX, T> Once<MX, T> {
     pub fn new(blocking_once: T) -> Self {
         Self {
             blocking_once,
@@ -78,6 +75,12 @@ where
             blocking_once: self.blocking_once.clone(),
             _mutex_type: PhantomData,
         }
+    }
+}
+
+impl<MX, T> super::AsyncWrapper<T> for Once<MX, T> {
+    fn new(sync: T) -> Self {
+        Once::new(sync)
     }
 }
 
@@ -212,10 +215,7 @@ pub struct Periodic<MX, T> {
     _mutex_type: PhantomData<fn() -> MX>,
 }
 
-impl<MX, T> Periodic<MX, T>
-where
-    T: crate::timer::Periodic,
-{
+impl<MX, T> Periodic<MX, T> {
     pub fn new(blocking_periodic: T) -> Self {
         Self {
             blocking_periodic,
@@ -241,6 +241,12 @@ where
     T: crate::service::Service,
 {
     type Error = T::Error;
+}
+
+impl<MX, T> super::AsyncWrapper<T> for Periodic<MX, T> {
+    fn new(sync: T) -> Self {
+        Periodic::new(sync)
+    }
 }
 
 impl<MX, T> crate::timer::nonblocking::Periodic for Periodic<MX, T>

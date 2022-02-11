@@ -128,6 +128,25 @@ pub trait Client: Service {
         S: Into<Cow<'a, str>>;
 }
 
+impl<'b, C> Client for &'b mut C
+where
+    C: Client,
+{
+    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        (*self).subscribe(topic, qos)
+    }
+
+    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        (*self).unsubscribe(topic)
+    }
+}
+
 pub trait Publish: Service {
     fn publish<'a, S, V>(
         &'a mut self,
@@ -139,6 +158,25 @@ pub trait Publish: Service {
     where
         S: Into<Cow<'a, str>>,
         V: Into<Cow<'a, [u8]>>;
+}
+
+impl<'b, P> Publish for &'b mut P
+where
+    P: Publish,
+{
+    fn publish<'a, S, V>(
+        &'a mut self,
+        topic: S,
+        qos: QoS,
+        retain: bool,
+        payload: V,
+    ) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+        V: Into<Cow<'a, [u8]>>,
+    {
+        (*self).publish(topic, qos, retain, payload)
+    }
 }
 
 pub trait Enqueue: Service {
@@ -154,6 +192,25 @@ pub trait Enqueue: Service {
         V: Into<Cow<'a, [u8]>>;
 }
 
+impl<'b, E> Enqueue for &'b mut E
+where
+    E: Enqueue,
+{
+    fn enqueue<'a, S, V>(
+        &'a mut self,
+        topic: S,
+        qos: QoS,
+        retain: bool,
+        payload: V,
+    ) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+        V: Into<Cow<'a, [u8]>>,
+    {
+        (*self).enqueue(topic, qos, retain, payload)
+    }
+}
+
 pub trait Connection: Service {
     type Message<'a>: Message
     where
@@ -162,6 +219,20 @@ pub trait Connection: Service {
     /// GATs do not (yet) define a standard streaming iterator,
     /// so we have to put the next() method directly in the Connection trait
     fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>>;
+}
+
+impl<'b, C> Connection for &'b mut C
+where
+    C: Connection,
+{
+    type Message<'a>
+    where
+        Self: 'a,
+    = C::Message<'a>;
+
+    fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
+        (*self).next()
+    }
 }
 
 pub mod nonblocking {
