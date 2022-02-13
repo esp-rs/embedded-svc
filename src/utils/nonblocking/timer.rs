@@ -1,287 +1,174 @@
 use core::future::Future;
-use core::marker::PhantomData;
-use core::mem;
 use core::pin::Pin;
 use core::result::Result;
-use core::task::{Context, Poll, Waker};
+use core::sync::atomic::{AtomicU32, Ordering};
+use core::task::{Context, Poll};
 use core::time::Duration;
+
+use futures::task::AtomicWaker;
 
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::mutex::Mutex;
+use crate::channel::nonblocking::Receiver;
+use crate::service::Service;
+use crate::timer::nonblocking::{OnceTimer, PeriodicTimer, Timer, TimerService};
 
-pub struct OnceState<T> {
-    timer: Option<T>,
-    due: bool,
-    waker: Option<Waker>,
+pub struct AsyncTimer<T> {
+    blocking_timer: T,
+    ticks: Arc<AtomicU32>,
+    waker: Arc<AtomicWaker>,
+    skip: bool,
 }
 
-pub struct OnceFuture<MX, T>(Arc<MX>)
+impl<T> Service for AsyncTimer<T>
 where
-    MX: Mutex<Data = OnceState<T>>;
+    T: Service,
+{
+    type Error = T::Error;
+}
 
-impl<MX, T> Future for OnceFuture<MX, T>
+impl<T> Timer for AsyncTimer<T>
 where
     T: crate::timer::Timer,
-    MX: Mutex<Data = OnceState<T>>,
+{
+    fn is_scheduled(&self) -> Result<bool, Self::Error> {
+        self.blocking_timer.is_scheduled()
+    }
+
+    fn cancel(&mut self) -> Result<bool, Self::Error> {
+        self.blocking_timer.cancel()
+    }
+}
+
+impl<T> OnceTimer for AsyncTimer<T>
+where
+    T: crate::timer::OnceTimer + 'static,
+{
+    type AfterFuture<'a> = &'a mut Self;
+
+    fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error> {
+        self.blocking_timer.cancel()?;
+
+        self.ticks.store(0, Ordering::SeqCst);
+        self.waker.take();
+
+        self.blocking_timer.after(duration)?;
+
+        Ok(self)
+    }
+}
+
+impl<T> PeriodicTimer for AsyncTimer<T>
+where
+    T: crate::timer::PeriodicTimer + 'static,
+{
+    type Clock<'a> = &'a mut Self;
+
+    fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error> {
+        self.blocking_timer.cancel()?;
+
+        self.ticks.store(0, Ordering::SeqCst);
+        self.waker.take();
+
+        self.blocking_timer.every(duration)?;
+
+        Ok(self)
+    }
+}
+
+impl<'a, T> Future for &'a mut AsyncTimer<T>
+where
+    T: Service,
 {
     type Output = Result<(), T::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut state = self.0.lock();
-
-        if state.due {
-            Poll::Ready(Ok(()))
-        } else {
-            let first_waker = mem::replace(&mut state.waker, Some(cx.waker().clone())).is_none();
-
-            if first_waker {
-                if let Some(timer) = &mut state.timer {
-                    let result = timer.start();
-                    if result.is_err() {
-                        return Poll::Ready(result);
-                    }
-                } else {
-                    panic!();
-                }
+        if self.ticks.load(Ordering::SeqCst) > 0 {
+            if self.skip {
+                self.ticks.store(0, Ordering::SeqCst);
+            } else {
+                self.ticks.fetch_sub(1, Ordering::SeqCst);
             }
 
+            Poll::Ready(Ok(()))
+        } else {
+            self.waker.register(cx.waker());
             Poll::Pending
         }
     }
 }
 
-pub struct Once<MX, T> {
-    blocking_once: T,
-    _mutex_type: PhantomData<fn() -> MX>,
-}
-
-impl<MX, T> Once<MX, T> {
-    pub fn new(blocking_once: T) -> Self {
-        Self {
-            blocking_once,
-            _mutex_type: PhantomData,
-        }
-    }
-}
-
-impl<MX, T> Clone for Once<MX, T>
+impl<'a, T> Receiver for &'a mut AsyncTimer<T>
 where
-    T: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            blocking_once: self.blocking_once.clone(),
-            _mutex_type: PhantomData,
-        }
-    }
-}
-
-impl<MX, T> super::AsyncWrapper<T> for Once<MX, T> {
-    fn new(sync: T) -> Self {
-        Once::new(sync)
-    }
-}
-
-impl<MX, T> crate::service::Service for Once<MX, T>
-where
-    T: crate::service::Service,
-{
-    type Error = T::Error;
-}
-
-impl<MX, T> crate::timer::nonblocking::Once for Once<MX, T>
-where
-    T: crate::timer::Once,
-    T::Timer: Send,
-    MX: Mutex<Data = OnceState<T::Timer>> + Send + Sync + 'static,
-{
-    type AfterFuture = OnceFuture<MX, T::Timer>;
-
-    fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture, Self::Error> {
-        let state = Arc::new(MX::new(OnceState {
-            timer: None,
-            due: false,
-            waker: None,
-        }));
-
-        let timer_state = Arc::downgrade(&state);
-
-        let timer = self.blocking_once.after(duration, move || {
-            if let Some(state) = timer_state.upgrade() {
-                let mut state = state.lock();
-
-                state.due = true;
-
-                if let Some(a) = mem::replace(&mut state.waker, None) {
-                    Waker::wake(a);
-                }
-            }
-
-            Result::<_, Self::Error>::Ok(())
-        })?;
-
-        state.lock().timer = Some(timer);
-
-        Ok(OnceFuture(state))
-    }
-}
-
-pub struct TimerState<T> {
-    timer: Option<T>,
-    due: bool,
-    waker: Option<Waker>,
-}
-
-pub struct Timer<MX, T>(Arc<MX>)
-where
-    MX: Mutex<Data = TimerState<T>>;
-
-impl<MX, T> crate::service::Service for Timer<MX, T>
-where
-    T: crate::timer::Timer,
-    MX: Mutex<Data = TimerState<T>>,
-{
-    type Error = T::Error;
-}
-
-impl<MX, T> crate::channel::nonblocking::Receiver for Timer<MX, T>
-where
-    T: crate::timer::Timer,
-    MX: Mutex<Data = TimerState<T>>,
+    T: Service,
 {
     type Data = ();
 
-    type RecvFuture<'a>
+    type RecvFuture<'b>
     where
-        Self: 'a,
-    = NextFuture<'a, MX, T>;
+        Self: 'b,
+    = &'b mut Self;
 
     fn recv(&mut self) -> Self::RecvFuture<'_> {
-        NextFuture(self)
+        self
     }
 }
 
-pub struct NextFuture<'a, MX, T>(&'a Timer<MX, T>)
-where
-    MX: Mutex<Data = TimerState<T>>;
+pub struct AsyncTimerService<T>(T);
 
-impl<'a, MX, T> Drop for NextFuture<'a, MX, T>
-where
-    MX: Mutex<Data = TimerState<T>>,
-{
-    fn drop(&mut self) {
-        let mut state = self.0 .0.lock();
-
-        state.due = false;
-        state.waker = None;
+impl<T> AsyncTimerService<T> {
+    pub fn new(blocking_timer_service: T) -> Self {
+        Self(blocking_timer_service)
     }
 }
 
-impl<'a, MX, T> Future for NextFuture<'a, MX, T>
-where
-    T: crate::timer::Timer,
-    MX: Mutex<Data = TimerState<T>>,
-{
-    type Output = Result<(), T::Error>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut state = self.0 .0.lock();
-
-        if state.due {
-            Poll::Ready(Ok(()))
-        } else {
-            let first_waker = mem::replace(&mut state.waker, Some(cx.waker().clone())).is_none();
-
-            if first_waker {
-                if let Some(timer) = &mut state.timer {
-                    let result = timer.start();
-                    if result.is_err() {
-                        return Poll::Ready(result);
-                    }
-                } else {
-                    panic!();
-                }
-            }
-
-            Poll::Pending
-        }
-    }
-}
-
-pub struct Periodic<MX, T> {
-    blocking_periodic: T,
-    _mutex_type: PhantomData<fn() -> MX>,
-}
-
-impl<MX, T> Periodic<MX, T> {
-    pub fn new(blocking_periodic: T) -> Self {
-        Self {
-            blocking_periodic,
-            _mutex_type: PhantomData,
-        }
-    }
-}
-
-impl<MX, T> Clone for Periodic<MX, T>
+impl<T> Clone for AsyncTimerService<T>
 where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        Self {
-            blocking_periodic: self.blocking_periodic.clone(),
-            _mutex_type: PhantomData,
-        }
+        Self(self.0.clone())
     }
 }
 
-impl<MX, T> crate::service::Service for Periodic<MX, T>
+impl<T> super::AsyncWrapper<T> for AsyncTimerService<T> {
+    fn new(blocking_timer_service: T) -> Self {
+        AsyncTimerService::new(blocking_timer_service)
+    }
+}
+
+impl<T> Service for AsyncTimerService<T>
 where
-    T: crate::service::Service,
+    T: Service,
 {
     type Error = T::Error;
 }
 
-impl<MX, T> super::AsyncWrapper<T> for Periodic<MX, T> {
-    fn new(sync: T) -> Self {
-        Periodic::new(sync)
-    }
-}
-
-impl<MX, T> crate::timer::nonblocking::Periodic for Periodic<MX, T>
+impl<T> TimerService for AsyncTimerService<T>
 where
-    T: crate::timer::Periodic,
+    T: crate::timer::TimerService,
     T::Timer: Send,
-    MX: Mutex<Data = TimerState<T::Timer>> + Send + Sync + 'static,
 {
-    type Timer = Timer<MX, T::Timer>;
+    type Timer = AsyncTimer<T::Timer>;
 
-    fn every(&mut self, duration: Duration) -> Result<Self::Timer, Self::Error> {
-        let state = Arc::new(MX::new(TimerState {
-            timer: None,
-            due: false,
-            waker: None,
-        }));
+    fn timer(&mut self) -> Result<Self::Timer, Self::Error> {
+        let ticks = Arc::new(AtomicU32::new(0));
+        let waker = Arc::new(AtomicWaker::new());
 
-        let timer_state = Arc::downgrade(&state);
+        let callback_ticks = ticks.clone();
+        let callback_waker = waker.clone();
 
-        let timer = self.blocking_periodic.every(duration, move || {
-            if let Some(state) = timer_state.upgrade() {
-                let mut state = state.lock();
-
-                state.due = true;
-
-                if let Some(a) = mem::replace(&mut state.waker, None) {
-                    Waker::wake(a);
-                }
-            }
-
-            Result::<_, Self::Error>::Ok(())
+        let blocking_timer = self.0.timer(move || {
+            callback_ticks.fetch_add(1, Ordering::SeqCst);
+            callback_waker.wake();
         })?;
 
-        state.lock().timer = Some(timer);
-
-        Ok(Timer(state))
+        Ok(Self::Timer {
+            blocking_timer,
+            ticks,
+            waker,
+            skip: false,
+        })
     }
 }
