@@ -156,12 +156,16 @@ where
         let ticks = Arc::new(AtomicU32::new(0));
         let waker = Arc::new(AtomicWaker::new());
 
-        let callback_ticks = ticks.clone();
-        let callback_waker = waker.clone();
+        let callback_ticks = Arc::downgrade(&ticks);
+        let callback_waker = Arc::downgrade(&waker);
 
         let blocking_timer = self.0.timer(move || {
-            callback_ticks.fetch_add(1, Ordering::SeqCst);
-            callback_waker.wake();
+            if let Some(callback_ticks) = callback_ticks.upgrade() {
+                if let Some(callback_waker) = callback_waker.upgrade() {
+                    callback_ticks.fetch_add(1, Ordering::SeqCst);
+                    callback_waker.wake();
+                }
+            }
         })?;
 
         Ok(Self::Timer {

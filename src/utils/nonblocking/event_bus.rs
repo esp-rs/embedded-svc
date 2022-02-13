@@ -229,8 +229,6 @@ where
 
                 state.value = Some(payload.clone());
             }
-
-            Result::<_, Self::Error>::Ok(())
         })?;
 
         state.0.lock().subscription = Some(subscription);

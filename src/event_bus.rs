@@ -1,4 +1,3 @@
-use core::fmt::{Debug, Display};
 use core::result::Result;
 use core::time::Duration;
 
@@ -24,12 +23,10 @@ where
 pub trait EventBus<P>: Service {
     type Subscription;
 
-    fn subscribe<E>(
+    fn subscribe(
         &mut self,
-        callback: impl for<'a> FnMut(&'a P) -> Result<(), E> + Send + 'static,
-    ) -> Result<Self::Subscription, Self::Error>
-    where
-        E: Display + Debug + Send + Sync + 'static;
+        callback: impl for<'a> FnMut(&'a P) + Send + 'static,
+    ) -> Result<Self::Subscription, Self::Error>;
 }
 
 impl<'a, P, E> EventBus<P> for &'a mut E
@@ -38,13 +35,10 @@ where
 {
     type Subscription = E::Subscription;
 
-    fn subscribe<EE>(
+    fn subscribe(
         &mut self,
-        callback: impl for<'b> FnMut(&'b P) -> Result<(), EE> + Send + 'static,
-    ) -> Result<Self::Subscription, Self::Error>
-    where
-        EE: Display + Debug + Send + Sync + 'static,
-    {
+        callback: impl for<'b> FnMut(&'b P) + Send + 'static,
+    ) -> Result<Self::Subscription, Self::Error> {
         (*self).subscribe(callback)
     }
 }
@@ -69,12 +63,10 @@ where
 pub trait PinnedEventBus<P>: Service {
     type Subscription;
 
-    fn subscribe<E>(
+    fn subscribe(
         &mut self,
-        callback: impl for<'a> FnMut(&'a P) -> Result<(), E> + 'static,
-    ) -> Result<Self::Subscription, Self::Error>
-    where
-        E: Display + Debug + Send + Sync + 'static;
+        callback: impl for<'a> FnMut(&'a P) + 'static,
+    ) -> Result<Self::Subscription, Self::Error>;
 }
 
 impl<'a, P, E> PinnedEventBus<P> for &'a mut E
@@ -83,13 +75,10 @@ where
 {
     type Subscription = E::Subscription;
 
-    fn subscribe<EE>(
+    fn subscribe(
         &mut self,
-        callback: impl for<'b> FnMut(&'b P) -> Result<(), EE> + 'static,
-    ) -> Result<Self::Subscription, Self::Error>
-    where
-        EE: Display + Debug + Send + Sync + 'static,
-    {
+        callback: impl for<'b> FnMut(&'b P) + 'static,
+    ) -> Result<Self::Subscription, Self::Error> {
         (*self).subscribe(callback)
     }
 }
