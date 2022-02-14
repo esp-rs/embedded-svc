@@ -242,12 +242,31 @@ pub mod nonblocking {
     extern crate alloc;
     use alloc::borrow::Cow;
 
-    pub use super::{Client, Event, Message, MessageId, QoS};
+    pub use super::{Details, Event, Message, MessageId, QoS};
 
     use crate::service::Service;
 
+    pub trait Client: Service {
+        type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        where
+            Self: 'a;
+        type UnsubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        where
+            Self: 'a;
+
+        fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Self::SubscribeFuture<'a>
+        where
+            S: Into<Cow<'a, str>>;
+
+        fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
+        where
+            S: Into<Cow<'a, str>>;
+    }
+
     pub trait Publish: Service {
-        type PublishFuture: Future<Output = Result<MessageId, Self::Error>>;
+        type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        where
+            Self: 'a;
 
         fn publish<'a, S, V>(
             &'a mut self,
@@ -255,7 +274,7 @@ pub mod nonblocking {
             qos: QoS,
             retain: bool,
             payload: V,
-        ) -> Self::PublishFuture
+        ) -> Self::PublishFuture<'a>
         where
             S: Into<Cow<'a, str>>,
             V: Into<Cow<'a, [u8]>>;

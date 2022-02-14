@@ -10,12 +10,14 @@ extern crate alloc;
 use alloc::borrow::Cow;
 use alloc::sync::Arc;
 
-use crate::mqtt::client::{Enqueue, Event, Message, MessageId, QoS};
+use crate::mqtt::client::{Client, Enqueue, Event, Message, MessageId, Publish, QoS};
 use crate::mutex::{Condvar, Mutex};
+use crate::nonblocking::Unblocker;
+use crate::service::Service;
 
-pub struct PublishFuture<E>(Result<MessageId, E>);
+pub struct EnqueueFuture<E>(Result<MessageId, E>);
 
-impl<E> Future for PublishFuture<E>
+impl<E> Future for EnqueueFuture<E>
 where
     E: Clone,
 {
@@ -34,7 +36,10 @@ where
     E: Enqueue,
     E::Error: Clone,
 {
-    type PublishFuture = PublishFuture<E::Error>;
+    type PublishFuture<'a>
+    where
+        Self: 'a,
+    = EnqueueFuture<E::Error>;
 
     fn publish<'a, S, V>(
         &'a mut self,
@@ -42,19 +47,96 @@ where
         qos: QoS,
         retain: bool,
         payload: V,
-    ) -> Self::PublishFuture
+    ) -> Self::PublishFuture<'a>
     where
         S: Into<Cow<'a, str>>,
         V: Into<Cow<'a, [u8]>>,
     {
-        PublishFuture(self.enqueue(topic, qos, retain, payload))
+        EnqueueFuture(self.enqueue(topic, qos, retain, payload))
+    }
+}
+
+impl<M, P, U> Service for (Arc<M>, U)
+where
+    M: Mutex<Data = P>,
+    P: Service,
+{
+    type Error = P::Error;
+}
+
+impl<M, C, U> crate::mqtt::client::nonblocking::Client for (Arc<M>, U)
+where
+    M: Mutex<Data = C>,
+    C: Client,
+    C::Error: Clone,
+    U: Unblocker,
+{
+    type SubscribeFuture<'a>
+    where
+        Self: 'a,
+    = U::UnblockFuture<Result<MessageId, C::Error>>;
+    type UnsubscribeFuture<'a>
+    where
+        Self: 'a,
+    = U::UnblockFuture<Result<MessageId, C::Error>>;
+
+    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Self::SubscribeFuture<'a>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        let topic: String = topic.into().into_owned();
+        let client = self.0.clone();
+
+        self.1.unblock(move || client.lock().subscribe(&topic, qos))
+    }
+
+    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        let topic: String = topic.into().into_owned();
+        let client = self.0.clone();
+
+        self.1.unblock(move || client.lock().unsubscribe(&topic))
+    }
+}
+
+impl<M, P, U> crate::mqtt::client::nonblocking::Publish for (Arc<M>, U)
+where
+    M: Mutex<Data = P>,
+    P: Publish,
+    P::Error: Clone,
+    U: Unblocker,
+{
+    type PublishFuture<'a>
+    where
+        Self: 'a,
+    = U::UnblockFuture<Result<MessageId, P::Error>>;
+
+    fn publish<'a, S, V>(
+        &'a mut self,
+        topic: S,
+        qos: QoS,
+        retain: bool,
+        payload: V,
+    ) -> Self::PublishFuture<'a>
+    where
+        S: Into<Cow<'a, str>>,
+        V: Into<Cow<'a, [u8]>>,
+    {
+        let topic: String = topic.into().into_owned();
+        let payload: Vec<u8> = payload.into().into_owned();
+        let client = self.0.clone();
+
+        self.1
+            .unblock(move || client.lock().publish(&topic, qos, retain, &payload))
     }
 }
 
 pub struct Payload {
     event: Option<*const core::ffi::c_void>,
     waker: Option<Waker>,
-    processed: bool,
+    handed_over: bool,
 }
 
 unsafe impl Send for Payload {}
@@ -65,34 +147,23 @@ where
     CV: Condvar,
 {
     payload: CV::Mutex<Payload>,
-    processed: CV,
+    state_changed: CV,
 }
 
-pub struct EventRef<'a, CV, M, E>
+pub struct EventRef<'a, M, E>(&'a Option<Result<Event<M>, E>>)
 where
-    CV: Condvar,
-    <CV as Condvar>::Mutex<Payload>: 'a,
     M: Message + 'a,
-    E: 'a,
-{
-    payload: <<CV as Condvar>::Mutex<Payload> as Mutex>::Guard<'a>,
-    _message: PhantomData<fn() -> M>,
-    _error: PhantomData<fn() -> E>,
-}
+    E: 'a;
 
-impl<'a, CV, M, E> Deref for EventRef<'a, CV, M, E>
+impl<'a, M, E> Deref for EventRef<'a, M, E>
 where
-    CV: Condvar,
-    <CV as Condvar>::Mutex<Payload>: 'a,
     M: Message + 'a,
     E: 'a,
 {
     type Target = Option<Result<Event<M>, E>>;
 
     fn deref(&self) -> &Self::Target {
-        let event = self.payload.event.unwrap() as *const Self::Target;
-
-        unsafe { event.as_ref().unwrap() }
+        self.0
     }
 }
 
@@ -118,9 +189,9 @@ where
 
         payload.waker = None;
 
-        if payload.processed {
+        if payload.handed_over {
             payload.event = None;
-            self.connection_state.processed.notify_all();
+            self.connection_state.state_changed.notify_all();
         }
     }
 }
@@ -131,20 +202,21 @@ where
     M: Message + 'a,
     E: Send + 'a,
 {
-    type Output = EventRef<'a, CV, M, E>;
+    type Output = EventRef<'a, M, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut payload = self.connection_state.payload.lock();
 
-        if payload.event.is_some() {
-            payload.processed = true;
-            Poll::Ready(EventRef {
-                payload,
-                _message: PhantomData,
-                _error: PhantomData,
-            })
+        if let Some(event) = payload.event {
+            payload.handed_over = true;
+            Poll::Ready(EventRef(unsafe {
+                (event as *const Option<Result<Event<M>, E>>)
+                    .as_ref()
+                    .unwrap()
+            }))
         } else {
             payload.waker = Some(cx.waker().clone());
+            self.connection_state.state_changed.notify_all();
 
             Poll::Pending
         }
@@ -174,9 +246,9 @@ where
                 payload: CV::Mutex::new(Payload {
                     event: None,
                     waker: None,
-                    processed: false,
+                    handed_over: false,
                 }),
-                processed: CV::new(),
+                state_changed: CV::new(),
             }),
             _message: PhantomData,
             _error: PhantomData,
@@ -191,19 +263,23 @@ where
         let mut payload = self.connection_state.payload.lock();
 
         while payload.event.is_some() {
-            payload = self.connection_state.processed.wait(payload);
+            let waker = mem::replace(&mut payload.waker, None);
+            if let Some(waker) = waker {
+                waker.wake();
+            }
+
+            payload = self.connection_state.state_changed.wait(payload);
         }
 
         payload.event = Some(&event as *const _ as *const _);
 
-        let waker = mem::replace(&mut payload.waker, None);
-
-        if let Some(waker) = waker {
-            waker.wake();
-        }
-
         while payload.event.is_some() {
-            payload = self.connection_state.processed.wait(payload);
+            let waker = mem::replace(&mut payload.waker, None);
+            if let Some(waker) = waker {
+                waker.wake();
+            }
+
+            payload = self.connection_state.state_changed.wait(payload);
         }
     }
 }
@@ -258,10 +334,9 @@ where
     type Reference<'a>
     where
         CV: 'a,
-        <CV as Condvar>::Mutex<Payload>: 'a,
         M: Message + 'a,
         E: Send + 'a,
-    = EventRef<'a, CV, Self::Message<'a>, Self::Error>;
+    = EventRef<'a, Self::Message<'a>, Self::Error>;
 
     type NextFuture<'a>
     where

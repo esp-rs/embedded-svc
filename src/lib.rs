@@ -20,6 +20,8 @@ pub mod ipv4;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod mqtt;
 pub mod mutex;
+#[cfg(feature = "experimental")]
+pub mod nonblocking;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod ota;
 pub mod ping;

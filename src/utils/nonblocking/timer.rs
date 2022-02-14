@@ -84,17 +84,23 @@ where
     type Output = Result<(), T::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.ticks.load(Ordering::SeqCst) > 0 {
-            if self.skip {
-                self.ticks.store(0, Ordering::SeqCst);
-            } else {
-                self.ticks.fetch_sub(1, Ordering::SeqCst);
+        self.waker.register(cx.waker());
+
+        loop {
+            let value = self.ticks.load(Ordering::SeqCst);
+            if value == 0 {
+                return Poll::Pending;
             }
 
-            Poll::Ready(Ok(()))
-        } else {
-            self.waker.register(cx.waker());
-            Poll::Pending
+            let new_value = if self.skip { 0 } else { value - 1 };
+
+            if self
+                .ticks
+                .compare_exchange(value, new_value, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return Poll::Ready(Ok(()));
+            }
         }
     }
 }
