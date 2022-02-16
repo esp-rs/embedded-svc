@@ -138,7 +138,7 @@ where
     }
 }
 
-impl<T> super::AsyncWrapper<T> for AsyncTimerService<T> {
+impl<U, T> super::AsyncWrapper<U, T> for AsyncTimerService<T> {
     fn new(blocking_timer_service: T) -> Self {
         AsyncTimerService::new(blocking_timer_service)
     }

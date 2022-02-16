@@ -1,7 +1,7 @@
-use core::fmt::{Debug, Display};
+use core::fmt::Debug;
 
 pub trait Service {
-    type Error: Display + Debug + Send + Sync + 'static;
+    type Error: Debug;
 }
 
 impl<'a, S> Service for &'a S

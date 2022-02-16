@@ -2,7 +2,6 @@ use core::fmt::{Debug, Display};
 use core::future::Future;
 use core::marker::PhantomData;
 use core::mem;
-use core::ops::Deref;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
@@ -10,7 +9,9 @@ extern crate alloc;
 use alloc::borrow::Cow;
 use alloc::sync::Arc;
 
-use crate::mqtt::client::{Client, Enqueue, Event, Message, MessageId, Publish, QoS};
+use crate::mqtt::client::nonblocking::{
+    Client, Connection, Event, Message, MessageId, Publish, QoS,
+};
 use crate::mutex::{Condvar, Mutex};
 use crate::nonblocking::Unblocker;
 use crate::service::Service;
@@ -31,9 +32,9 @@ where
     }
 }
 
-impl<E> crate::mqtt::client::nonblocking::Publish for E
+impl<E> Publish for E
 where
-    E: Enqueue,
+    E: crate::mqtt::client::Enqueue,
     E::Error: Clone,
 {
     type PublishFuture<'a>
@@ -56,7 +57,18 @@ where
     }
 }
 
-impl<M, P, U> Service for (Arc<M>, U)
+pub struct AsyncClient<U, M>(Arc<M>, PhantomData<fn() -> U>);
+
+impl<U, M, P> AsyncClient<U, M>
+where
+    M: Mutex<Data = P>,
+{
+    pub fn new(blocking_client: P) -> Self {
+        Self(Arc::new(M::new(blocking_client)), PhantomData)
+    }
+}
+
+impl<U, M, P> Service for AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
     P: Service,
@@ -64,12 +76,22 @@ where
     type Error = P::Error;
 }
 
-impl<M, C, U> crate::mqtt::client::nonblocking::Client for (Arc<M>, U)
+impl<U, M, P> Clone for AsyncClient<U, M>
 where
-    M: Mutex<Data = C>,
-    C: Client,
+    M: Mutex<Data = P>,
+{
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), PhantomData)
+    }
+}
+
+impl<U, M, C> Client for AsyncClient<U, M>
+where
+    M: Mutex<Data = C> + Send + Sync + 'static,
+    C: crate::mqtt::client::Client,
     C::Error: Clone,
     U: Unblocker,
+    Self::Error: Send + Sync + 'static,
 {
     type SubscribeFuture<'a>
     where
@@ -87,7 +109,7 @@ where
         let topic: String = topic.into().into_owned();
         let client = self.0.clone();
 
-        self.1.unblock(move || client.lock().subscribe(&topic, qos))
+        U::unblock(Box::new(move || client.lock().subscribe(&topic, qos)))
     }
 
     fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
@@ -97,16 +119,17 @@ where
         let topic: String = topic.into().into_owned();
         let client = self.0.clone();
 
-        self.1.unblock(move || client.lock().unsubscribe(&topic))
+        U::unblock(Box::new(move || client.lock().unsubscribe(&topic)))
     }
 }
 
-impl<M, P, U> crate::mqtt::client::nonblocking::Publish for (Arc<M>, U)
+impl<U, M, P> Publish for AsyncClient<U, M>
 where
-    M: Mutex<Data = P>,
-    P: Publish,
+    M: Mutex<Data = P> + Send + Sync + 'static,
+    P: crate::mqtt::client::Publish,
     P::Error: Clone,
     U: Unblocker,
+    Self::Error: Send + Sync + 'static,
 {
     type PublishFuture<'a>
     where
@@ -128,8 +151,18 @@ where
         let payload: Vec<u8> = payload.into().into_owned();
         let client = self.0.clone();
 
-        self.1
-            .unblock(move || client.lock().publish(&topic, qos, retain, &payload))
+        U::unblock(Box::new(move || {
+            client.lock().publish(&topic, qos, retain, &payload)
+        }))
+    }
+}
+
+impl<U, M, P> crate::utils::nonblocking::AsyncWrapper<U, P> for AsyncClient<U, M>
+where
+    M: Mutex<Data = P>,
+{
+    fn new(sync: P) -> Self {
+        AsyncClient::new(sync)
     }
 }
 
@@ -150,39 +183,26 @@ where
     state_changed: CV,
 }
 
-pub struct EventRef<'a, M, E>(&'a Option<Result<Event<M>, E>>)
-where
-    M: Message + 'a,
-    E: 'a;
-
-impl<'a, M, E> Deref for EventRef<'a, M, E>
-where
-    M: Message + 'a,
-    E: 'a,
-{
-    type Target = Option<Result<Event<M>, E>>;
-
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
-}
-
-pub struct NextFuture<'a, CV, M, E>
+pub struct NextFuture<'a, CV, FM, OM, FE, OE, M, E>
 where
     CV: Condvar + 'a,
     M: Message + 'a,
-    E: Send + 'a,
+    E: 'a,
 {
     connection_state: &'a ConnectionState<CV>,
+    message_converter: FM,
+    error_converter: FE,
+    _output: PhantomData<fn() -> OM>,
+    _error_output: PhantomData<fn() -> OE>,
     _message: PhantomData<fn() -> M>,
     _error: PhantomData<fn() -> E>,
 }
 
-impl<'a, CV, M, E> Drop for NextFuture<'a, CV, M, E>
+impl<'a, CV, FM, OM, FE, OE, M, E> Drop for NextFuture<'a, CV, FM, OM, FE, OE, M, E>
 where
     CV: Condvar + 'a,
     M: Message + 'a,
-    E: Send + 'a,
+    E: 'a,
 {
     fn drop(&mut self) {
         let mut payload = self.connection_state.payload.lock();
@@ -196,24 +216,46 @@ where
     }
 }
 
-impl<'a, CV, M, E> Future for NextFuture<'a, CV, M, E>
+impl<'a, CV, FM, OM, FE, OE, M, E> Future for NextFuture<'a, CV, FM, OM, FE, OE, M, E>
 where
     CV: Condvar + 'a,
+    FM: FnMut(&'a M) -> OM + Unpin,
+    FE: FnMut(&'a E) -> OE + Unpin,
     M: Message + 'a,
-    E: Send + 'a,
+    E: 'a,
 {
-    type Output = EventRef<'a, M, E>;
+    type Output = Option<Result<Event<OM>, OE>>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut payload = self.connection_state.payload.lock();
 
         if let Some(event) = payload.event {
-            payload.handed_over = true;
-            Poll::Ready(EventRef(unsafe {
+            let event_ref = unsafe {
                 (event as *const Option<Result<Event<M>, E>>)
                     .as_ref()
                     .unwrap()
-            }))
+            };
+
+            let result = match event_ref {
+                Some(Ok(event)) => match event {
+                    Event::Received(message) => {
+                        Some(Ok(Event::Received((self.message_converter)(message))))
+                    }
+                    Event::BeforeConnect => Some(Ok(Event::BeforeConnect)),
+                    Event::Connected(session) => Some(Ok(Event::Connected(*session))),
+                    Event::Disconnected => Some(Ok(Event::Disconnected)),
+                    Event::Subscribed(message_id) => Some(Ok(Event::Subscribed(*message_id))),
+                    Event::Unsubscribed(message_id) => Some(Ok(Event::Unsubscribed(*message_id))),
+                    Event::Published(message_id) => Some(Ok(Event::Published(*message_id))),
+                    Event::Deleted(message_id) => Some(Ok(Event::Deleted(*message_id))),
+                },
+                Some(Err(error)) => Some(Err((self.error_converter)(error))),
+                None => None,
+            };
+
+            payload.handed_over = true;
+
+            Poll::Ready(result)
         } else {
             payload.waker = Some(cx.waker().clone());
             self.connection_state.state_changed.notify_all();
@@ -223,22 +265,20 @@ where
     }
 }
 
-pub struct Connection<CV, M, E>
+pub struct AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
-    E: Send,
 {
     connection_state: Arc<ConnectionState<CV>>,
     _message: PhantomData<fn() -> M>,
     _error: PhantomData<fn() -> E>,
 }
 
-impl<CV, M, E> Connection<CV, M, E>
+impl<CV, M, E> AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
-    E: Send,
 {
     pub fn new() -> Self {
         Self {
@@ -255,7 +295,7 @@ where
         }
     }
 
-    pub fn post<'a>(&'a self, event: Option<Result<Event<M>, E>>)
+    pub fn post<'a>(&'a self, event: &'a Option<Result<Event<M>, E>>)
     where
         M: 'a,
         E: 'a,
@@ -271,7 +311,7 @@ where
             payload = self.connection_state.state_changed.wait(payload);
         }
 
-        payload.event = Some(&event as *const _ as *const _);
+        payload.event = Some(event as *const _ as *const _);
 
         while payload.event.is_some() {
             let waker = mem::replace(&mut payload.waker, None);
@@ -284,22 +324,20 @@ where
     }
 }
 
-impl<CV, M, E> Default for Connection<CV, M, E>
+impl<CV, M, E> Default for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
-    E: Send,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<CV, M, E> Clone for Connection<CV, M, E>
+impl<CV, M, E> Clone for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
-    E: Send,
 {
     fn clone(&self) -> Self {
         Self {
@@ -310,7 +348,7 @@ where
     }
 }
 
-impl<CV, M, E> crate::service::Service for Connection<CV, M, E>
+impl<CV, M, E> Service for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
@@ -319,7 +357,7 @@ where
     type Error = E;
 }
 
-impl<CV, M, E> crate::mqtt::client::nonblocking::Connection for Connection<CV, M, E>
+impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
@@ -331,21 +369,30 @@ where
         M: 'a,
     = M;
 
-    type Reference<'a>
-    where
-        CV: 'a,
-        M: Message + 'a,
-        E: Send + 'a,
-    = EventRef<'a, Self::Message<'a>, Self::Error>;
-
-    type NextFuture<'a>
+    type NextFuture<'a, FM, OM, FE, OE>
     where
         Self: 'a,
-    = NextFuture<'a, CV, Self::Message<'a>, Self::Error>;
+        CV: 'a,
+        M: 'a,
+        FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
+        FE: FnMut(&'a Self::Error) -> OE + Unpin,
+    = NextFuture<'a, CV, FM, OM, FE, OE, Self::Message<'a>, Self::Error>;
 
-    fn next(&mut self) -> Self::NextFuture<'_> {
+    fn next<'a, FM, OM, FE, OE>(
+        &'a mut self,
+        fm: FM,
+        fe: FE,
+    ) -> Self::NextFuture<'a, FM, OM, FE, OE>
+    where
+        FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
+        FE: FnMut(&'a Self::Error) -> OE + Unpin,
+    {
         NextFuture {
             connection_state: &self.connection_state,
+            message_converter: fm,
+            error_converter: fe,
+            _output: PhantomData,
+            _error_output: PhantomData,
             _message: PhantomData,
             _error: PhantomData,
         }

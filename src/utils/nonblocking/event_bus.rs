@@ -1,5 +1,5 @@
-use core::fmt::{Debug, Display};
-use core::future::{ready, Future, Ready};
+use core::fmt::Debug;
+use core::future::Future;
 use core::marker::PhantomData;
 use core::mem;
 use core::pin::Pin;
@@ -8,23 +8,29 @@ use core::task::{Context, Poll, Waker};
 extern crate alloc;
 use alloc::sync::Arc;
 
+use crate::channel::nonblocking::{Receiver, Sender};
+use crate::event_bus::nonblocking::{EventBus, PostboxProvider};
 use crate::mutex::{Condvar, Mutex};
+use crate::nonblocking::Unblocker;
+use crate::service::Service;
 
-pub struct Postbox<P, PB> {
+pub struct AsyncPostbox<U, P, PB> {
     blocking_postbox: PB,
     _payload_type: PhantomData<fn() -> P>,
+    _unblocker: PhantomData<fn() -> U>,
 }
 
-impl<P, PB> Postbox<P, PB> {
+impl<U, P, PB> AsyncPostbox<U, P, PB> {
     pub fn new(blocking_postbox: PB) -> Self {
         Self {
             blocking_postbox,
             _payload_type: PhantomData,
+            _unblocker: PhantomData,
         }
     }
 }
 
-impl<P, PB> Clone for Postbox<P, PB>
+impl<U, P, PB> Clone for AsyncPostbox<U, P, PB>
 where
     PB: Clone,
 {
@@ -32,33 +38,45 @@ where
         Self {
             blocking_postbox: self.blocking_postbox.clone(),
             _payload_type: PhantomData,
+            _unblocker: PhantomData,
         }
     }
 }
 
-impl<P, PB> crate::service::Service for Postbox<P, PB>
+impl<U, P, PB> Service for AsyncPostbox<U, P, PB>
 where
-    PB: crate::service::Service,
+    PB: Service,
 {
     type Error = PB::Error;
 }
 
-impl<P, PB> crate::channel::nonblocking::Sender for Postbox<P, PB>
+impl<U, P, PB> Sender for AsyncPostbox<U, P, PB>
 where
-    PB: crate::event_bus::Postbox<P>,
+    U: Unblocker,
+    P: Clone + Send + 'static,
+    PB: crate::event_bus::Postbox<P> + Clone + Send + 'static,
+    Self::Error: Send + Sync + 'static,
 {
     type Data = P;
 
     type SendFuture<'a>
     where
         Self: 'a,
-    = Ready<Result<(), Self::Error>>;
+    = U::UnblockFuture<Result<(), Self::Error>>;
 
     fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
-        // TODO: This will block if the queue is full.
-        // Fix this by taking a notifier as to when the queue is
-        // processed and awake the future when notified
-        ready(self.blocking_postbox.post(&value, None).map(|_| ()))
+        let value = value.clone();
+        let mut blocking_postbox = self.blocking_postbox.clone();
+
+        U::unblock(Box::new(move || {
+            blocking_postbox.post(&value, None).map(|_| ())
+        }))
+    }
+}
+
+impl<U, P, PB> super::AsyncWrapper<U, PB> for AsyncPostbox<U, P, PB> {
+    fn new(sync: PB) -> Self {
+        AsyncPostbox::new(sync)
     }
 }
 
@@ -69,7 +87,7 @@ pub struct SubscriptionState<P, S> {
 }
 
 #[allow(clippy::type_complexity)]
-pub struct Subscription<CV, P, S, E>(
+pub struct AsyncSubscription<CV, P, S, E>(
     Arc<(CV::Mutex<SubscriptionState<P, S>>, CV)>,
     PhantomData<fn() -> E>,
 )
@@ -78,22 +96,22 @@ where
     P: Send,
     S: Send;
 
-impl<CV, P, S, E> crate::service::Service for Subscription<CV, P, S, E>
+impl<CV, P, S, E> Service for AsyncSubscription<CV, P, S, E>
 where
     CV: Condvar,
     P: Send,
     S: Send,
-    E: Display + Debug + Send + Sync + 'static,
+    E: Debug,
 {
     type Error = E;
 }
 
-impl<CV, P, S, E> crate::channel::nonblocking::Receiver for Subscription<CV, P, S, E>
+impl<CV, P, S, E> Receiver for AsyncSubscription<CV, P, S, E>
 where
     CV: Condvar,
     S: Send,
     P: Clone + Send,
-    E: Display + Debug + Send + Sync + 'static,
+    E: Debug,
 {
     type Data = P;
 
@@ -107,7 +125,7 @@ where
     }
 }
 
-pub struct NextFuture<'a, CV, P, S, E>(&'a Subscription<CV, P, S, E>)
+pub struct NextFuture<'a, CV, P, S, E>(&'a AsyncSubscription<CV, P, S, E>)
 where
     CV: Condvar,
     P: Clone + Send,
@@ -154,46 +172,49 @@ where
     }
 }
 
-pub struct Channel<CV, E> {
+pub struct Channel<U, CV, E> {
     blocking_channel: E,
+    _unblocker: PhantomData<fn() -> U>,
     _condvar_type: PhantomData<fn() -> CV>,
 }
 
-impl<CV, E> Channel<CV, E> {
+impl<U, CV, E> Channel<U, CV, E> {
     pub fn new(blocking_channel: E) -> Self {
         Self {
             blocking_channel,
+            _unblocker: PhantomData,
             _condvar_type: PhantomData,
         }
     }
 }
 
-impl<CV, E> Clone for Channel<CV, E>
+impl<U, CV, E> Clone for Channel<U, CV, E>
 where
     E: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             blocking_channel: self.blocking_channel.clone(),
+            _unblocker: PhantomData,
             _condvar_type: PhantomData,
         }
     }
 }
 
-impl<CV, E> super::AsyncWrapper<E> for Channel<CV, E> {
+impl<U, CV, E> super::AsyncWrapper<U, E> for Channel<U, CV, E> {
     fn new(sync: E) -> Self {
         Channel::new(sync)
     }
 }
 
-impl<CV, E> crate::service::Service for Channel<CV, E>
+impl<U, CV, E> Service for Channel<U, CV, E>
 where
-    E: crate::service::Service,
+    E: Service,
 {
     type Error = E::Error;
 }
 
-impl<CV, P, E> crate::event_bus::nonblocking::EventBus<P> for Channel<CV, E>
+impl<U, CV, P, E> EventBus<P> for Channel<U, CV, E>
 where
     CV: Condvar + Send + Sync + 'static,
     CV::Mutex<SubscriptionState<P, E::Subscription>>: Send + Sync + 'static,
@@ -201,7 +222,7 @@ where
     E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
 {
-    type Subscription = Subscription<CV, P, E::Subscription, E::Error>;
+    type Subscription = AsyncSubscription<CV, P, E::Subscription, E::Error>;
 
     fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error> {
         let state = Arc::new((
@@ -233,19 +254,22 @@ where
 
         state.0.lock().subscription = Some(subscription);
 
-        Ok(Subscription(state, PhantomData))
+        Ok(AsyncSubscription(state, PhantomData))
     }
 }
 
-impl<CV, P, E> crate::event_bus::nonblocking::PostboxProvider<P> for Channel<CV, E>
+impl<U, CV, P, E> PostboxProvider<P> for Channel<U, CV, E>
 where
+    U: Unblocker,
     CV: Condvar + Send + Sync + 'static,
-    P: Clone + Send,
+    P: Clone + Send + 'static,
+    E::Postbox: Clone + Send + 'static,
     E: crate::event_bus::PostboxProvider<P>,
+    Self::Error: Send + Sync + 'static,
 {
-    type Postbox = Postbox<P, E::Postbox>;
+    type Postbox = AsyncPostbox<U, P, E::Postbox>;
 
     fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
-        self.blocking_channel.postbox().map(Postbox::new)
+        self.blocking_channel.postbox().map(AsyncPostbox::new)
     }
 }

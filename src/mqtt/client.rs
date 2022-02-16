@@ -17,10 +17,8 @@ pub enum QoS {
 
 pub type MessageId = u32;
 
-pub enum Event<M>
-where
-    M: Message,
-{
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Event<M> {
     BeforeConnect,
     Connected(bool),
     Disconnected,
@@ -31,7 +29,10 @@ where
     Deleted(MessageId),
 }
 
-impl<M: Message> Display for Event<M> {
+impl<M> Display for Event<M>
+where
+    M: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::BeforeConnect => write!(f, "BeforeConnect"),
@@ -40,40 +41,8 @@ impl<M: Message> Display for Event<M> {
             Self::Subscribed(message_id) => write!(f, "Subscribed({})", message_id),
             Self::Unsubscribed(message_id) => write!(f, "Unsubscribed({})", message_id),
             Self::Published(message_id) => write!(f, "Published({})", message_id),
-            Self::Received(message) => write!(f, "Received({})", message.id()),
+            Self::Received(message) => write!(f, "Received({})", message),
             Self::Deleted(message_id) => write!(f, "Deleted({})", message_id),
-        }
-    }
-}
-
-impl<M: Message> Debug for Event<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Received(message) => {
-                let topic_token = match message.details() {
-                    Details::Complete(topic_token) => Some(topic_token),
-                    Details::InitialChunk(data) => Some(&data.topic_token),
-                    _ => None,
-                };
-
-                let topic = topic_token.map(|topic_token| message.topic(topic_token));
-
-                write!(
-                    f,
-                    "
-[
-    id: {},
-    topic: {:?},
-    data: {:?},
-    details: {:?}
-]",
-                    message.id(),
-                    topic,
-                    message.data(),
-                    message.details()
-                )
-            }
-            other => write!(f, "{}", other),
         }
     }
 }
@@ -237,7 +206,6 @@ where
 
 pub mod nonblocking {
     use core::future::Future;
-    use core::ops::Deref;
 
     extern crate alloc;
     use alloc::borrow::Cow;
@@ -287,14 +255,19 @@ pub mod nonblocking {
         where
             Self: 'a;
 
-        type Reference<'a>: Deref<Target = Option<Result<Event<Self::Message<'a>>, Self::Error>>>
+        type NextFuture<'a, FM, OM, FE, OE>: Future<Output = Option<Result<Event<OM>, OE>>>
         where
-            Self: 'a;
+            Self: 'a,
+            FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
+            FE: FnMut(&'a Self::Error) -> OE + Unpin;
 
-        type NextFuture<'a>: Future<Output = Self::Reference<'a>>
+        fn next<'a, FM, OM, FE, OE>(
+            &'a mut self,
+            fm: FM,
+            fe: FE,
+        ) -> Self::NextFuture<'a, FM, OM, FE, OE>
         where
-            Self: 'a;
-
-        fn next(&mut self) -> Self::NextFuture<'_>;
+            FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
+            FE: FnMut(&'a Self::Error) -> OE + Unpin;
     }
 }
