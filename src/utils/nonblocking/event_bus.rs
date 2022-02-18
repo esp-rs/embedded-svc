@@ -4,9 +4,12 @@ use core::marker::PhantomData;
 use core::mem;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
+use core::time::Duration;
 
 extern crate alloc;
 use alloc::sync::Arc;
+
+use futures::future::{ready, Either, Ready};
 
 use crate::channel::nonblocking::{Receiver, Sender};
 use crate::event_bus::nonblocking::{EventBus, PostboxProvider};
@@ -62,15 +65,24 @@ where
     type SendFuture<'a>
     where
         Self: 'a,
-    = U::UnblockFuture<Result<(), Self::Error>>;
+    = Either<Ready<Result<(), Self::Error>>, U::UnblockFuture<Result<(), Self::Error>>>;
 
     fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
-        let value = value.clone();
-        let mut blocking_postbox = self.blocking_postbox.clone();
+        if !self
+            .blocking_postbox
+            .post(&value, Some(Duration::from_secs(0)))
+            .ok()
+            .unwrap_or(false)
+        {
+            let value = value.clone();
+            let mut blocking_postbox = self.blocking_postbox.clone();
 
-        U::unblock(Box::new(move || {
-            blocking_postbox.post(&value, None).map(|_| ())
-        }))
+            Either::Right(U::unblock(Box::new(move || {
+                blocking_postbox.post(&value, None).map(|_| ())
+            })))
+        } else {
+            Either::Left(ready(Ok(())))
+        }
     }
 }
 
