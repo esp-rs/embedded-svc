@@ -37,6 +37,6 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, optional = true }
 url = { version = "2", optional = true }
 http-auth-basic = { version = "0.1", optional = true }
-futures = { version = "0.3", optional = true }
+futures = { version = "0.3", default-features = false, optional = true }
 # Uncomment once 0.6.2 which has no_std support is released
 #domain = { version = "0.6", optional = true, default-features = false }
