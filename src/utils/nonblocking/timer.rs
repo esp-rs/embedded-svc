@@ -1,7 +1,8 @@
 use core::future::Future;
+use core::mem;
 use core::pin::Pin;
 use core::result::Result;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll};
 use core::time::Duration;
 
@@ -16,9 +17,9 @@ use crate::timer::nonblocking::{OnceTimer, PeriodicTimer, Timer, TimerService};
 
 pub struct AsyncTimer<T> {
     blocking_timer: T,
-    ticks: Arc<AtomicU32>,
+    ready: Arc<AtomicBool>,
     waker: Arc<AtomicWaker>,
-    skip: bool,
+    duration: Option<Duration>,
 }
 
 impl<T> Service for AsyncTimer<T>
@@ -45,79 +46,89 @@ impl<T> OnceTimer for AsyncTimer<T>
 where
     T: crate::timer::OnceTimer + 'static,
 {
-    type AfterFuture<'a> = &'a mut Self;
+    type AfterFuture<'a> = TimerFuture<'a, T>;
 
     fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error> {
         self.blocking_timer.cancel()?;
 
-        self.ticks.store(0, Ordering::SeqCst);
         self.waker.take();
+        self.ready.store(false, Ordering::SeqCst);
+        self.duration = None;
 
-        self.blocking_timer.after(duration)?;
-
-        Ok(self)
+        Ok(TimerFuture(self, Some(duration)))
     }
 }
 
 impl<T> PeriodicTimer for AsyncTimer<T>
 where
-    T: crate::timer::PeriodicTimer + 'static,
+    T: crate::timer::OnceTimer + 'static,
 {
     type Clock<'a> = &'a mut Self;
 
     fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error> {
         self.blocking_timer.cancel()?;
 
-        self.ticks.store(0, Ordering::SeqCst);
         self.waker.take();
-
-        self.blocking_timer.every(duration)?;
+        self.ready.store(false, Ordering::SeqCst);
+        self.duration = Some(duration);
 
         Ok(self)
     }
 }
 
-impl<'a, T> Future for &'a mut AsyncTimer<T>
+pub struct TimerFuture<'a, T>(&'a mut AsyncTimer<T>, Option<Duration>)
 where
-    T: Service,
+    T: crate::timer::Timer;
+
+impl<'a, T> Drop for TimerFuture<'a, T>
+where
+    T: crate::timer::Timer,
+{
+    fn drop(&mut self) {
+        self.0.cancel().unwrap();
+    }
+}
+
+impl<'a, T> Future for TimerFuture<'a, T>
+where
+    T: crate::timer::OnceTimer + 'static,
 {
     type Output = Result<(), T::Error>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.waker.register(cx.waker());
-
-        loop {
-            let value = self.ticks.load(Ordering::SeqCst);
-            if value == 0 {
-                return Poll::Pending;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Some(duration) = mem::replace(&mut self.1, None) {
+            match self.0.blocking_timer.after(duration) {
+                Ok(_) => (),
+                Err(error) => return Poll::Ready(Err(error)),
             }
+        }
 
-            let new_value = if self.skip { 0 } else { value - 1 };
+        self.0.waker.register(cx.waker());
 
-            if self
-                .ticks
-                .compare_exchange(value, new_value, Ordering::SeqCst, Ordering::SeqCst)
-                .is_ok()
-            {
-                return Poll::Ready(Ok(()));
-            }
+        if self.0.ready.load(Ordering::SeqCst) {
+            return Poll::Ready(Ok(()));
+        } else {
+            return Poll::Pending;
         }
     }
 }
 
 impl<'a, T> Receiver for &'a mut AsyncTimer<T>
 where
-    T: Service,
+    T: crate::timer::OnceTimer + 'static,
 {
     type Data = ();
 
     type RecvFuture<'b>
     where
-        Self: 'b,
-    = &'b mut Self;
+        'a: 'b,
+    = TimerFuture<'b, T>;
 
     fn recv(&mut self) -> Self::RecvFuture<'_> {
-        self
+        self.waker.take();
+        self.ready.store(false, Ordering::SeqCst);
+
+        TimerFuture(self, self.duration)
     }
 }
 
@@ -159,16 +170,16 @@ where
     type Timer = AsyncTimer<T::Timer>;
 
     fn timer(&mut self) -> Result<Self::Timer, Self::Error> {
-        let ticks = Arc::new(AtomicU32::new(0));
+        let ready = Arc::new(AtomicBool::new(false));
         let waker = Arc::new(AtomicWaker::new());
 
-        let callback_ticks = Arc::downgrade(&ticks);
+        let callback_ready = Arc::downgrade(&ready);
         let callback_waker = Arc::downgrade(&waker);
 
         let blocking_timer = self.0.timer(move || {
-            if let Some(callback_ticks) = callback_ticks.upgrade() {
+            if let Some(callback_ready) = callback_ready.upgrade() {
                 if let Some(callback_waker) = callback_waker.upgrade() {
-                    callback_ticks.fetch_add(1, Ordering::SeqCst);
+                    callback_ready.store(true, Ordering::SeqCst);
                     callback_waker.wake();
                 }
             }
@@ -176,9 +187,9 @@ where
 
         Ok(Self::Timer {
             blocking_timer,
-            ticks,
+            ready,
             waker,
-            skip: false,
+            duration: None,
         })
     }
 }

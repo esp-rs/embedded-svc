@@ -13,7 +13,7 @@ use futures::future::{ready, Either, Ready};
 
 use crate::channel::nonblocking::{Receiver, Sender};
 use crate::event_bus::nonblocking::{EventBus, PostboxProvider};
-use crate::mutex::{Condvar, Mutex};
+use crate::mutex::{Condvar, Mutex as _};
 use crate::nonblocking::Unblocker;
 use crate::service::Service;
 
@@ -250,7 +250,9 @@ where
 
         let subscription = self.blocking_channel.subscribe(move |payload| {
             if let Some(state) = subscription_state.upgrade() {
-                let (mut state, condvar) = (state.0.lock(), &state.1);
+                let pair: &(CV::Mutex<_>, CV) = &state;
+
+                let (mut state, condvar) = (pair.0.lock(), &pair.1);
 
                 if let Some(a) = mem::replace(&mut state.waker, None) {
                     Waker::wake(a);
