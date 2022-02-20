@@ -13,7 +13,7 @@ use futures::future::{ready, Either, Ready};
 
 use crate::channel::nonblocking::{Receiver, Sender};
 use crate::event_bus::nonblocking::{EventBus, PostboxProvider};
-use crate::mutex::{Condvar, Mutex as _};
+use crate::mutex::{Condvar, Mutex};
 use crate::nonblocking::Unblocker;
 use crate::service::Service;
 

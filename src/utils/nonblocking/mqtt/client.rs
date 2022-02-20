@@ -12,7 +12,7 @@ use alloc::sync::Arc;
 use crate::mqtt::client::nonblocking::{
     Client, Connection, Event, Message, MessageId, Publish, QoS,
 };
-use crate::mutex::{self, Condvar, Mutex as _};
+use crate::mutex::{Condvar, Mutex};
 use crate::nonblocking::Unblocker;
 use crate::service::Service;
 
@@ -61,7 +61,7 @@ pub struct AsyncClient<U, M>(Arc<M>, PhantomData<fn() -> U>);
 
 impl<U, M, P> AsyncClient<U, M>
 where
-    M: mutex::Mutex<Data = P>,
+    M: Mutex<Data = P>,
 {
     pub fn new(blocking_client: P) -> Self {
         Self(Arc::new(M::new(blocking_client)), PhantomData)
@@ -70,7 +70,7 @@ where
 
 impl<U, M, P> Service for AsyncClient<U, M>
 where
-    M: mutex::Mutex<Data = P>,
+    M: Mutex<Data = P>,
     P: Service,
 {
     type Error = P::Error;
@@ -78,7 +78,7 @@ where
 
 impl<U, M, P> Clone for AsyncClient<U, M>
 where
-    M: mutex::Mutex<Data = P>,
+    M: Mutex<Data = P>,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone(), PhantomData)
@@ -87,7 +87,7 @@ where
 
 impl<U, M, C> Client for AsyncClient<U, M>
 where
-    M: mutex::Mutex<Data = C> + Send + Sync + 'static,
+    M: Mutex<Data = C> + Send + Sync + 'static,
     C: crate::mqtt::client::Client,
     C::Error: Clone,
     U: Unblocker,
@@ -125,7 +125,7 @@ where
 
 impl<U, M, P> Publish for AsyncClient<U, M>
 where
-    M: mutex::Mutex<Data = P> + Send + Sync + 'static,
+    M: Mutex<Data = P> + Send + Sync + 'static,
     P: crate::mqtt::client::Publish,
     P::Error: Clone,
     U: Unblocker,
@@ -159,7 +159,7 @@ where
 
 impl<U, M, P> crate::utils::nonblocking::AsyncWrapper<U, P> for AsyncClient<U, M>
 where
-    M: mutex::Mutex<Data = P>,
+    M: Mutex<Data = P>,
 {
     fn new(sync: P) -> Self {
         AsyncClient::new(sync)
