@@ -3,8 +3,8 @@ use core::time::Duration;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::errors::Errors;
 use crate::ipv4;
-use crate::service::Service;
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -53,7 +53,7 @@ pub struct Summary {
     pub time: Duration,
 }
 
-pub trait Ping: Service {
+pub trait Ping: Errors {
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
 
     fn ping_details<F: Fn(&Summary, &Reply)>(

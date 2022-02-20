@@ -10,10 +10,10 @@ use alloc::vec::Vec;
 
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::errors::Errors;
 #[cfg(feature = "std")]
 use crate::io::Read;
 use crate::io::{self, Write};
-use crate::service::Service;
 
 use super::{Headers, Method, SendHeaders, SendStatus};
 
@@ -89,7 +89,7 @@ pub trait Session<'a> {
     fn invalidate(&mut self) -> Result<bool, SessionError>;
 }
 
-pub trait Request<'a>: Headers + Service {
+pub trait Request<'a>: Headers + Errors {
     type Read<'b>: io::Read<Error = Self::Error>
     where
         Self: 'b;
@@ -169,7 +169,7 @@ pub trait ResponseWrite<'a>: io::Write {
     fn complete(self) -> Result<Completion, Self::Error>;
 }
 
-pub trait Response<'a>: SendStatus<'a> + SendHeaders<'a> + Service {
+pub trait Response<'a>: SendStatus<'a> + SendHeaders<'a> + Errors {
     type Write<'b>: ResponseWrite<'b, Error = Self::Error>;
 
     fn send_bytes(

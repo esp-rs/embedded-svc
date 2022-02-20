@@ -11,9 +11,9 @@ use alloc::sync::Arc;
 use futures::future::{ready, Either, Ready};
 
 use crate::channel::nonblocking::{Receiver, Sender};
+use crate::errors::Errors;
 use crate::event_bus::nonblocking::{EventBus, PostboxProvider};
 use crate::mutex::{Condvar, Mutex};
-use crate::service::Service;
 use crate::unblocker::nonblocking::Unblocker;
 
 pub struct AsyncPostbox<U, P, PB> {
@@ -45,9 +45,9 @@ where
     }
 }
 
-impl<U, P, PB> Service for AsyncPostbox<U, P, PB>
+impl<U, P, PB> Errors for AsyncPostbox<U, P, PB>
 where
-    PB: Service,
+    PB: Errors,
 {
     type Error = PB::Error;
 }
@@ -108,7 +108,7 @@ where
     S: Send;
 
 #[cfg(not(feature = "std"))]
-impl<CV, P, S, E> Service for AsyncSubscription<CV, P, S, E>
+impl<CV, P, S, E> Errors for AsyncSubscription<CV, P, S, E>
 where
     CV: Condvar,
     P: Send,
@@ -119,7 +119,7 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<CV, P, S, E> Service for AsyncSubscription<CV, P, S, E>
+impl<CV, P, S, E> Errors for AsyncSubscription<CV, P, S, E>
 where
     CV: Condvar,
     P: Send,
@@ -251,9 +251,9 @@ impl<U, CV, E> super::AsyncWrapper<U, E> for Channel<U, CV, E> {
     }
 }
 
-impl<U, CV, E> Service for Channel<U, CV, E>
+impl<U, CV, E> Errors for Channel<U, CV, E>
 where
-    E: Service,
+    E: Errors,
 {
     type Error = E::Error;
 }

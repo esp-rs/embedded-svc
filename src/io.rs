@@ -10,7 +10,7 @@ use alloc::boxed::Box;
 #[cfg(feature = "std")]
 pub use stdio::*;
 
-use crate::service::Service;
+use crate::errors::Errors;
 
 const BUF_SIZE: usize = 64;
 
@@ -28,7 +28,7 @@ impl fmt::Display for IODynError {
     }
 }
 
-pub trait Read: Service {
+pub trait Read: Errors {
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error>;
 
     #[cfg(feature = "alloc")]
@@ -41,7 +41,7 @@ pub trait Read: Service {
     }
 }
 
-pub trait Write: Service {
+pub trait Write: Errors {
     fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error>;
 
     fn do_write_all(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
@@ -78,7 +78,7 @@ where
 }
 
 #[cfg(feature = "alloc")]
-impl Service for Box<dyn Read<Error = IODynError>> {
+impl Errors for Box<dyn Read<Error = IODynError>> {
     type Error = IODynError;
 }
 
@@ -103,7 +103,7 @@ where
 }
 
 #[cfg(feature = "alloc")]
-impl Service for Box<dyn Write<Error = IODynError>> {
+impl Errors for Box<dyn Write<Error = IODynError>> {
     type Error = IODynError;
 }
 
@@ -120,9 +120,9 @@ impl Write for Box<dyn Write<Error = IODynError>> {
 
 struct DynIO<S>(S);
 
-impl<S> Service for DynIO<S>
+impl<S> Errors for DynIO<S>
 where
-    S: Service,
+    S: Errors,
     S::Error: Into<IODynError>,
 {
     type Error = IODynError;
@@ -298,7 +298,7 @@ where
 mod stdio {
     pub struct StdRead<T>(pub T);
 
-    impl<R> crate::service::Service for StdRead<R>
+    impl<R> crate::errors::Errors for StdRead<R>
     where
         R: std::io::Read,
     {
@@ -327,7 +327,7 @@ mod stdio {
 
     pub struct StdWrite<T>(pub T);
 
-    impl<W> crate::service::Service for StdWrite<W>
+    impl<W> crate::errors::Errors for StdWrite<W>
     where
         W: std::io::Write,
     {

@@ -12,7 +12,7 @@ extern crate alloc;
 use alloc::sync::Arc;
 
 use crate::channel::nonblocking::Receiver;
-use crate::service::Service;
+use crate::errors::Errors;
 use crate::timer::nonblocking::{OnceTimer, PeriodicTimer, Timer, TimerService};
 
 pub struct AsyncTimer<T> {
@@ -22,9 +22,9 @@ pub struct AsyncTimer<T> {
     duration: Option<Duration>,
 }
 
-impl<T> Service for AsyncTimer<T>
+impl<T> Errors for AsyncTimer<T>
 where
-    T: Service,
+    T: Errors,
 {
     type Error = T::Error;
 }
@@ -155,9 +155,9 @@ impl<U, T> super::AsyncWrapper<U, T> for AsyncTimerService<T> {
     }
 }
 
-impl<T> Service for AsyncTimerService<T>
+impl<T> Errors for AsyncTimerService<T>
 where
-    T: Service,
+    T: Errors,
 {
     type Error = T::Error;
 }

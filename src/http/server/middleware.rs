@@ -101,7 +101,7 @@ where
     }
 }
 
-impl<'r, R, M> Service for MiddlewareRegistry<'r, R, M>
+impl<'r, R, M> Errors for MiddlewareRegistry<'r, R, M>
 where
     R: Registry,
     M: Middleware<R> + Clone + 'static,

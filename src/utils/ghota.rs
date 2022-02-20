@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::service::Service;
+use crate::errors::Errors;
 use crate::{
     http::{client::*, Headers},
     io,
@@ -186,9 +186,9 @@ pub struct GitHubOtaRead<R> {
     response: R,
 }
 
-impl<S> Service for GitHubOtaRead<S>
+impl<S> Errors for GitHubOtaRead<S>
 where
-    S: Service,
+    S: Errors,
 {
     type Error = S::Error;
 }
@@ -211,9 +211,9 @@ where
     }
 }
 
-impl<'a, C> Service for GitHubOtaService<'a, C>
+impl<'a, C> Errors for GitHubOtaService<'a, C>
 where
-    C: Service,
+    C: Errors,
 {
     type Error = C::Error;
 }

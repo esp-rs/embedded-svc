@@ -7,6 +7,7 @@
 extern crate alloc;
 
 pub mod channel;
+pub mod errors;
 pub mod eth;
 pub mod event_bus;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
@@ -21,7 +22,6 @@ pub mod mutex;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod ota;
 pub mod ping;
-pub mod service;
 #[cfg(feature = "alloc")]
 pub mod storage;
 pub mod sys_time;

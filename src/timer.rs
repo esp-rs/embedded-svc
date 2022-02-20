@@ -1,10 +1,10 @@
 use core::result::Result;
 use core::time::Duration;
 
-use crate::service::Service;
+use crate::errors::Errors;
 
 #[must_use]
-pub trait Timer: Service {
+pub trait Timer: Errors {
     fn is_scheduled(&self) -> Result<bool, Self::Error>;
 
     fn cancel(&mut self) -> Result<bool, Self::Error>;
@@ -20,7 +20,7 @@ pub trait PeriodicTimer: Timer {
     fn every(&mut self, duration: Duration) -> Result<(), Self::Error>;
 }
 
-pub trait TimerService: Service {
+pub trait TimerService: Errors {
     type Timer: Timer<Error = Self::Error> + 'static;
 
     fn timer(
@@ -49,7 +49,7 @@ pub mod nonblocking {
     use core::time::Duration;
 
     use crate::channel::nonblocking::Receiver;
-    use crate::service::Service;
+    use crate::errors::Errors;
 
     pub use super::Timer;
 
@@ -71,7 +71,7 @@ pub mod nonblocking {
         fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error>;
     }
 
-    pub trait TimerService: Service {
+    pub trait TimerService: Errors {
         type Timer: super::Timer<Error = Self::Error> + 'static;
 
         fn timer(&mut self) -> Result<Self::Timer, Self::Error>;

@@ -1,9 +1,9 @@
 extern crate alloc;
 use alloc::borrow::ToOwned;
 
-use crate::service::Service;
+use crate::errors::Errors;
 
-pub trait Storage: Service {
+pub trait Storage: Errors {
     fn contains(&self, key: impl AsRef<str>) -> Result<bool, Self::Error>;
 
     fn remove(&mut self, key: impl AsRef<str>) -> Result<bool, Self::Error>;
@@ -54,7 +54,7 @@ impl Default for MemoryStorage {
     }
 }
 
-impl Service for MemoryStorage {
+impl Errors for MemoryStorage {
     type Error = core::convert::Infallible;
 }
 
@@ -99,7 +99,7 @@ impl<T: Storage> StorageCache<T> {
     }
 }
 
-impl<T: Storage> Service for StorageCache<T> {
+impl<T: Storage> Errors for StorageCache<T> {
     type Error = T::Error;
 }
 

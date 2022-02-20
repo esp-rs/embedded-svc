@@ -2,12 +2,12 @@ use core::fmt;
 
 use serde::Serialize;
 
+use crate::errors::Errors;
 use crate::io::{self, Write};
-use crate::service::Service;
 
 use super::{Headers, Method, SendHeaders, Status};
 
-pub trait Client: Service {
+pub trait Client: Errors {
     type Request<'a>: Request<'a, Error = Self::Error>
     where
         Self: 'a;
@@ -83,7 +83,7 @@ pub trait RequestWrite<'a>: io::Write {
     fn into_response(self) -> Result<Self::Response, Self::Error>;
 }
 
-pub trait Request<'a>: SendHeaders<'a> + Service {
+pub trait Request<'a>: SendHeaders<'a> + Errors {
     type Write<'b>: RequestWrite<'b, Error = Self::Error>;
 
     fn send_bytes(
@@ -154,7 +154,7 @@ pub trait Request<'a>: SendHeaders<'a> + Service {
     }
 }
 
-pub trait Response: Status + Headers + Service {
+pub trait Response: Status + Headers + Errors {
     type Read<'a>: io::Read<Error = Self::Error>
     where
         Self: 'a;

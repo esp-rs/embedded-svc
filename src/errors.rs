@@ -1,4 +1,4 @@
-pub trait Service {
+pub trait Errors {
     #[cfg(not(feature = "std"))]
     type Error: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static;
 
@@ -6,16 +6,16 @@ pub trait Service {
     type Error: std::error::Error + Send + Sync + 'static;
 }
 
-impl<'a, S> Service for &'a S
+impl<'a, S> Errors for &'a S
 where
-    S: Service,
+    S: Errors,
 {
     type Error = S::Error;
 }
 
-impl<'a, S> Service for &'a mut S
+impl<'a, S> Errors for &'a mut S
 where
-    S: Service,
+    S: Errors,
 {
     type Error = S::Error;
 }

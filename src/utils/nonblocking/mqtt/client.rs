@@ -8,11 +8,11 @@ extern crate alloc;
 use alloc::borrow::Cow;
 use alloc::sync::Arc;
 
+use crate::errors::Errors;
 use crate::mqtt::client::nonblocking::{
     Client, Connection, Event, Message, MessageId, Publish, QoS,
 };
 use crate::mutex::{Condvar, Mutex};
-use crate::service::Service;
 use crate::unblocker::nonblocking::Unblocker;
 
 pub struct EnqueueFuture<E>(Result<MessageId, E>);
@@ -67,10 +67,10 @@ where
     }
 }
 
-impl<U, M, P> Service for AsyncClient<U, M>
+impl<U, M, P> Errors for AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
-    P: Service,
+    P: Errors,
 {
     type Error = P::Error;
 }
@@ -348,7 +348,7 @@ where
 }
 
 #[cfg(not(feature = "std"))]
-impl<CV, M, E> Service for AsyncConnection<CV, M, E>
+impl<CV, M, E> Errors for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
@@ -358,7 +358,7 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<CV, M, E> Service for AsyncConnection<CV, M, E>
+impl<CV, M, E> Errors for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,

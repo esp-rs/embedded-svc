@@ -2,9 +2,9 @@ extern crate alloc;
 use alloc::string::{String, ToString};
 
 use super::{middleware, *};
-use crate::service::Service;
+use crate::errors::Errors;
 
-pub trait Registry: Service {
+pub trait Registry: Errors {
     type Request<'a>: Request<'a>;
 
     type Response<'a>: Response<'a>;
@@ -65,7 +65,7 @@ pub trait Registry: Service {
         H: for<'a, 'c> Fn(&'c mut Self::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<Self as Registry>::Response<'a> as Service>::Error>
+            + for<'a> From<<<Self as Registry>::Response<'a> as Errors>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -148,7 +148,7 @@ where
         E: fmt::Debug
             + fmt::Display
             // TODO: Remove the constraints below as they cannot be easily handled in no_std
-            + for<'a> From<<<R as Registry>::Response<'a> as Service>::Error>
+            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -160,7 +160,7 @@ where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Service>::Error>
+            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -172,7 +172,7 @@ where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Service>::Error>
+            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -184,7 +184,7 @@ where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Service>::Error>
+            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -196,7 +196,7 @@ where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
         E: fmt::Debug
             + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Service>::Error>
+            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
             + From<io::IODynError>
             + 'static,
     {
@@ -217,7 +217,7 @@ where
     H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E>,
     E: fmt::Debug
         + fmt::Display
-        + From<<<R as Registry>::Response<'b> as Service>::Error>
+        + From<<<R as Registry>::Response<'b> as Errors>::Error>
         + From<io::IODynError>,
 {
     let resp = handler(&mut req)?;

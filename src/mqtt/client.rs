@@ -4,7 +4,7 @@ use core::marker::PhantomData;
 extern crate alloc;
 use alloc::borrow::Cow;
 
-use crate::service::Service;
+use crate::errors::Errors;
 
 /// Quality of service
 #[repr(u8)]
@@ -87,7 +87,7 @@ impl TopicToken {
     }
 }
 
-pub trait Client: Service {
+pub trait Client: Errors {
     fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Result<MessageId, Self::Error>
     where
         S: Into<Cow<'a, str>>;
@@ -116,7 +116,7 @@ where
     }
 }
 
-pub trait Publish: Service {
+pub trait Publish: Errors {
     fn publish<'a, S, V>(
         &'a mut self,
         topic: S,
@@ -148,7 +148,7 @@ where
     }
 }
 
-pub trait Enqueue: Service {
+pub trait Enqueue: Errors {
     fn enqueue<'a, S, V>(
         &'a mut self,
         topic: S,
@@ -180,7 +180,7 @@ where
     }
 }
 
-pub trait Connection: Service {
+pub trait Connection: Errors {
     type Message<'a>: Message
     where
         Self: 'a;
@@ -213,9 +213,9 @@ pub mod nonblocking {
 
     pub use super::{Details, Event, Message, MessageId, QoS};
 
-    use crate::service::Service;
+    use crate::errors::Errors;
 
-    pub trait Client: Service {
+    pub trait Client: Errors {
         type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
         where
             Self: 'a;
@@ -232,7 +232,7 @@ pub mod nonblocking {
             S: Into<Cow<'a, str>>;
     }
 
-    pub trait Publish: Service {
+    pub trait Publish: Errors {
         type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
         where
             Self: 'a;
@@ -251,7 +251,7 @@ pub mod nonblocking {
 
     /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
     /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
-    pub trait Connection: Service {
+    pub trait Connection: Errors {
         type Message<'a>: Message
         where
             Self: 'a;

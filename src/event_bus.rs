@@ -1,26 +1,26 @@
 use core::result::Result;
 use core::time::Duration;
 
-use crate::service::Service;
+use crate::errors::Errors;
 
-pub trait Spin: Service {
+pub trait Spin: Errors {
     fn spin(&mut self, duration: Option<Duration>) -> Result<(), Self::Error>;
 }
 
-pub trait Postbox<P>: Service {
+pub trait Postbox<P>: Errors {
     fn post(&mut self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error>;
 }
 
 impl<'a, P, PB> Postbox<P> for &'a mut PB
 where
-    PB: Postbox<P> + Service,
+    PB: Postbox<P> + Errors,
 {
     fn post(&mut self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error> {
         (*self).post(payload, wait)
     }
 }
 
-pub trait EventBus<P>: Service {
+pub trait EventBus<P>: Errors {
     type Subscription;
 
     fn subscribe(
@@ -43,7 +43,7 @@ where
     }
 }
 
-pub trait PostboxProvider<P>: Service {
+pub trait PostboxProvider<P>: Errors {
     type Postbox: Postbox<P, Error = Self::Error>;
 
     fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
@@ -60,7 +60,7 @@ where
     }
 }
 
-pub trait PinnedEventBus<P>: Service {
+pub trait PinnedEventBus<P>: Errors {
     type Subscription;
 
     fn subscribe(
@@ -86,17 +86,17 @@ where
 #[cfg(feature = "experimental")]
 pub mod nonblocking {
     use crate::channel::nonblocking::{Receiver, Sender};
-    use crate::service::Service;
+    use crate::errors::Errors;
 
     pub use super::Spin;
 
-    pub trait EventBus<P>: Service {
+    pub trait EventBus<P>: Errors {
         type Subscription: Receiver<Data = P, Error = Self::Error>;
 
         fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error>;
     }
 
-    pub trait PostboxProvider<P>: Service {
+    pub trait PostboxProvider<P>: Errors {
         type Postbox: Sender<Data = P, Error = Self::Error>;
 
         fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;

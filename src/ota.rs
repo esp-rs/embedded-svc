@@ -7,8 +7,8 @@ use alloc::string::String;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::errors::Errors;
 use crate::io;
-use crate::service::Service;
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -35,7 +35,7 @@ pub enum LoadResult {
     Loaded,
 }
 
-pub trait FirmwareInfoLoader: Service {
+pub trait FirmwareInfoLoader: Errors {
     fn load(&mut self, buf: &[u8]) -> Result<LoadResult, Self::Error>;
 
     fn is_loaded(&self) -> bool;
@@ -52,14 +52,14 @@ pub enum SlotState {
     Unknown,
 }
 
-pub trait OtaSlot: Service {
+pub trait OtaSlot: Errors {
     fn get_label(&self) -> Result<Cow<'_, str>, Self::Error>;
     fn get_state(&self) -> Result<SlotState, Self::Error>;
 
     fn get_firmware_info(&self) -> Result<Option<FirmwareInfo>, Self::Error>;
 }
 
-pub trait Ota: Service {
+pub trait Ota: Errors {
     type Slot<'a>: OtaSlot
     where
         Self: 'a;
@@ -158,7 +158,7 @@ pub trait OtaRead: io::Read {
     fn size(&self) -> Option<usize>;
 }
 
-pub trait OtaServer: Service {
+pub trait OtaServer: Errors {
     type OtaRead<'a>: OtaRead<Error = Self::Error>
     where
         Self: 'a;
