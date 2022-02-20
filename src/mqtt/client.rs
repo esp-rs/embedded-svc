@@ -1,4 +1,4 @@
-use core::fmt::{Debug, Display};
+use core::fmt::{self, Debug, Display, Formatter};
 use core::marker::PhantomData;
 
 extern crate alloc;
@@ -33,7 +33,7 @@ impl<M> Display for Event<M>
 where
     M: Display,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::BeforeConnect => write!(f, "BeforeConnect"),
             Self::Connected(connected) => write!(f, "Connected(session: {})", connected),
