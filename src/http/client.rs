@@ -2,20 +2,15 @@ use core::fmt;
 
 use serde::Serialize;
 
+use crate::errors::Errors;
 use crate::io::{self, Write};
 
 use super::{Headers, Method, SendHeaders, Status};
 
-pub trait Client {
+pub trait Client: Errors {
     type Request<'a>: Request<'a, Error = Self::Error>
     where
         Self: 'a;
-
-    #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
 
     fn get(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
         self.request(Method::Get, url)
@@ -88,14 +83,8 @@ pub trait RequestWrite<'a>: io::Write {
     fn into_response(self) -> Result<Self::Response, Self::Error>;
 }
 
-pub trait Request<'a>: SendHeaders<'a> {
+pub trait Request<'a>: SendHeaders<'a> + Errors {
     type Write<'b>: RequestWrite<'b, Error = Self::Error>;
-
-    #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
 
     fn send_bytes(
         self,
@@ -165,16 +154,10 @@ pub trait Request<'a>: SendHeaders<'a> {
     }
 }
 
-pub trait Response: Status + Headers {
+pub trait Response: Status + Headers + Errors {
     type Read<'a>: io::Read<Error = Self::Error>
     where
         Self: 'a;
-
-    #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
 
     fn reader(&self) -> Self::Read<'_>;
 }

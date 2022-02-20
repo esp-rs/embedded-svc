@@ -1,9 +1,10 @@
+#[cfg(feature = "experimental")]
 pub mod nonblocking {
     use core::future::Future;
 
-    use crate::service::Service;
+    use crate::errors::Errors;
 
-    pub trait Sender: Service {
+    pub trait Sender: Errors {
         type Data;
 
         type SendFuture<'a>: Future<Output = Result<(), Self::Error>>
@@ -13,7 +14,7 @@ pub mod nonblocking {
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_>;
     }
 
-    pub trait Receiver: Service {
+    pub trait Receiver: Errors {
         type Data;
 
         type RecvFuture<'a>: Future<Output = Result<Self::Data, Self::Error>>
@@ -30,7 +31,7 @@ pub mod nonblocking {
     //     use core::pin::Pin;
     //     use core::task::{Context, Poll};
 
-    //     use crate::service::Service;
+    //     use crate::errors::Errors;
 
     //     use super::{Receiver, Sender};
 
@@ -58,7 +59,7 @@ pub mod nonblocking {
     //     impl<S, P> SenderAdapter<S, P> {
     //         pub fn new(inner_sender: S) -> Self
     //         where
-    //             S: Sender + Service,
+    //             S: Sender + Errors,
     //             S::Data: From<P>,
     //         {
     //             Self {
@@ -68,9 +69,9 @@ pub mod nonblocking {
     //         }
     //     }
 
-    //     impl<S, P> Service for SenderAdapter<S, P>
+    //     impl<S, P> Errors for SenderAdapter<S, P>
     //     where
-    //         S: Service,
+    //         S: Errors,
     //     {
     //         type Error = S::Error;
     //     }
@@ -100,7 +101,7 @@ pub mod nonblocking {
     //     impl<R, P> ReceiverAdapter<R, P> {
     //         pub fn new(inner_receiver: R) -> Self
     //         where
-    //             R: Receiver + Service,
+    //             R: Receiver + Errors,
     //             R::Data: Into<P>,
     //         {
     //             Self {
@@ -135,9 +136,9 @@ pub mod nonblocking {
     //         }
     //     }
 
-    //     impl<R, P> Service for ReceiverAdapter<R, P>
+    //     impl<R, P> Errors for ReceiverAdapter<R, P>
     //     where
-    //         R: Service,
+    //         R: Errors,
     //     {
     //         type Error = R::Error;
     //     }

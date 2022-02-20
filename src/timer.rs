@@ -1,82 +1,79 @@
-use core::fmt::{Debug, Display};
 use core::result::Result;
 use core::time::Duration;
 
-use crate::service::Service;
+use crate::errors::Errors;
 
 #[must_use]
-pub trait Timer: Service {
-    fn start(&mut self) -> Result<(), Self::Error>;
-
+pub trait Timer: Errors {
     fn is_scheduled(&self) -> Result<bool, Self::Error>;
 
     fn cancel(&mut self) -> Result<bool, Self::Error>;
 }
 
-pub trait Once: Service {
-    type Timer: Timer<Error = Self::Error> + 'static;
-
-    fn after<E>(
-        &mut self,
-        duration: Duration,
-        callback: impl FnOnce() -> Result<(), E> + Send + 'static,
-    ) -> Result<Self::Timer, Self::Error>
-    where
-        E: Display + Debug + Sync + Send + 'static;
+#[must_use]
+pub trait OnceTimer: Timer {
+    fn after(&mut self, duration: Duration) -> Result<(), Self::Error>;
 }
 
-pub trait Periodic: Service {
-    type Timer: Timer<Error = Self::Error> + 'static;
-
-    fn every<E>(
-        &mut self,
-        duration: Duration,
-        callback: impl FnMut() -> Result<(), E> + Send + 'static,
-    ) -> Result<Self::Timer, Self::Error>
-    where
-        E: Display + Debug + Sync + Send + 'static;
+#[must_use]
+pub trait PeriodicTimer: Timer {
+    fn every(&mut self, duration: Duration) -> Result<(), Self::Error>;
 }
 
-pub trait PinnedOnce: Service {
+pub trait TimerService: Errors {
     type Timer: Timer<Error = Self::Error> + 'static;
 
-    fn after<E>(
+    fn timer(
         &mut self,
-        duration: Duration,
-        callback: impl FnOnce() -> Result<(), E> + 'static,
-    ) -> Result<Self::Timer, Self::Error>
-    where
-        E: Display + Debug + Sync + Send + 'static;
+        callback: impl FnMut() + Send + 'static,
+    ) -> Result<Self::Timer, Self::Error>;
 }
 
-pub trait PinnedPeriodic: Service {
-    type Timer: Timer<Error = Self::Error> + 'static;
+impl<'a, S> TimerService for &'a mut S
+where
+    S: TimerService,
+{
+    type Timer = S::Timer;
 
-    fn every<E>(
+    fn timer(
         &mut self,
-        duration: Duration,
-        callback: impl FnMut() -> Result<(), E> + 'static,
-    ) -> Result<Self::Timer, Self::Error>
-    where
-        E: Display + Debug + Sync + Send + 'static;
+        callback: impl FnMut() + Send + 'static,
+    ) -> Result<Self::Timer, Self::Error> {
+        (*self).timer(callback)
+    }
 }
 
+#[cfg(feature = "experimental")]
 pub mod nonblocking {
     use core::future::Future;
     use core::time::Duration;
 
     use crate::channel::nonblocking::Receiver;
-    use crate::service::Service;
+    use crate::errors::Errors;
 
-    pub trait Once: Service {
-        type AfterFuture: Future<Output = Result<(), Self::Error>>;
+    pub use super::Timer;
 
-        fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture, Self::Error>;
+    #[must_use]
+    pub trait OnceTimer: Timer {
+        type AfterFuture<'a>: Future<Output = Result<(), Self::Error>>
+        where
+            Self: 'a;
+
+        fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error>;
     }
 
-    pub trait Periodic: Service {
-        type Timer: Receiver<Data = (), Error = Self::Error>;
+    #[must_use]
+    pub trait PeriodicTimer: Timer {
+        type Clock<'a>: Receiver<Data = (), Error = Self::Error>
+        where
+            Self: 'a;
 
-        fn every(&mut self, duration: Duration) -> Result<Self::Timer, Self::Error>;
+        fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error>;
+    }
+
+    pub trait TimerService: Errors {
+        type Timer: super::Timer<Error = Self::Error> + 'static;
+
+        fn timer(&mut self) -> Result<Self::Timer, Self::Error>;
     }
 }

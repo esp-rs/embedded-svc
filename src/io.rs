@@ -10,6 +10,8 @@ use alloc::boxed::Box;
 #[cfg(feature = "std")]
 pub use stdio::*;
 
+use crate::errors::Errors;
+
 const BUF_SIZE: usize = 64;
 
 #[cfg(feature = "std")]
@@ -26,13 +28,7 @@ impl fmt::Display for IODynError {
     }
 }
 
-pub trait Read {
-    #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
+pub trait Read: Errors {
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error>;
 
     #[cfg(feature = "alloc")]
@@ -45,13 +41,7 @@ pub trait Read {
     }
 }
 
-pub trait Write {
-    #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
+pub trait Write: Errors {
     fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error>;
 
     fn do_write_all(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
@@ -82,17 +72,18 @@ impl<'a, R> Read for &'a mut R
 where
     R: Read,
 {
-    type Error = R::Error;
-
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         (*self).do_read(buf)
     }
 }
 
 #[cfg(feature = "alloc")]
-impl Read for Box<dyn Read<Error = IODynError>> {
+impl Errors for Box<dyn Read<Error = IODynError>> {
     type Error = IODynError;
+}
 
+#[cfg(feature = "alloc")]
+impl Read for Box<dyn Read<Error = IODynError>> {
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         self.as_mut().do_read(buf)
     }
@@ -102,8 +93,6 @@ impl<'a, W> Write for &'a mut W
 where
     W: Write,
 {
-    type Error = W::Error;
-
     fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
         (*self).do_write(buf)
     }
@@ -114,9 +103,12 @@ where
 }
 
 #[cfg(feature = "alloc")]
-impl Write for Box<dyn Write<Error = IODynError>> {
+impl Errors for Box<dyn Write<Error = IODynError>> {
     type Error = IODynError;
+}
 
+#[cfg(feature = "alloc")]
+impl Write for Box<dyn Write<Error = IODynError>> {
     fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
         self.as_mut().do_write(buf)
     }
@@ -126,15 +118,21 @@ impl Write for Box<dyn Write<Error = IODynError>> {
     }
 }
 
-struct DynIO<R>(R);
+struct DynIO<S>(S);
+
+impl<S> Errors for DynIO<S>
+where
+    S: Errors,
+    S::Error: Into<IODynError>,
+{
+    type Error = IODynError;
+}
 
 impl<R> Read for DynIO<R>
 where
     R: Read,
     R::Error: Into<IODynError>,
 {
-    type Error = IODynError;
-
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         self.0.do_read(buf).map_err(Into::into)
     }
@@ -145,8 +143,6 @@ where
     W: Write,
     W::Error: Into<IODynError>,
 {
-    type Error = IODynError;
-
     fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
         self.0.do_write(buf).map_err(Into::into)
     }
@@ -300,35 +296,25 @@ where
 
 #[cfg(feature = "std")]
 mod stdio {
-    pub struct StdIO<T>(pub T);
+    pub struct StdRead<T>(pub T);
 
-    impl<R> super::Read for StdIO<R>
+    impl<R> crate::errors::Errors for StdRead<R>
     where
         R: std::io::Read,
     {
         type Error = std::io::Error;
+    }
 
+    impl<R> super::Read for StdRead<R>
+    where
+        R: std::io::Read,
+    {
         fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
             self.0.read(buf)
         }
     }
 
-    impl<W> super::Write for StdIO<W>
-    where
-        W: std::io::Write,
-    {
-        type Error = std::io::Error;
-
-        fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-            self.0.write(buf)
-        }
-
-        fn do_flush(&mut self) -> Result<(), Self::Error> {
-            self.0.flush()
-        }
-    }
-
-    impl<R> std::io::Read for StdIO<R>
+    impl<R> std::io::Read for StdRead<R>
     where
         R: super::Read,
     {
@@ -339,7 +325,29 @@ mod stdio {
         }
     }
 
-    impl<W> std::io::Write for StdIO<W>
+    pub struct StdWrite<T>(pub T);
+
+    impl<W> crate::errors::Errors for StdWrite<W>
+    where
+        W: std::io::Write,
+    {
+        type Error = std::io::Error;
+    }
+
+    impl<W> super::Write for StdWrite<W>
+    where
+        W: std::io::Write,
+    {
+        fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            self.0.write(buf)
+        }
+
+        fn do_flush(&mut self) -> Result<(), Self::Error> {
+            self.0.flush()
+        }
+    }
+
+    impl<W> std::io::Write for StdWrite<W>
     where
         W: super::Write,
     {

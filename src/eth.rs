@@ -1,10 +1,5 @@
 use core::fmt::Debug;
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
-#[cfg(feature = "alloc")]
-use alloc::boxed::Box;
-
 use enumset::*;
 
 #[cfg(feature = "use_serde")]
@@ -16,9 +11,7 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-#[cfg(feature = "alloc")]
-use async_trait::async_trait;
-
+use crate::errors::Errors;
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
@@ -137,34 +130,11 @@ impl TransitionalState<ConnectionStatus> for Status {
     }
 }
 
-pub trait Eth {
-    #[cfg(not(feature = "std"))]
-    type Error: core::fmt::Debug + core::fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
+pub trait Eth: Errors {
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
     fn get_status(&self) -> Status;
 
     fn get_configuration(&self) -> Result<Configuration, Self::Error>;
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
-}
-
-#[cfg(feature = "alloc")]
-#[async_trait]
-pub trait EthAsync {
-    #[cfg(not(feature = "std"))]
-    type Error: core::fmt::Debug + core::fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    async fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
-
-    async fn get_status(&self) -> Result<Status, Self::Error>;
-
-    async fn get_configuration(&self) -> Result<Configuration, Self::Error>;
-    async fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }

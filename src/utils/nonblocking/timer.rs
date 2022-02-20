@@ -1,281 +1,195 @@
 use core::future::Future;
-use core::marker::PhantomData;
 use core::mem;
 use core::pin::Pin;
 use core::result::Result;
-use core::task::{Context, Poll, Waker};
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::task::{Context, Poll};
 use core::time::Duration;
+
+use futures::task::AtomicWaker;
 
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::mutex::Mutex;
+use crate::channel::nonblocking::Receiver;
+use crate::errors::Errors;
+use crate::timer::nonblocking::{OnceTimer, PeriodicTimer, Timer, TimerService};
 
-pub struct OnceState<T> {
-    timer: Option<T>,
-    due: bool,
-    waker: Option<Waker>,
+pub struct AsyncTimer<T> {
+    blocking_timer: T,
+    ready: Arc<AtomicBool>,
+    waker: Arc<AtomicWaker>,
+    duration: Option<Duration>,
 }
 
-pub struct OnceFuture<MX, T>(Arc<MX>)
+impl<T> Errors for AsyncTimer<T>
 where
-    MX: Mutex<Data = OnceState<T>>;
+    T: Errors,
+{
+    type Error = T::Error;
+}
 
-impl<MX, T> Future for OnceFuture<MX, T>
+impl<T> Timer for AsyncTimer<T>
 where
     T: crate::timer::Timer,
-    MX: Mutex<Data = OnceState<T>>,
+{
+    fn is_scheduled(&self) -> Result<bool, Self::Error> {
+        self.blocking_timer.is_scheduled()
+    }
+
+    fn cancel(&mut self) -> Result<bool, Self::Error> {
+        self.blocking_timer.cancel()
+    }
+}
+
+impl<T> OnceTimer for AsyncTimer<T>
+where
+    T: crate::timer::OnceTimer + 'static,
+{
+    type AfterFuture<'a> = TimerFuture<'a, T>;
+
+    fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error> {
+        self.blocking_timer.cancel()?;
+
+        self.waker.take();
+        self.ready.store(false, Ordering::SeqCst);
+        self.duration = None;
+
+        Ok(TimerFuture(self, Some(duration)))
+    }
+}
+
+impl<T> PeriodicTimer for AsyncTimer<T>
+where
+    T: crate::timer::OnceTimer + 'static,
+{
+    type Clock<'a> = &'a mut Self;
+
+    fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error> {
+        self.blocking_timer.cancel()?;
+
+        self.waker.take();
+        self.ready.store(false, Ordering::SeqCst);
+        self.duration = Some(duration);
+
+        Ok(self)
+    }
+}
+
+pub struct TimerFuture<'a, T>(&'a mut AsyncTimer<T>, Option<Duration>)
+where
+    T: crate::timer::Timer;
+
+impl<'a, T> Drop for TimerFuture<'a, T>
+where
+    T: crate::timer::Timer,
+{
+    fn drop(&mut self) {
+        self.0.cancel().unwrap();
+    }
+}
+
+impl<'a, T> Future for TimerFuture<'a, T>
+where
+    T: crate::timer::OnceTimer + 'static,
 {
     type Output = Result<(), T::Error>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut state = self.0.lock();
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Some(duration) = mem::replace(&mut self.1, None) {
+            match self.0.blocking_timer.after(duration) {
+                Ok(_) => (),
+                Err(error) => return Poll::Ready(Err(error)),
+            }
+        }
 
-        if state.due {
-            Poll::Ready(Ok(()))
+        self.0.waker.register(cx.waker());
+
+        if self.0.ready.load(Ordering::SeqCst) {
+            return Poll::Ready(Ok(()));
         } else {
-            let first_waker = mem::replace(&mut state.waker, Some(cx.waker().clone())).is_none();
-
-            if first_waker {
-                if let Some(timer) = &mut state.timer {
-                    let result = timer.start();
-                    if result.is_err() {
-                        return Poll::Ready(result);
-                    }
-                } else {
-                    panic!();
-                }
-            }
-
-            Poll::Pending
+            return Poll::Pending;
         }
     }
 }
 
-pub struct Once<MX, T> {
-    blocking_once: T,
-    _mutex_type: PhantomData<fn() -> MX>,
-}
-
-impl<MX, T> Once<MX, T>
+impl<'a, T> Receiver for &'a mut AsyncTimer<T>
 where
-    T: crate::timer::Once,
-{
-    pub fn new(blocking_once: T) -> Self {
-        Self {
-            blocking_once,
-            _mutex_type: PhantomData,
-        }
-    }
-}
-
-impl<MX, T> Clone for Once<MX, T>
-where
-    T: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            blocking_once: self.blocking_once.clone(),
-            _mutex_type: PhantomData,
-        }
-    }
-}
-
-impl<MX, T> crate::service::Service for Once<MX, T>
-where
-    T: crate::service::Service,
-{
-    type Error = T::Error;
-}
-
-impl<MX, T> crate::timer::nonblocking::Once for Once<MX, T>
-where
-    T: crate::timer::Once,
-    T::Timer: Send,
-    MX: Mutex<Data = OnceState<T::Timer>> + Send + Sync + 'static,
-{
-    type AfterFuture = OnceFuture<MX, T::Timer>;
-
-    fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture, Self::Error> {
-        let state = Arc::new(MX::new(OnceState {
-            timer: None,
-            due: false,
-            waker: None,
-        }));
-
-        let timer_state = Arc::downgrade(&state);
-
-        let timer = self.blocking_once.after(duration, move || {
-            if let Some(state) = timer_state.upgrade() {
-                let mut state = state.lock();
-
-                state.due = true;
-
-                if let Some(a) = mem::replace(&mut state.waker, None) {
-                    Waker::wake(a);
-                }
-            }
-
-            Result::<_, Self::Error>::Ok(())
-        })?;
-
-        state.lock().timer = Some(timer);
-
-        Ok(OnceFuture(state))
-    }
-}
-
-pub struct TimerState<T> {
-    timer: Option<T>,
-    due: bool,
-    waker: Option<Waker>,
-}
-
-pub struct Timer<MX, T>(Arc<MX>)
-where
-    MX: Mutex<Data = TimerState<T>>;
-
-impl<MX, T> crate::service::Service for Timer<MX, T>
-where
-    T: crate::timer::Timer,
-    MX: Mutex<Data = TimerState<T>>,
-{
-    type Error = T::Error;
-}
-
-impl<MX, T> crate::channel::nonblocking::Receiver for Timer<MX, T>
-where
-    T: crate::timer::Timer,
-    MX: Mutex<Data = TimerState<T>>,
+    T: crate::timer::OnceTimer + 'static,
 {
     type Data = ();
 
-    type RecvFuture<'a>
+    type RecvFuture<'b>
     where
-        Self: 'a,
-    = NextFuture<'a, MX, T>;
+        'a: 'b,
+    = TimerFuture<'b, T>;
 
     fn recv(&mut self) -> Self::RecvFuture<'_> {
-        NextFuture(self)
+        self.waker.take();
+        self.ready.store(false, Ordering::SeqCst);
+
+        TimerFuture(self, self.duration)
     }
 }
 
-pub struct NextFuture<'a, MX, T>(&'a Timer<MX, T>)
-where
-    MX: Mutex<Data = TimerState<T>>;
+pub struct AsyncTimerService<T>(T);
 
-impl<'a, MX, T> Drop for NextFuture<'a, MX, T>
-where
-    MX: Mutex<Data = TimerState<T>>,
-{
-    fn drop(&mut self) {
-        let mut state = self.0 .0.lock();
-
-        state.due = false;
-        state.waker = None;
+impl<T> AsyncTimerService<T> {
+    pub fn new(blocking_timer_service: T) -> Self {
+        Self(blocking_timer_service)
     }
 }
 
-impl<'a, MX, T> Future for NextFuture<'a, MX, T>
-where
-    T: crate::timer::Timer,
-    MX: Mutex<Data = TimerState<T>>,
-{
-    type Output = Result<(), T::Error>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut state = self.0 .0.lock();
-
-        if state.due {
-            Poll::Ready(Ok(()))
-        } else {
-            let first_waker = mem::replace(&mut state.waker, Some(cx.waker().clone())).is_none();
-
-            if first_waker {
-                if let Some(timer) = &mut state.timer {
-                    let result = timer.start();
-                    if result.is_err() {
-                        return Poll::Ready(result);
-                    }
-                } else {
-                    panic!();
-                }
-            }
-
-            Poll::Pending
-        }
-    }
-}
-
-pub struct Periodic<MX, T> {
-    blocking_periodic: T,
-    _mutex_type: PhantomData<fn() -> MX>,
-}
-
-impl<MX, T> Periodic<MX, T>
-where
-    T: crate::timer::Periodic,
-{
-    pub fn new(blocking_periodic: T) -> Self {
-        Self {
-            blocking_periodic,
-            _mutex_type: PhantomData,
-        }
-    }
-}
-
-impl<MX, T> Clone for Periodic<MX, T>
+impl<T> Clone for AsyncTimerService<T>
 where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        Self {
-            blocking_periodic: self.blocking_periodic.clone(),
-            _mutex_type: PhantomData,
-        }
+        Self(self.0.clone())
     }
 }
 
-impl<MX, T> crate::service::Service for Periodic<MX, T>
+impl<U, T> super::AsyncWrapper<U, T> for AsyncTimerService<T> {
+    fn new(blocking_timer_service: T) -> Self {
+        AsyncTimerService::new(blocking_timer_service)
+    }
+}
+
+impl<T> Errors for AsyncTimerService<T>
 where
-    T: crate::service::Service,
+    T: Errors,
 {
     type Error = T::Error;
 }
 
-impl<MX, T> crate::timer::nonblocking::Periodic for Periodic<MX, T>
+impl<T> TimerService for AsyncTimerService<T>
 where
-    T: crate::timer::Periodic,
+    T: crate::timer::TimerService,
     T::Timer: Send,
-    MX: Mutex<Data = TimerState<T::Timer>> + Send + Sync + 'static,
 {
-    type Timer = Timer<MX, T::Timer>;
+    type Timer = AsyncTimer<T::Timer>;
 
-    fn every(&mut self, duration: Duration) -> Result<Self::Timer, Self::Error> {
-        let state = Arc::new(MX::new(TimerState {
-            timer: None,
-            due: false,
-            waker: None,
-        }));
+    fn timer(&mut self) -> Result<Self::Timer, Self::Error> {
+        let ready = Arc::new(AtomicBool::new(false));
+        let waker = Arc::new(AtomicWaker::new());
 
-        let timer_state = Arc::downgrade(&state);
+        let callback_ready = Arc::downgrade(&ready);
+        let callback_waker = Arc::downgrade(&waker);
 
-        let timer = self.blocking_periodic.every(duration, move || {
-            if let Some(state) = timer_state.upgrade() {
-                let mut state = state.lock();
-
-                state.due = true;
-
-                if let Some(a) = mem::replace(&mut state.waker, None) {
-                    Waker::wake(a);
+        let blocking_timer = self.0.timer(move || {
+            if let Some(callback_ready) = callback_ready.upgrade() {
+                if let Some(callback_waker) = callback_waker.upgrade() {
+                    callback_ready.store(true, Ordering::SeqCst);
+                    callback_waker.wake();
                 }
             }
-
-            Result::<_, Self::Error>::Ok(())
         })?;
 
-        state.lock().timer = Some(timer);
-
-        Ok(Timer(state))
+        Ok(Self::Timer {
+            blocking_timer,
+            ready,
+            waker,
+            duration: None,
+        })
     }
 }

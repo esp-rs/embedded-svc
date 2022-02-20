@@ -1,10 +1,10 @@
-use core::fmt::{Debug, Display};
+use core::fmt::{self, Debug, Display, Formatter};
 use core::marker::PhantomData;
 
 extern crate alloc;
 use alloc::borrow::Cow;
 
-use crate::service::Service;
+use crate::errors::Errors;
 
 /// Quality of service
 #[repr(u8)]
@@ -17,10 +17,8 @@ pub enum QoS {
 
 pub type MessageId = u32;
 
-pub enum Event<M>
-where
-    M: Message,
-{
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Event<M> {
     BeforeConnect,
     Connected(bool),
     Disconnected,
@@ -31,8 +29,11 @@ where
     Deleted(MessageId),
 }
 
-impl<M: Message> Display for Event<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<M> Display for Event<M>
+where
+    M: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::BeforeConnect => write!(f, "BeforeConnect"),
             Self::Connected(connected) => write!(f, "Connected(session: {})", connected),
@@ -40,40 +41,8 @@ impl<M: Message> Display for Event<M> {
             Self::Subscribed(message_id) => write!(f, "Subscribed({})", message_id),
             Self::Unsubscribed(message_id) => write!(f, "Unsubscribed({})", message_id),
             Self::Published(message_id) => write!(f, "Published({})", message_id),
-            Self::Received(message) => write!(f, "Received({})", message.id()),
+            Self::Received(message) => write!(f, "Received({})", message),
             Self::Deleted(message_id) => write!(f, "Deleted({})", message_id),
-        }
-    }
-}
-
-impl<M: Message> Debug for Event<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Received(message) => {
-                let topic_token = match message.details() {
-                    Details::Complete(topic_token) => Some(topic_token),
-                    Details::InitialChunk(data) => Some(&data.topic_token),
-                    _ => None,
-                };
-
-                let topic = topic_token.map(|topic_token| message.topic(topic_token));
-
-                write!(
-                    f,
-                    "
-[
-    id: {},
-    topic: {:?},
-    data: {:?},
-    details: {:?}
-]",
-                    message.id(),
-                    topic,
-                    message.data(),
-                    message.details()
-                )
-            }
-            other => write!(f, "{}", other),
         }
     }
 }
@@ -118,7 +87,7 @@ impl TopicToken {
     }
 }
 
-pub trait Client: Service {
+pub trait Client: Errors {
     fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Result<MessageId, Self::Error>
     where
         S: Into<Cow<'a, str>>;
@@ -128,7 +97,26 @@ pub trait Client: Service {
         S: Into<Cow<'a, str>>;
 }
 
-pub trait Publish: Service {
+impl<'b, C> Client for &'b mut C
+where
+    C: Client,
+{
+    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        (*self).subscribe(topic, qos)
+    }
+
+    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        (*self).unsubscribe(topic)
+    }
+}
+
+pub trait Publish: Errors {
     fn publish<'a, S, V>(
         &'a mut self,
         topic: S,
@@ -141,7 +129,26 @@ pub trait Publish: Service {
         V: Into<Cow<'a, [u8]>>;
 }
 
-pub trait Enqueue: Service {
+impl<'b, P> Publish for &'b mut P
+where
+    P: Publish,
+{
+    fn publish<'a, S, V>(
+        &'a mut self,
+        topic: S,
+        qos: QoS,
+        retain: bool,
+        payload: V,
+    ) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+        V: Into<Cow<'a, [u8]>>,
+    {
+        (*self).publish(topic, qos, retain, payload)
+    }
+}
+
+pub trait Enqueue: Errors {
     fn enqueue<'a, S, V>(
         &'a mut self,
         topic: S,
@@ -154,7 +161,26 @@ pub trait Enqueue: Service {
         V: Into<Cow<'a, [u8]>>;
 }
 
-pub trait Connection: Service {
+impl<'b, E> Enqueue for &'b mut E
+where
+    E: Enqueue,
+{
+    fn enqueue<'a, S, V>(
+        &'a mut self,
+        topic: S,
+        qos: QoS,
+        retain: bool,
+        payload: V,
+    ) -> Result<MessageId, Self::Error>
+    where
+        S: Into<Cow<'a, str>>,
+        V: Into<Cow<'a, [u8]>>,
+    {
+        (*self).enqueue(topic, qos, retain, payload)
+    }
+}
+
+pub trait Connection: Errors {
     type Message<'a>: Message
     where
         Self: 'a;
@@ -164,19 +190,52 @@ pub trait Connection: Service {
     fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>>;
 }
 
+impl<'b, C> Connection for &'b mut C
+where
+    C: Connection,
+{
+    type Message<'a>
+    where
+        Self: 'a,
+    = C::Message<'a>;
+
+    fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
+        (*self).next()
+    }
+}
+
+#[cfg(feature = "experimental")]
 pub mod nonblocking {
     use core::future::Future;
-    use core::ops::Deref;
 
     extern crate alloc;
     use alloc::borrow::Cow;
 
-    pub use super::{Client, Event, Message, MessageId, QoS};
+    pub use super::{Details, Event, Message, MessageId, QoS};
 
-    use crate::service::Service;
+    use crate::errors::Errors;
 
-    pub trait Publish: Service {
-        type PublishFuture: Future<Output = Result<MessageId, Self::Error>>;
+    pub trait Client: Errors {
+        type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        where
+            Self: 'a;
+        type UnsubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        where
+            Self: 'a;
+
+        fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Self::SubscribeFuture<'a>
+        where
+            S: Into<Cow<'a, str>>;
+
+        fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
+        where
+            S: Into<Cow<'a, str>>;
+    }
+
+    pub trait Publish: Errors {
+        type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        where
+            Self: 'a;
 
         fn publish<'a, S, V>(
             &'a mut self,
@@ -184,7 +243,7 @@ pub mod nonblocking {
             qos: QoS,
             retain: bool,
             payload: V,
-        ) -> Self::PublishFuture
+        ) -> Self::PublishFuture<'a>
         where
             S: Into<Cow<'a, str>>,
             V: Into<Cow<'a, [u8]>>;
@@ -192,19 +251,24 @@ pub mod nonblocking {
 
     /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
     /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
-    pub trait Connection: Service {
+    pub trait Connection: Errors {
         type Message<'a>: Message
         where
             Self: 'a;
 
-        type Reference<'a>: Deref<Target = Option<Result<Event<Self::Message<'a>>, Self::Error>>>
+        type NextFuture<'a, FM, OM, FE, OE>: Future<Output = Option<Result<Event<OM>, OE>>>
         where
-            Self: 'a;
+            Self: 'a,
+            FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
+            FE: FnMut(&'a Self::Error) -> OE + Unpin;
 
-        type NextFuture<'a>: Future<Output = Self::Reference<'a>>
+        fn next<'a, FM, OM, FE, OE>(
+            &'a mut self,
+            fm: FM,
+            fe: FE,
+        ) -> Self::NextFuture<'a, FM, OM, FE, OE>
         where
-            Self: 'a;
-
-        fn next(&mut self) -> Self::NextFuture<'_>;
+            FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
+            FE: FnMut(&'a Self::Error) -> OE + Unpin;
     }
 }
