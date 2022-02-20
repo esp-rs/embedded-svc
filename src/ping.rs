@@ -4,6 +4,7 @@ use core::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::ipv4;
+use crate::service::Service;
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -52,13 +53,7 @@ pub struct Summary {
     pub time: Duration,
 }
 
-pub trait Ping {
-    #[cfg(not(feature = "std"))]
-    type Error: core::fmt::Debug + core::fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
+pub trait Ping: Service {
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
 
     fn ping_details<F: Fn(&Summary, &Reply)>(

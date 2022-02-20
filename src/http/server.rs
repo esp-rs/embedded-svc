@@ -10,10 +10,10 @@ use alloc::vec::Vec;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::io::{self, Write};
-
 #[cfg(feature = "std")]
 use crate::io::Read;
+use crate::io::{self, Write};
+use crate::service::Service;
 
 use super::{Headers, Method, SendHeaders, SendStatus};
 
@@ -89,7 +89,7 @@ pub trait Session<'a> {
     fn invalidate(&mut self) -> Result<bool, SessionError>;
 }
 
-pub trait Request<'a>: Headers {
+pub trait Request<'a>: Headers + Service {
     type Read<'b>: io::Read<Error = Self::Error>
     where
         Self: 'b;
@@ -101,12 +101,6 @@ pub trait Request<'a>: Headers {
     type Session<'b>: Session<'b>
     where
         Self: 'b;
-
-    #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
 
     fn query_string(&self) -> Cow<'_, str>;
 
@@ -175,14 +169,8 @@ pub trait ResponseWrite<'a>: io::Write {
     fn complete(self) -> Result<Completion, Self::Error>;
 }
 
-pub trait Response<'a>: SendStatus<'a> + SendHeaders<'a> {
+pub trait Response<'a>: SendStatus<'a> + SendHeaders<'a> + Service {
     type Write<'b>: ResponseWrite<'b, Error = Self::Error>;
-
-    #[cfg(not(feature = "std"))]
-    type Error: fmt::Debug + fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
 
     fn send_bytes(
         self,
@@ -325,7 +313,7 @@ impl From<std::fs::File> for Body {
     fn from(f: std::fs::File) -> Self {
         Body::Read(
             f.metadata().map_or(None, |md| Some(md.len() as usize)),
-            io::StdIO(f).into_dyn_read(),
+            io::StdRead(f).into_dyn_read(),
         )
     }
 }

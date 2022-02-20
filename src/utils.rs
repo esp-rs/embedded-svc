@@ -1,6 +1,3 @@
-#[cfg(feature = "alloc")]
-pub mod anyerror;
-
 // Uncomment once domain 0.6.2 which has no_std support is released
 //#[cfg(feature = "experimental")]
 //pub mod captive;

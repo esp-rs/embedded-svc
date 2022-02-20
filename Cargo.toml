@@ -15,7 +15,7 @@ readme = "README.md"
 default = ["std", "use_serde", "use_strum", "use_numenum"]
 
 # Uncomment once 0.6.2 which has no_std support is released
-#experimental = ["domain"]
+#experimental = ["futures", "domain"]
 experimental = ["futures"]
 
 std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "strum/std", "num_enum/std", "url", "http-auth-basic"]
@@ -26,7 +26,6 @@ use_numenum = ["num_enum"]
 
 [dependencies]
 log = { version = "0.4", default-features = false }
-async-trait = "0.1"
 no-std-net = { version = "0.5", default-features = false }
 enumset = { version = "1", default-features = false }
 anyhow = { version = "1", default-features = false, optional = true }

@@ -1,5 +1,8 @@
+#[cfg(feature = "alloc")]
 pub mod event_bus;
+#[cfg(feature = "alloc")]
 pub mod mqtt;
+#[cfg(feature = "alloc")]
 pub mod timer;
 
 pub trait AsyncWrapper<U, S> {

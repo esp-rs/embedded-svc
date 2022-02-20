@@ -1,8 +1,8 @@
 use core::fmt::Debug;
 use core::mem;
 
+#[cfg(feature = "alloc")]
 extern crate alloc;
-use alloc::boxed::Box;
 
 use enumset::*;
 
@@ -15,9 +15,8 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use async_trait::async_trait;
-
 use crate::ipv4;
+use crate::service::Service;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -538,13 +537,7 @@ impl Status {
     }
 }
 
-pub trait Wifi {
-    #[cfg(not(feature = "std"))]
-    type Error: core::fmt::Debug + core::fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
+pub trait Wifi: Service {
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
     fn get_status(&self) -> Status;
@@ -570,50 +563,4 @@ pub trait Wifi {
 
     fn get_configuration(&self) -> Result<Configuration, Self::Error>;
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
-}
-
-#[async_trait]
-pub trait WifiAsync {
-    #[cfg(not(feature = "std"))]
-    type Error: core::fmt::Debug + core::fmt::Display;
-
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
-    async fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
-
-    async fn get_status(&self) -> Result<Status, Self::Error>;
-
-    //async fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize)>;
-
-    #[cfg(not(feature = "alloc"))]
-    async fn scan_fill(
-        &mut self,
-        access_points: &mut [AccessPointInfo],
-    ) -> Result<usize, Self::Error>
-    where
-        Self: Sized;
-
-    #[cfg(feature = "alloc")]
-    async fn scan_fill(
-        &mut self,
-        access_points: &mut [AccessPointInfo],
-    ) -> Result<usize, Self::Error>
-    where
-        Self: Sized,
-    {
-        let result = self.scan().await?;
-
-        let len = usize::min(access_points.len(), result.len());
-
-        access_points[0..len].clone_from_slice(&result[0..len]);
-
-        Ok(result.len())
-    }
-
-    #[cfg(feature = "alloc")]
-    async fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
-
-    async fn get_configuration(&self) -> Result<Configuration, Self::Error>;
-    async fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }

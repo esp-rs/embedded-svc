@@ -6,10 +6,8 @@
 #[macro_use]
 extern crate alloc;
 
-#[cfg(feature = "experimental")]
 pub mod channel;
 pub mod eth;
-#[cfg(feature = "experimental")]
 pub mod event_bus;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod http;
@@ -17,11 +15,9 @@ pub mod http;
 pub mod httpd;
 pub mod io;
 pub mod ipv4;
-#[cfg(all(feature = "experimental", feature = "alloc"))]
+#[cfg(feature = "alloc")]
 pub mod mqtt;
 pub mod mutex;
-#[cfg(feature = "experimental")]
-pub mod nonblocking;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod ota;
 pub mod ping;
@@ -29,8 +25,8 @@ pub mod service;
 #[cfg(feature = "alloc")]
 pub mod storage;
 pub mod sys_time;
-#[cfg(feature = "experimental")]
 pub mod timer;
+#[cfg(feature = "experimental")]
+pub mod unblocker;
 pub mod utils;
-#[cfg(feature = "alloc")]
 pub mod wifi;

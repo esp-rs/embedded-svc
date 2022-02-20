@@ -9,6 +9,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::service::Service;
 use crate::{
     http::{client::*, Headers},
     io,
@@ -106,7 +107,7 @@ where
 
         // TODO: Need to implement our own error type
         #[cfg(feature = "std")]
-        let releases = serde_json::from_reader::<_, Vec<Release>>(io::StdIO(&mut read)).unwrap();
+        let releases = serde_json::from_reader::<_, Vec<Release>>(io::StdRead(&mut read)).unwrap();
 
         #[cfg(not(feature = "std"))]
         let releases = {
@@ -130,7 +131,8 @@ where
 
         // TODO: Need to implement our own error type
         #[cfg(feature = "std")]
-        let release = serde_json::from_reader::<_, Option<Release>>(io::StdIO(&mut read)).unwrap();
+        let release =
+            serde_json::from_reader::<_, Option<Release>>(io::StdRead(&mut read)).unwrap();
 
         #[cfg(not(feature = "std"))]
         let release = {
@@ -184,6 +186,13 @@ pub struct GitHubOtaRead<R> {
     response: R,
 }
 
+impl<S> Service for GitHubOtaRead<S>
+where
+    S: Service,
+{
+    type Error = S::Error;
+}
+
 impl<R> OtaRead for GitHubOtaRead<R>
 where
     R: Response,
@@ -197,19 +206,22 @@ impl<R> io::Read for GitHubOtaRead<R>
 where
     R: Response,
 {
-    type Error = R::Error;
-
     fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         self.response.reader().do_read(buf)
     }
+}
+
+impl<'a, C> Service for GitHubOtaService<'a, C>
+where
+    C: Service,
+{
+    type Error = C::Error;
 }
 
 impl<'a, C> OtaServer for GitHubOtaService<'a, C>
 where
     C: Client + 'static,
 {
-    type Error = C::Error;
-
     type OtaRead<'b>
     where
         Self: 'b,

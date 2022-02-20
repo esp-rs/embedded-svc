@@ -1,13 +1,9 @@
 extern crate alloc;
 use alloc::borrow::ToOwned;
 
-pub trait Storage {
-    #[cfg(not(feature = "std"))]
-    type Error: core::fmt::Debug + core::fmt::Display;
+use crate::service::Service;
 
-    #[cfg(feature = "std")]
-    type Error: std::error::Error + Send + Sync + 'static;
-
+pub trait Storage: Service {
     fn contains(&self, key: impl AsRef<str>) -> Result<bool, Self::Error>;
 
     fn remove(&mut self, key: impl AsRef<str>) -> Result<bool, Self::Error>;
@@ -58,9 +54,11 @@ impl Default for MemoryStorage {
     }
 }
 
-impl Storage for MemoryStorage {
+impl Service for MemoryStorage {
     type Error = core::convert::Infallible;
+}
 
+impl Storage for MemoryStorage {
     fn contains(&self, key: impl AsRef<str>) -> Result<bool, Self::Error> {
         Ok(self.0.contains_key(key.as_ref()))
     }
@@ -101,9 +99,11 @@ impl<T: Storage> StorageCache<T> {
     }
 }
 
-impl<T: Storage> Storage for StorageCache<T> {
+impl<T: Storage> Service for StorageCache<T> {
     type Error = T::Error;
+}
 
+impl<T: Storage> Storage for StorageCache<T> {
     fn contains(&self, key: impl AsRef<str>) -> Result<bool, Self::Error> {
         Ok(self.1.borrow().contains(&key).unwrap() || self.0.contains(key)?)
     }

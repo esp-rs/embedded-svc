@@ -1,4 +1,3 @@
-use core::fmt::{Debug, Display};
 use core::future::Future;
 use core::marker::PhantomData;
 use core::mem;
@@ -13,8 +12,8 @@ use crate::mqtt::client::nonblocking::{
     Client, Connection, Event, Message, MessageId, Publish, QoS,
 };
 use crate::mutex::{Condvar, Mutex};
-use crate::nonblocking::Unblocker;
 use crate::service::Service;
+use crate::unblocker::nonblocking::Unblocker;
 
 pub struct EnqueueFuture<E>(Result<MessageId, E>);
 
@@ -348,20 +347,75 @@ where
     }
 }
 
+#[cfg(not(feature = "std"))]
 impl<CV, M, E> Service for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
-    E: Debug + Display + Send + Sync + 'static,
+    E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
 {
     type Error = E;
 }
 
+#[cfg(feature = "std")]
+impl<CV, M, E> Service for AsyncConnection<CV, M, E>
+where
+    CV: Condvar,
+    M: Message,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    type Error = E;
+}
+
+#[cfg(not(feature = "std"))]
 impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     M: Message,
-    E: Debug + Display + Send + Sync + 'static,
+    E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
+{
+    type Message<'a>
+    where
+        CV: 'a,
+        M: 'a,
+    = M;
+
+    type NextFuture<'a, FM, OM, FE, OE>
+    where
+        Self: 'a,
+        CV: 'a,
+        M: 'a,
+        FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
+        FE: FnMut(&'a Self::Error) -> OE + Unpin,
+    = NextFuture<'a, CV, FM, OM, FE, OE, Self::Message<'a>, Self::Error>;
+
+    fn next<'a, FM, OM, FE, OE>(
+        &'a mut self,
+        fm: FM,
+        fe: FE,
+    ) -> Self::NextFuture<'a, FM, OM, FE, OE>
+    where
+        FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
+        FE: FnMut(&'a Self::Error) -> OE + Unpin,
+    {
+        NextFuture {
+            connection_state: &self.connection_state,
+            message_converter: fm,
+            error_converter: fe,
+            _output: PhantomData,
+            _error_output: PhantomData,
+            _message: PhantomData,
+            _error: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
+where
+    CV: Condvar,
+    M: Message,
+    E: std::error::Error + Send + Sync + 'static,
 {
     type Message<'a>
     where

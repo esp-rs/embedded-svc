@@ -101,6 +101,15 @@ where
     }
 }
 
+impl<'r, R, M> Service for MiddlewareRegistry<'r, R, M>
+where
+    R: Registry,
+    M: Middleware<R> + Clone + 'static,
+    M::Error: 'static,
+{
+    type Error = R::Error;
+}
+
 impl<'r, R, M> Registry for MiddlewareRegistry<'r, R, M>
 where
     R: Registry,
@@ -110,8 +119,6 @@ where
     type Request<'a> = R::Request<'a>;
 
     type Response<'a> = R::Response<'a>;
-
-    type Error = R::Error;
 
     type Root = R;
 

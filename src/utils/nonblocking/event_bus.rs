@@ -1,4 +1,3 @@
-use core::fmt::Debug;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::mem;
@@ -14,8 +13,8 @@ use futures::future::{ready, Either, Ready};
 use crate::channel::nonblocking::{Receiver, Sender};
 use crate::event_bus::nonblocking::{EventBus, PostboxProvider};
 use crate::mutex::{Condvar, Mutex};
-use crate::nonblocking::Unblocker;
 use crate::service::Service;
+use crate::unblocker::nonblocking::Unblocker;
 
 pub struct AsyncPostbox<U, P, PB> {
     blocking_postbox: PB,
@@ -108,22 +107,55 @@ where
     P: Send,
     S: Send;
 
+#[cfg(not(feature = "std"))]
 impl<CV, P, S, E> Service for AsyncSubscription<CV, P, S, E>
 where
     CV: Condvar,
     P: Send,
     S: Send,
-    E: Debug,
+    E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
 {
     type Error = E;
 }
 
+#[cfg(feature = "std")]
+impl<CV, P, S, E> Service for AsyncSubscription<CV, P, S, E>
+where
+    CV: Condvar,
+    P: Send,
+    S: Send,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    type Error = E;
+}
+
+#[cfg(not(feature = "std"))]
 impl<CV, P, S, E> Receiver for AsyncSubscription<CV, P, S, E>
 where
     CV: Condvar,
     S: Send,
     P: Clone + Send,
-    E: Debug,
+    E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
+{
+    type Data = P;
+
+    type RecvFuture<'a>
+    where
+        Self: 'a,
+    = NextFuture<'a, CV, P, S, E>;
+
+    fn recv(&mut self) -> Self::RecvFuture<'_> {
+        NextFuture(self)
+    }
+}
+
+#[cfg(feature = "std")]
+impl<CV, P, S, E> Receiver for AsyncSubscription<CV, P, S, E>
+where
+    CV: Condvar,
+    S: Send,
+    P: Clone + Send,
+    E: std::error::Error + Send + Sync + 'static,
 {
     type Data = P;
 
