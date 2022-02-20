@@ -28,4 +28,5 @@ pub mod sys_time;
 pub mod timer;
 pub mod unblocker;
 pub mod utils;
+#[cfg(feature = "alloc")]
 pub mod wifi;
