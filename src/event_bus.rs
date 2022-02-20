@@ -83,6 +83,7 @@ where
     }
 }
 
+#[cfg(feature = "experimental")]
 pub mod nonblocking {
     use crate::channel::nonblocking::{Receiver, Sender};
     use crate::service::Service;

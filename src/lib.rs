@@ -26,7 +26,6 @@ pub mod service;
 pub mod storage;
 pub mod sys_time;
 pub mod timer;
-#[cfg(feature = "experimental")]
 pub mod unblocker;
 pub mod utils;
 pub mod wifi;

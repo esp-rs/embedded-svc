@@ -204,6 +204,7 @@ where
     }
 }
 
+#[cfg(feature = "experimental")]
 pub mod nonblocking {
     use core::future::Future;
 
