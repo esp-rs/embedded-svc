@@ -55,6 +55,16 @@ pub trait Message {
     fn data(&self) -> Cow<'_, [u8]>;
 
     fn details(&self) -> &Details;
+
+    fn retrieve_topic(&self) -> Option<Cow<'_, str>> {
+        let topic_token = match self.details() {
+            Details::Complete(topic_token) => Some(topic_token),
+            Details::InitialChunk(chunk) => Some(&chunk.topic_token),
+            _ => None,
+        };
+
+        topic_token.map(|topic_token| self.topic(topic_token))
+    }
 }
 
 #[derive(Debug)]
