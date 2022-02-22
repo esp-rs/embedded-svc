@@ -51,10 +51,8 @@ pub mod nonblocking {
     use crate::channel::nonblocking::Receiver;
     use crate::errors::Errors;
 
-    pub use super::Timer;
-
     #[must_use]
-    pub trait OnceTimer: Timer {
+    pub trait OnceTimer: Errors {
         type AfterFuture<'a>: Future<Output = Result<(), Self::Error>>
         where
             Self: 'a;
@@ -63,7 +61,7 @@ pub mod nonblocking {
     }
 
     #[must_use]
-    pub trait PeriodicTimer: Timer {
+    pub trait PeriodicTimer: Errors {
         type Clock<'a>: Receiver<Data = (), Error = Self::Error>
         where
             Self: 'a;
@@ -72,7 +70,7 @@ pub mod nonblocking {
     }
 
     pub trait TimerService: Errors {
-        type Timer: super::Timer<Error = Self::Error> + 'static;
+        type Timer: Errors + 'static;
 
         fn timer(&mut self) -> Result<Self::Timer, Self::Error>;
     }

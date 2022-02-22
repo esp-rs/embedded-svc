@@ -216,49 +216,49 @@ where
     }
 }
 
-pub struct Channel<U, CV, E> {
-    blocking_channel: E,
+pub struct AsyncEventBus<U, CV, E> {
+    blocking_event_bus: E,
     _unblocker: PhantomData<fn() -> U>,
     _condvar_type: PhantomData<fn() -> CV>,
 }
 
-impl<U, CV, E> Channel<U, CV, E> {
-    pub fn new(blocking_channel: E) -> Self {
+impl<U, CV, E> AsyncEventBus<U, CV, E> {
+    pub fn new(blocking_event_bus: E) -> Self {
         Self {
-            blocking_channel,
+            blocking_event_bus,
             _unblocker: PhantomData,
             _condvar_type: PhantomData,
         }
     }
 }
 
-impl<U, CV, E> Clone for Channel<U, CV, E>
+impl<U, CV, E> Clone for AsyncEventBus<U, CV, E>
 where
     E: Clone,
 {
     fn clone(&self) -> Self {
         Self {
-            blocking_channel: self.blocking_channel.clone(),
+            blocking_event_bus: self.blocking_event_bus.clone(),
             _unblocker: PhantomData,
             _condvar_type: PhantomData,
         }
     }
 }
 
-impl<U, CV, E> super::AsyncWrapper<U, E> for Channel<U, CV, E> {
+impl<U, CV, E> super::AsyncWrapper<U, E> for AsyncEventBus<U, CV, E> {
     fn new(sync: E) -> Self {
-        Channel::new(sync)
+        AsyncEventBus::new(sync)
     }
 }
 
-impl<U, CV, E> Errors for Channel<U, CV, E>
+impl<U, CV, E> Errors for AsyncEventBus<U, CV, E>
 where
     E: Errors,
 {
     type Error = E::Error;
 }
 
-impl<U, CV, P, E> EventBus<P> for Channel<U, CV, E>
+impl<U, CV, P, E> EventBus<P> for AsyncEventBus<U, CV, E>
 where
     CV: Condvar + Send + Sync + 'static,
     CV::Mutex<SubscriptionState<P, E::Subscription>>: Send + Sync + 'static,
@@ -280,7 +280,7 @@ where
 
         let subscription_state = Arc::downgrade(&state);
 
-        let subscription = self.blocking_channel.subscribe(move |payload| {
+        let subscription = self.blocking_event_bus.subscribe(move |payload| {
             if let Some(state) = subscription_state.upgrade() {
                 let pair: &(CV::Mutex<_>, CV) = &state;
 
@@ -304,7 +304,7 @@ where
     }
 }
 
-impl<U, CV, P, E> PostboxProvider<P> for Channel<U, CV, E>
+impl<U, CV, P, E> PostboxProvider<P> for AsyncEventBus<U, CV, E>
 where
     U: Unblocker,
     CV: Condvar + Send + Sync + 'static,
@@ -316,6 +316,6 @@ where
     type Postbox = AsyncPostbox<U, P, E::Postbox>;
 
     fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
-        self.blocking_channel.postbox().map(AsyncPostbox::new)
+        self.blocking_event_bus.postbox().map(AsyncPostbox::new)
     }
 }

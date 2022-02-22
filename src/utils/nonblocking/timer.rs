@@ -13,7 +13,7 @@ use alloc::sync::Arc;
 
 use crate::channel::nonblocking::Receiver;
 use crate::errors::Errors;
-use crate::timer::nonblocking::{OnceTimer, PeriodicTimer, Timer, TimerService};
+use crate::timer::nonblocking::{OnceTimer, PeriodicTimer, TimerService};
 
 pub struct AsyncTimer<T> {
     blocking_timer: T,
@@ -27,19 +27,6 @@ where
     T: Errors,
 {
     type Error = T::Error;
-}
-
-impl<T> Timer for AsyncTimer<T>
-where
-    T: crate::timer::Timer,
-{
-    fn is_scheduled(&self) -> Result<bool, Self::Error> {
-        self.blocking_timer.is_scheduled()
-    }
-
-    fn cancel(&mut self) -> Result<bool, Self::Error> {
-        self.blocking_timer.cancel()
-    }
 }
 
 impl<T> OnceTimer for AsyncTimer<T>
@@ -85,7 +72,7 @@ where
     T: crate::timer::Timer,
 {
     fn drop(&mut self) {
-        self.0.cancel().unwrap();
+        self.0.blocking_timer.cancel().unwrap();
     }
 }
 
