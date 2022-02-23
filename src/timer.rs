@@ -21,7 +21,7 @@ pub trait PeriodicTimer: Timer {
 }
 
 pub trait TimerService: Errors {
-    type Timer: Timer<Error = Self::Error> + 'static;
+    type Timer: OnceTimer<Error = Self::Error> + PeriodicTimer<Error = Self::Error> + 'static;
 
     fn timer(
         &mut self,
@@ -70,7 +70,7 @@ pub mod nonblocking {
     }
 
     pub trait TimerService: Errors {
-        type Timer: Errors + 'static;
+        type Timer: OnceTimer + PeriodicTimer + 'static;
 
         fn timer(&mut self) -> Result<Self::Timer, Self::Error>;
     }
