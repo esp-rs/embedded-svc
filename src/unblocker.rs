@@ -2,6 +2,12 @@
 pub mod nonblocking {
     use core::future::Future;
 
+    pub trait Blocker {
+        fn block<F>(f: F) -> F::Output
+        where
+            F: Future;
+    }
+
     pub trait Unblocker {
         type UnblockFuture<T>: Future<Output = T>;
 
