@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(cfg_version)]
 #![feature(generic_associated_types)] // For mutex, http, http::client, http::server, ota and ghota
+#![cfg_attr(version("1.61"), allow(deprecated_where_clause_location))]
 #![cfg_attr(feature = "experimental", feature(type_alias_impl_trait))] // For the Sender/Receiver adapters
 
 #[cfg(feature = "alloc")]
