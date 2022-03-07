@@ -31,3 +31,5 @@ pub mod unblocker;
 pub mod utils;
 #[cfg(feature = "alloc")]
 pub mod wifi;
+#[cfg(feature = "experimental")]
+pub mod ws;
