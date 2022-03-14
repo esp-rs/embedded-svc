@@ -93,9 +93,9 @@ where
         self.0.waker.register(cx.waker());
 
         if self.0.ready.load(Ordering::SeqCst) {
-            return Poll::Ready(Ok(()));
+            Poll::Ready(Ok(()))
         } else {
-            return Poll::Pending;
+            Poll::Pending
         }
     }
 }

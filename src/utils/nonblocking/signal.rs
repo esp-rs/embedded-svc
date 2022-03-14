@@ -47,6 +47,15 @@ where
     }
 }
 
+impl<M, T> Default for Signal<M, T>
+where
+    M: Mutex<Data = State<T>>,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<M, T: Send> Signal<M, T>
 where
     M: Mutex<Data = State<T>>,

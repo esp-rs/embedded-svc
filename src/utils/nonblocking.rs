@@ -7,6 +7,8 @@ pub mod mqtt;
 pub mod signal;
 #[cfg(feature = "alloc")]
 pub mod timer;
+#[cfg(feature = "alloc")]
+pub mod ws;
 
 pub trait AsyncWrapper<U, S> {
     fn new(sync: S) -> Self;

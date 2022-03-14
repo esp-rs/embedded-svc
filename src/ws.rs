@@ -11,6 +11,7 @@ pub enum FrameType {
     Ping,
     Pong,
     Close,
+    SocketClose,
     Continue(Partial),
 }
 
@@ -49,7 +50,7 @@ pub mod nonblocking {
         where
             Self: 'a;
 
-        fn accept(&mut self) -> Result<Self::AcceptFuture<'_>, Self::Error>;
+        fn accept(&mut self) -> Self::AcceptFuture<'_>;
     }
 
     pub trait Receiver: Errors {
@@ -57,10 +58,7 @@ pub mod nonblocking {
         where
             Self: 'a;
 
-        fn recv(
-            &mut self,
-            frame_data_buf: &mut [u8],
-        ) -> Result<Self::ReceiveFuture<'_>, Self::Error>;
+        fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a>;
     }
 
     pub trait Sender: Errors {
@@ -68,10 +66,10 @@ pub mod nonblocking {
         where
             Self: 'a;
 
-        fn send(
-            &mut self,
+        fn send<'a>(
+            &'a mut self,
             frame_type: FrameType,
-            frame_data: Option<&[u8]>,
-        ) -> Result<Self::SendFuture<'_>, Self::Error>;
+            frame_data: Option<&'a [u8]>,
+        ) -> Self::SendFuture<'a>;
     }
 }

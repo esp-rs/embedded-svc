@@ -6,13 +6,12 @@ use alloc::string::{String, ToString};
 use crate::errors::Errors;
 
 use crate::ws::server::*;
-use crate::ws::*;
 
 pub trait Registry: Errors {
     type Receiver: Receiver + SessionProvider;
     type Sender: Sender + SenderFactory;
 
-    fn at(&mut self, uri: impl ToString) -> HandlerRegistrationBuilder<Self>
+    fn ws(&mut self, uri: impl ToString) -> HandlerRegistrationBuilder<Self>
     where
         Self: Sized,
     {

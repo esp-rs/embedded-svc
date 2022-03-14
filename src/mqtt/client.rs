@@ -4,11 +4,13 @@ use core::marker::PhantomData;
 extern crate alloc;
 use alloc::borrow::Cow;
 
+use serde::{Deserialize, Serialize};
+
 use crate::errors::Errors;
 
 /// Quality of service
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum QoS {
     AtMostOnce = 0,
     AtLeastOnce = 1,
@@ -17,7 +19,7 @@ pub enum QoS {
 
 pub type MessageId = u32;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Event<M> {
     BeforeConnect,
     Connected(bool),
