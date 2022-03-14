@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use core::fmt::{Debug, Display};
+
 #[cfg(feature = "std")]
 pub trait Error: std::error::Error + Send + Sync + 'static {}
 
