@@ -1,8 +1,14 @@
+use core::fmt::{Debug, Display};
+
 extern crate alloc;
 use alloc::string::{String, ToString};
 
 use super::{middleware, *};
 use crate::errors::Errors;
+
+pub trait HandlerError: Debug + Display + Send + Sync + 'static {}
+
+impl<E> HandlerError for E where E: Debug + Display + Send + Sync + 'static {}
 
 pub trait Registry: Errors {
     type Request<'a>: Request<'a>;
@@ -52,7 +58,7 @@ pub trait Registry: Errors {
     ) -> Result<&mut Self, Self::Error>
     where
         H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Display + fmt::Debug;
+        E: HandlerError;
 
     fn set_handler<H, E>(
         &mut self,
@@ -63,11 +69,7 @@ pub trait Registry: Errors {
     where
         Self: Sized,
         H: for<'a, 'c> Fn(&'c mut Self::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<Self as Registry>::Response<'a> as Errors>::Error>
-            + From<io::IODynError>
-            + 'static,
+        E: HandlerError,
     {
         self.set_inline_handler(uri, method, move |req, resp| {
             handle::<Self, _, _>(req, resp, &handler)
@@ -87,7 +89,7 @@ where
     pub fn get<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
+        E: HandlerError,
     {
         self.handler(Method::Get, handler)
     }
@@ -95,7 +97,7 @@ where
     pub fn put<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
+        E: HandlerError,
     {
         self.handler(Method::Put, handler)
     }
@@ -103,7 +105,7 @@ where
     pub fn post<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
+        E: HandlerError,
     {
         self.handler(Method::Post, handler)
     }
@@ -111,7 +113,7 @@ where
     pub fn delete<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
+        E: HandlerError,
     {
         self.handler(Method::Delete, handler)
     }
@@ -119,7 +121,7 @@ where
     pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
+        E: HandlerError,
     {
         self.registry
             .set_inline_handler(self.uri.as_str(), method, handler)
@@ -145,12 +147,7 @@ where
     pub fn get<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            // TODO: Remove the constraints below as they cannot be easily handled in no_std
-            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
-            + From<io::IODynError>
-            + 'static,
+        E: HandlerError,
     {
         self.handler(Method::Get, handler)
     }
@@ -158,11 +155,7 @@ where
     pub fn put<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
-            + From<io::IODynError>
-            + 'static,
+        E: HandlerError,
     {
         self.handler(Method::Put, handler)
     }
@@ -170,11 +163,7 @@ where
     pub fn post<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
-            + From<io::IODynError>
-            + 'static,
+        E: HandlerError,
     {
         self.handler(Method::Post, handler)
     }
@@ -182,11 +171,7 @@ where
     pub fn delete<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
-            + From<io::IODynError>
-            + 'static,
+        E: HandlerError,
     {
         self.handler(Method::Delete, handler)
     }
@@ -194,11 +179,7 @@ where
     pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut R, R::Error>
     where
         H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: fmt::Debug
-            + fmt::Display
-            + for<'a> From<<<R as Registry>::Response<'a> as Errors>::Error>
-            + From<io::IODynError>
-            + 'static,
+        E: HandlerError,
     {
         self.registry
             .set_handler(self.uri.as_str(), method, handler)?;
@@ -211,16 +192,13 @@ fn handle<'b, R, H, E>(
     mut req: R::Request<'b>,
     mut inline_resp: R::Response<'b>,
     handler: &H,
-) -> Result<Completion, E>
+) -> Result<Completion, anyhow::Error>
 where
     R: Registry,
     H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E>,
-    E: fmt::Debug
-        + fmt::Display
-        + From<<<R as Registry>::Response<'b> as Errors>::Error>
-        + From<io::IODynError>,
+    E: HandlerError,
 {
-    let resp = handler(&mut req)?;
+    let resp = handler(&mut req).map_err(|e| anyhow::anyhow!(e))?;
 
     inline_resp.set_status(resp.status);
 
@@ -233,14 +211,16 @@ where
     }
 
     match resp.body {
-        Body::Empty => inline_resp.submit(req).map_err(Into::into),
-        Body::Bytes(bytes) => inline_resp.send_bytes(req, &bytes).map_err(Into::into),
+        Body::Empty => inline_resp.submit(req).map_err(|e| anyhow::anyhow!(e)),
+        Body::Bytes(bytes) => inline_resp
+            .send_bytes(req, &bytes)
+            .map_err(|e| anyhow::anyhow!(e)),
         Body::Read(size, reader) => {
             inline_resp
                 .send_reader(req, size, reader)
                 .map_err(|e| match e {
-                    SendError::SendError(e) => e.into(),
-                    SendError::WriteError(e) => e.into(),
+                    SendError::SendError(e) => anyhow::anyhow!(e),
+                    SendError::WriteError(e) => anyhow::anyhow!(e),
                 })
         }
     }

@@ -1,9 +1,12 @@
 use core::future::Future;
 use core::marker::PhantomData;
 use core::mem;
-use core::task::{Poll, Waker};
+use core::pin::Pin;
+use core::task::{Context, Poll, Waker};
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
@@ -79,7 +82,7 @@ where
 {
     type Output = Result<(FrameType, usize), E>;
 
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut shared = self.receiver.shared.lock();
 
         if let ReceiverData::Metadata((frame_type, size)) = shared.data {
@@ -188,7 +191,7 @@ where
         <S as Errors>::Error,
     >;
 
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut accept = self.accept.lock();
 
         match mem::replace(&mut accept.data, None) {

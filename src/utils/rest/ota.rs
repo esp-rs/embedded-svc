@@ -1,6 +1,6 @@
 extern crate alloc;
-use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::{string::String, sync::Arc};
 
 use anyhow::{anyhow, Result};
 
@@ -12,7 +12,6 @@ use crate::{
     ota::{self, OtaRead, OtaSlot, OtaUpdate},
 };
 
-use super::*;
 use crate::utils::role::*;
 
 pub fn register<R, MO, MS, MP, O, S>(
@@ -41,7 +40,7 @@ where
     let progress_update = progress.clone();
 
     registry
-        .with_middleware(auth::WithRoleMiddleware {
+        .with_middleware(super::auth::WithRoleMiddleware {
             role: Role::Admin,
             default_role,
         })
@@ -72,7 +71,9 @@ where
         .map_err(|e| anyhow::anyhow!(e))
         .and_then(|slot| slot.get_firmware_info().map_err(|e| anyhow::anyhow!(e)))?;
 
-    ResponseData::from_json(&info)?.into()
+    ResponseData::from_json(&info)
+        .map_err(|e| anyhow::anyhow!(e))?
+        .into()
 }
 
 fn get_updates<'a, M, O>(_req: &mut impl Request<'a>, ota_server: &M) -> Result<ResponseData>
@@ -86,7 +87,9 @@ where
         .map(|releases| releases.collect::<Vec<_>>())
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    ResponseData::from_json(&updates)?.into()
+    ResponseData::from_json(&updates)
+        .map_err(|e| anyhow::anyhow!(e))?
+        .into()
 }
 
 fn get_latest_update<'a, M, O>(_req: &mut impl Request<'a>, ota_server: &M) -> Result<ResponseData>
@@ -99,7 +102,9 @@ where
         .get_latest_release()
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    ResponseData::from_json(&update)?.into()
+    ResponseData::from_json(&update)
+        .map_err(|e| anyhow::anyhow!(e))?
+        .into()
 }
 
 fn factory_reset<'a, M, O>(_req: &mut impl Request<'a>, ota: &M) -> Result<ResponseData>
@@ -127,11 +132,10 @@ where
 {
     let bytes: Result<Vec<_>, _> = io::Bytes::<_, 64>::new(req.reader()).take(3000).collect();
 
-    let bytes = bytes?;
+    let bytes = bytes.map_err(|e| anyhow::anyhow!(e))?;
 
-    let download_id = url::form_urlencoded::parse(&bytes)
-        .find(|(key, _)| key.as_ref() == "download_id")
-        .map(|(_, value)| value.into_owned());
+    let download_id: Option<String> =
+        serde_json::from_slice(&bytes).map_err(|e| anyhow::anyhow!(e))?;
 
     let mut ota_server = ota_server.lock();
 
@@ -165,5 +169,7 @@ fn get_update_progress<'a, M>(_req: &mut impl Request<'a>, progress: &M) -> Resu
 where
     M: Mutex<Data = Option<f32>>,
 {
-    ResponseData::from_json(&*progress.lock())?.into()
+    ResponseData::from_json(&*progress.lock())
+        .map_err(|e| anyhow::anyhow!(e))?
+        .into()
 }

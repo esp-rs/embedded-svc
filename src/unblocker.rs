@@ -1,6 +1,9 @@
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "alloc", feature = "experimental"))]
 pub mod nonblocking {
     use core::future::Future;
+
+    extern crate alloc;
+    use alloc::boxed::Box;
 
     pub trait Blocker {
         fn block<F>(f: F) -> F::Output

@@ -6,6 +6,7 @@ use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 
 extern crate alloc;
+use alloc::boxed::Box;
 use alloc::sync::Arc;
 
 use futures::future::{ready, Either, Ready};

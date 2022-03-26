@@ -7,7 +7,7 @@ pub trait Middleware<R>
 where
     R: Registry,
 {
-    type Error: fmt::Display + fmt::Debug;
+    type Error: HandlerError;
 
     fn handle<'a, H, E>(
         &self,
@@ -18,7 +18,7 @@ where
     where
         R: Registry,
         H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Display + fmt::Debug;
+        E: HandlerError;
 
     fn compose<M>(self, middleware: M) -> CompositeMiddleware<Self, M>
     where
@@ -72,7 +72,7 @@ where
     ) -> Result<Completion, Self::Error>
     where
         H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Display + fmt::Debug,
+        E: HandlerError,
     {
         let middleware2 = self.middleware2.clone();
 
@@ -149,7 +149,7 @@ where
     ) -> Result<&mut Self, Self::Error>
     where
         H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, E> + 'static,
-        E: fmt::Debug + fmt::Display,
+        E: HandlerError,
     {
         let middleware = self.middleware.clone();
 

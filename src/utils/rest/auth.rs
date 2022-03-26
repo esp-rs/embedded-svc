@@ -1,13 +1,12 @@
-use core::fmt;
-
 extern crate alloc;
-use alloc::borrow::Cow;
+use alloc::borrow::{Cow, ToOwned};
 use alloc::rc::Rc;
+use alloc::string::String;
 use alloc::vec::Vec;
 
-use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
-use http_auth_basic::Credentials;
+use anyhow::Result;
 
 use crate::{
     http::server::middleware::Middleware, http::server::registry::*, http::server::*, http::*, io,
@@ -40,7 +39,7 @@ where
     where
         R: Registry,
         H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
-        E: fmt::Display + fmt::Debug,
+        E: HandlerError,
     {
         let current_role = get_role(&mut req, self.default_role);
 
@@ -50,18 +49,23 @@ where
             }
         }
 
-        let completion = resp.status(400).submit(req)?;
+        let completion = resp
+            .status(400)
+            .submit(req)
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(completion)
     }
 }
 
+#[cfg(feature = "std")]
 #[derive(Clone)]
 pub struct WithBasicAuthMiddleware<A> {
     pub authenticator: A,
     pub min_role: Role,
 }
 
+#[cfg(feature = "std")]
 impl<A, R> Middleware<R> for WithBasicAuthMiddleware<A>
 where
     A: Authenticator + Clone,
@@ -78,7 +82,7 @@ where
     where
         R: Registry,
         H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
-        E: fmt::Display + fmt::Debug,
+        E: HandlerError,
     {
         if let Some(role) = get_role(&mut req, None) {
             if role >= self.min_role {
@@ -88,7 +92,9 @@ where
 
         let authorization = req.header("Authorization");
         if let Some(authorization) = authorization {
-            if let Ok(credentials) = Credentials::from_header(authorization.into_owned()) {
+            if let Ok(credentials) =
+                http_auth_basic::Credentials::from_header(authorization.into_owned())
+            {
                 if let Some(role) = self
                     .authenticator
                     .authenticate(credentials.user_id, credentials.password)
@@ -105,7 +111,8 @@ where
         let completion = resp
             .status(401)
             .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
-            .submit(req)?;
+            .submit(req)
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(completion)
     }
@@ -132,7 +139,7 @@ where
     where
         R: Registry,
         H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
-        E: fmt::Display + fmt::Debug,
+        E: HandlerError,
     {
         if let Some(role) = get_role(&mut req, None) {
             if role >= self.min_role {
@@ -140,7 +147,9 @@ where
             }
         }
 
-        let completion = resp.redirect(req, self.login.as_ref().to_owned())?;
+        let completion = resp
+            .redirect(req, self.login.as_ref().to_owned())
+            .map_err(|e| anyhow::anyhow!(e))?;
 
         Ok(completion)
     }
@@ -207,34 +216,30 @@ where
 
     let bytes: Result<Vec<_>, _> = io::Bytes::<_, 64>::new(req.reader()).take(3000).collect();
 
-    let bytes = bytes?;
+    let bytes = bytes.map_err(|e| anyhow::anyhow!(e))?;
 
-    let mut username = None;
-    let mut password = None;
-
-    for (key, value) in url::form_urlencoded::parse(&bytes).into_owned() {
-        if key == "username" {
-            username = Some(value);
-        } else if key == "password" {
-            password = Some(value);
-        }
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct Credentials {
+        username: String,
+        password: String,
     }
 
-    if let Some(username) = username {
-        if let Some(password) = password {
-            if let Some(role) = authenticator.authenticate(username, password) {
-                {
-                    let mut session = req.session();
+    let credentials: Credentials =
+        serde_json::from_slice(&bytes).map_err(|e| anyhow::anyhow!(e))?;
 
-                    session.invalidate()?;
-                    session.create_if_invalid()?;
-                }
+    if let Some(role) = authenticator.authenticate(credentials.username, credentials.password) {
+        {
+            let mut session = req.session();
 
-                set_session_role(req, Some(role))?;
-
-                return ResponseData::ok().into();
-            }
+            session.invalidate().map_err(|e| anyhow::anyhow!(e))?;
+            session
+                .create_if_invalid()
+                .map_err(|e| anyhow::anyhow!(e))?;
         }
+
+        set_session_role(req, Some(role)).map_err(|e| anyhow::anyhow!(e))?;
+
+        return ResponseData::ok().into();
     }
 
     ResponseData::new(401)
@@ -243,7 +248,7 @@ where
 }
 
 pub fn logout<'a>(req: &mut impl Request<'a>) -> Result<ResponseData> {
-    req.session().invalidate()?;
+    req.session().invalidate().map_err(|e| anyhow::anyhow!(e))?;
 
     ResponseData::ok().into()
 }

@@ -6,7 +6,6 @@ use anyhow::Result;
 
 use crate::{http::server::registry::*, http::server::*, io, mutex::*, wifi};
 
-use super::*;
 use crate::utils::role::*;
 
 pub fn register<R, M, W>(
@@ -29,7 +28,7 @@ where
     let wifi_set_configuration = wifi;
 
     registry
-        .with_middleware(auth::WithRoleMiddleware {
+        .with_middleware(super::auth::WithRoleMiddleware {
             role: Role::Admin,
             default_role,
         })
@@ -57,7 +56,9 @@ where
         .get_capabilities()
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    ResponseData::from_json(&caps)?.into()
+    ResponseData::from_json(&caps)
+        .map_err(|e| anyhow::anyhow!(e))?
+        .into()
 }
 
 fn get_status<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
@@ -67,7 +68,9 @@ where
 {
     let status = wifi.lock().get_status();
 
-    ResponseData::from_json(&status)?.into()
+    ResponseData::from_json(&status)
+        .map_err(|e| anyhow::anyhow!(e))?
+        .into()
 }
 
 fn scan<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
@@ -77,7 +80,9 @@ where
 {
     let data = wifi.lock().scan().map_err(|e| anyhow::anyhow!(e))?;
 
-    ResponseData::from_json(&data)?.into()
+    ResponseData::from_json(&data)
+        .map_err(|e| anyhow::anyhow!(e))?
+        .into()
 }
 
 fn get_configuration<'a, M, W>(_req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
@@ -90,7 +95,9 @@ where
         .get_configuration()
         .map_err(|e| anyhow::anyhow!(e))?;
 
-    ResponseData::from_json(&conf)?.into()
+    ResponseData::from_json(&conf)
+        .map_err(|e| anyhow::anyhow!(e))?
+        .into()
 }
 
 fn set_configuration<'a, M, W>(req: &mut impl Request<'a>, wifi: &M) -> Result<ResponseData>
@@ -100,9 +107,10 @@ where
 {
     let bytes: Result<Vec<_>, _> = io::Bytes::<_, 64>::new(req.reader()).take(3000).collect();
 
-    let bytes = bytes?;
+    let bytes = bytes.map_err(|e| anyhow::anyhow!(e))?;
 
-    let conf: wifi::Configuration = serde_json::from_slice(&bytes)?;
+    let conf: wifi::Configuration =
+        serde_json::from_slice(&bytes).map_err(|e| anyhow::anyhow!(e))?;
 
     wifi.lock()
         .set_configuration(&conf)

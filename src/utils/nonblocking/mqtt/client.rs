@@ -6,7 +6,10 @@ use core::task::{Context, Poll, Waker};
 
 extern crate alloc;
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 
 use crate::errors::Errors;
 use crate::mqtt::client::nonblocking::{

@@ -1,6 +1,7 @@
-extern crate alloc;
 use core::fmt;
 
+extern crate alloc;
+use alloc::borrow::ToOwned;
 use alloc::sync::Arc;
 
 use anyhow::Result;
@@ -30,7 +31,8 @@ where
 
     registry
         .at(prefix(""))
-        .get(move |req| get_status(req, portal_uri.as_ref(), &*captive))?;
+        .get(move |req| get_status(req, portal_uri.as_ref(), &*captive))
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     Ok(())
 }
@@ -102,7 +104,8 @@ where
             let completion = resp
                 .status(307)
                 .header("Location", self.portal_uri.to_owned())
-                .submit(req)?;
+                .submit(req)
+                .map_err(|e| anyhow::anyhow!(e))?;
 
             Ok(completion)
         }
