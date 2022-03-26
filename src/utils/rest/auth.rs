@@ -13,7 +13,7 @@ use crate::{
     http::server::middleware::Middleware, http::server::registry::*, http::server::*, http::*, io,
 };
 
-use super::role::*;
+use crate::utils::role::*;
 
 pub trait Authenticator {
     fn authenticate(&self, username: impl AsRef<str>, password: impl AsRef<str>) -> Option<Role>;

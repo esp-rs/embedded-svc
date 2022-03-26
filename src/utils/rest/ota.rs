@@ -12,7 +12,8 @@ use crate::{
     ota::{self, OtaRead, OtaSlot, OtaUpdate},
 };
 
-use super::{role::Role, *};
+use super::*;
+use crate::utils::role::*;
 
 pub fn register<R, MO, MS, MP, O, S>(
     registry: &mut R,

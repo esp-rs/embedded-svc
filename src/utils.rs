@@ -10,3 +10,5 @@ pub mod ghota;
 
 #[cfg(all(feature = "experimental", feature = "alloc", feature = "use_serde"))]
 pub mod rest;
+
+pub mod role;

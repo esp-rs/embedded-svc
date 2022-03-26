@@ -6,7 +6,8 @@ use anyhow::Result;
 
 use crate::{http::server::registry::*, http::server::*, io, mutex::*, wifi};
 
-use super::{role::Role, *};
+use super::*;
+use crate::utils::role::*;
 
 pub fn register<R, M, W>(
     registry: &mut R,
