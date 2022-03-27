@@ -10,6 +10,8 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+use log::info;
+
 use crate::errors::*;
 use crate::mutex::*;
 use crate::unblocker::nonblocking::Unblocker;
@@ -30,7 +32,7 @@ where
 impl<U, S> nonblocking::Sender for AsyncSender<U, S>
 where
     U: Unblocker,
-    S: Sender + Send + Clone + 'static,
+    S: Sender + SessionProvider + Send + Clone + 'static,
 {
     type SendFuture<'a>
     where
@@ -38,6 +40,13 @@ where
     = U::UnblockFuture<Result<(), Self::Error>>;
 
     fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>) -> Self::SendFuture<'_> {
+        info!(
+            "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
+            frame_type,
+            frame_data.map(|d| d.len()).unwrap_or(0),
+            self.sender.session()
+        );
+
         let mut sender = self.sender.clone();
         let frame_data: Option<Vec<u8>> = frame_data.map(|frame_data| frame_data.to_owned());
 
@@ -217,7 +226,6 @@ where
             }
             None => {
                 accept.waker = Some(cx.waker().clone());
-
                 Poll::Pending
             }
         }
@@ -230,7 +238,7 @@ where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + Errors + Send + Clone + 'static,
+    S: Sender + SessionProvider + Errors + Send + Clone + 'static,
 {
     type Sender = AsyncSender<U, S>;
 
@@ -256,7 +264,7 @@ where
     R: SessionProvider,
 {
     connections: Vec<ConnectionState<C::Mutex<SharedReceiverState>, R::Session>>,
-    frame_data_buf: [u8; 8192],
+    frame_data_buf: Vec<u8>,
     accept: Arc<C::Mutex<SharedAcceptorState<C, S::Sender>>>,
     condvar: Arc<C>,
 }
@@ -270,19 +278,21 @@ where
     S::Sender: Send,
     R: SessionProvider,
 {
-    pub fn new<U>() -> (Self, AsyncAcceptor<U, C, S::Sender>)
+    pub fn new<U>(max_frame_size: usize) -> (Self, AsyncAcceptor<U, C, S::Sender>)
     where
         U: Unblocker,
     {
-        let this = Self {
+        let mut this = Self {
             connections: Vec::new(),
-            frame_data_buf: [0_u8; 8192],
+            frame_data_buf: Vec::new(),
             accept: Arc::new(C::Mutex::new(SharedAcceptorState {
                 waker: None,
                 data: None,
             })),
             condvar: Arc::new(C::new()),
         };
+
+        this.frame_data_buf.resize(max_frame_size, 0);
 
         let acceptor = AsyncAcceptor {
             _unblocker: PhantomData,
@@ -297,12 +307,21 @@ where
     where
         R: Receiver,
     {
-        if receiver.is_closed() {
+        if receiver.is_new() {
             let session = receiver.session();
+
+            info!("New WS connection {:?}", session);
+
+            self.process_accept(session, sender);
+        } else if receiver.is_closed() {
+            let session = receiver.session();
+
+            info!("Closed WS connection {:?}", session);
 
             self.connections.retain(|receiver| {
                 if receiver.session == session {
                     Self::process_receive_close(&receiver.receiver_state);
+                    info!("Closed WS connection {:?} unregistered", session);
 
                     false
                 } else {
@@ -310,30 +329,27 @@ where
                 }
             });
         } else {
-            let (frame_type, len) = receiver.recv(&mut self.frame_data_buf).unwrap();
-
             let session = receiver.session();
+            let (frame_type, len) = receiver.recv(&mut self.frame_data_buf)?;
+
+            info!(
+                "Incoming data (frame_type={:?}, frame_len={}) from WS connection {:?}",
+                frame_type, len, session
+            );
 
             self.connections
                 .iter()
                 .find(|receiver| receiver.session == session)
-                .map(|receiver| self.process_receive(&receiver.receiver_state, frame_type, len))
-                .unwrap_or_else(|| self.process_accept(sender, session, frame_type, len));
+                .map(|receiver| self.process_receive(&receiver.receiver_state, frame_type, len));
         }
 
         Ok(())
     }
 
-    fn process_accept<'a>(
-        &'a mut self,
-        sender: &'a mut S,
-        session: R::Session,
-        frame_type: FrameType,
-        len: usize,
-    ) {
+    fn process_accept<'a>(&'a mut self, session: R::Session, sender: &'a mut S) {
         let receiver_state = Arc::new(C::Mutex::new(SharedReceiverState {
             waker: None,
-            data: ReceiverData::Metadata((frame_type, len)),
+            data: ReceiverData::None,
         }));
 
         let state = ConnectionState {

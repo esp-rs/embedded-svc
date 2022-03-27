@@ -10,6 +10,7 @@ pub trait SessionProvider {
 
     fn session(&self) -> Self::Session;
 
+    fn is_new(&self) -> bool;
     fn is_closed(&self) -> bool;
 }
 

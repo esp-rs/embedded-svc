@@ -2,24 +2,34 @@ use crate::errors::Errors;
 
 pub mod server;
 
-pub type Partial = bool;
+pub type Fragmented = bool;
+pub type Final = bool;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum FrameType {
-    Text(Partial),
-    Binary(Partial),
+    Text(Fragmented),
+    Binary(Fragmented),
     Ping,
     Pong,
     Close,
     SocketClose,
-    Continue(Partial),
+    Continue(Final),
 }
 
 impl FrameType {
-    pub fn is_partial(&self) -> bool {
+    pub fn is_fragmented(&self) -> bool {
         match self {
-            Self::Text(partial) | Self::Binary(partial) | Self::Continue(partial) => *partial,
+            Self::Text(fragmented) | Self::Binary(fragmented) => *fragmented,
+            Self::Continue(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::Text(fragmented) | Self::Binary(fragmented) => !*fragmented,
+            Self::Continue(final_) => *final_,
+            _ => true,
         }
     }
 }
@@ -38,7 +48,7 @@ pub mod nonblocking {
 
     use crate::errors::Errors;
 
-    pub use super::{FrameType, Partial};
+    pub use super::{Fragmented, FrameType};
 
     pub trait Acceptor: Errors {
         type Sender: Sender<Error = Self::Error>;
