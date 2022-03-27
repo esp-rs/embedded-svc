@@ -5,6 +5,7 @@ use core::mem;
 extern crate alloc;
 
 use enumset::*;
+use macaddr::MacAddr6;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
@@ -141,7 +142,7 @@ impl Default for SecondaryChannel {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointInfo {
     pub ssid: alloc::string::String,
-    pub bssid: [u8; 6],
+    pub bssid: MacAddr6,
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
     pub signal_strength: u8,
@@ -204,7 +205,7 @@ impl Default for AccessPointConfiguration {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
     pub ssid: alloc::string::String,
-    pub bssid: Option<[u8; 6]>,
+    pub bssid: Option<MacAddr6>,
     //pub protocol: Protocol,
     pub auth_method: AuthMethod,
     pub password: alloc::string::String,
