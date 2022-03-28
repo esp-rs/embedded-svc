@@ -1,8 +1,8 @@
 use core::future::Future;
 use core::marker::PhantomData;
-use core::mem;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
+use core::{mem, slice};
 
 extern crate alloc;
 use alloc::borrow::ToOwned;
@@ -59,7 +59,7 @@ where
 pub enum ReceiverData {
     None,
     Metadata((FrameType, usize)),
-    Data(*mut [u8]),
+    Data(*mut u8),
     DataCopied,
     Closed,
 }
@@ -81,8 +81,7 @@ where
     C: Condvar,
 {
     receiver: &'a mut AsyncReceiver<C, E>,
-    frame_data_buf: *mut [u8],
-    frame_data_buf_len: usize,
+    frame_data_buf: &'a mut [u8],
 }
 
 impl<'a, C, E> Future for AsyncReceiverFuture<'a, C, E>
@@ -91,12 +90,13 @@ where
 {
     type Output = Result<(FrameType, usize), E>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let frame_data_buf_ptr = self.frame_data_buf.as_mut_ptr();
         let mut shared = self.receiver.shared.lock();
 
         if let ReceiverData::Metadata((frame_type, size)) = shared.data {
-            if self.frame_data_buf_len >= size {
-                shared.data = ReceiverData::Data(self.frame_data_buf);
+            if self.frame_data_buf.len() >= size {
+                shared.data = ReceiverData::Data(frame_data_buf_ptr);
 
                 self.receiver.condvar.notify_all();
 
@@ -148,8 +148,7 @@ where
     fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
         AsyncReceiverFuture {
             receiver: self,
-            frame_data_buf: frame_data_buf as *mut _,
-            frame_data_buf_len: frame_data_buf.len(),
+            frame_data_buf,
         }
     }
 }
@@ -316,12 +315,10 @@ where
         } else if receiver.is_closed() {
             let session = receiver.session();
 
-            info!("Closed WS connection {:?}", session);
-
             self.connections.retain(|receiver| {
                 if receiver.session == session {
                     Self::process_receive_close(&receiver.receiver_state);
-                    info!("Closed WS connection {:?} unregistered", session);
+                    info!("Closed WS connection {:?}", session);
 
                     false
                 } else {
@@ -390,7 +387,8 @@ where
 
         loop {
             if let ReceiverData::Data(buf) = &shared.data {
-                unsafe { (*buf).as_mut().unwrap() }.copy_from_slice(&self.frame_data_buf[..len]);
+                unsafe { slice::from_raw_parts_mut(*buf, len) }
+                    .copy_from_slice(&self.frame_data_buf[..len]);
                 shared.data = ReceiverData::DataCopied;
                 self.condvar.notify_all();
 
