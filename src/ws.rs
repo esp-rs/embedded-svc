@@ -43,7 +43,7 @@ pub trait Sender: Errors {
         -> Result<(), Self::Error>;
 }
 
-pub mod nonblocking {
+pub mod asyncs {
     use core::future::Future;
 
     use crate::errors::Errors;

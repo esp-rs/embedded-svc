@@ -44,11 +44,11 @@ where
 }
 
 #[cfg(feature = "experimental")]
-pub mod nonblocking {
+pub mod asyncs {
     use core::future::Future;
     use core::time::Duration;
 
-    use crate::channel::nonblocking::Receiver;
+    use crate::channel::asyncs::Receiver;
     use crate::errors::Errors;
 
     #[must_use]

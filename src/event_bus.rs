@@ -84,8 +84,8 @@ where
 }
 
 #[cfg(feature = "experimental")]
-pub mod nonblocking {
-    use crate::channel::nonblocking::{Receiver, Sender};
+pub mod asyncs {
+    use crate::channel::asyncs::{Receiver, Sender};
     use crate::errors::Errors;
 
     pub use super::Spin;

@@ -1,5 +1,5 @@
 #[cfg(feature = "experimental")]
-pub mod nonblocking {
+pub mod asyncs {
     use core::future::Future;
 
     use crate::errors::Errors;

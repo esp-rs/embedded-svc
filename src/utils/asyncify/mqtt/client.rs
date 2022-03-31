@@ -12,11 +12,9 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use crate::errors::Errors;
-use crate::mqtt::client::nonblocking::{
-    Client, Connection, Event, Message, MessageId, Publish, QoS,
-};
+use crate::mqtt::client::asyncs::{Client, Connection, Event, Message, MessageId, Publish, QoS};
 use crate::mutex::{Condvar, Mutex};
-use crate::unblocker::nonblocking::Unblocker;
+use crate::unblocker::asyncs::Unblocker;
 
 pub struct EnqueueFuture<E>(Result<MessageId, E>);
 
@@ -159,7 +157,7 @@ where
     }
 }
 
-impl<U, M, P> crate::utils::nonblocking::AsyncWrapper<U, P> for AsyncClient<U, M>
+impl<U, M, P> crate::utils::asyncify::AsyncWrapper<U, P> for AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
 {

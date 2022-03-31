@@ -1,5 +1,5 @@
 #[cfg(all(feature = "alloc", feature = "experimental"))]
-pub mod nonblocking {
+pub mod asyncs {
     use core::future::Future;
 
     extern crate alloc;

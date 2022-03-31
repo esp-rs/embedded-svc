@@ -11,11 +11,11 @@ use alloc::sync::Arc;
 
 use futures::future::{ready, Either, Ready};
 
-use crate::channel::nonblocking::{Receiver, Sender};
+use crate::channel::asyncs::{Receiver, Sender};
 use crate::errors::Errors;
-use crate::event_bus::nonblocking::{EventBus, PostboxProvider};
+use crate::event_bus::asyncs::{EventBus, PostboxProvider};
 use crate::mutex::{Condvar, Mutex};
-use crate::unblocker::nonblocking::Unblocker;
+use crate::unblocker::asyncs::Unblocker;
 
 pub struct AsyncPostbox<U, P, PB> {
     blocking_postbox: PB,

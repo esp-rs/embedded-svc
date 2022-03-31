@@ -217,7 +217,7 @@ where
 }
 
 #[cfg(feature = "experimental")]
-pub mod nonblocking {
+pub mod asyncs {
     use core::future::Future;
 
     extern crate alloc;

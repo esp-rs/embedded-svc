@@ -1,10 +1,7 @@
-pub mod channel;
 #[cfg(feature = "alloc")]
 pub mod event_bus;
 #[cfg(feature = "alloc")]
 pub mod mqtt;
-#[cfg(feature = "alloc")]
-pub mod signal;
 #[cfg(feature = "alloc")]
 pub mod timer;
 #[cfg(feature = "alloc")]

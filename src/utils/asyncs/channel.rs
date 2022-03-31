@@ -4,7 +4,7 @@ pub mod adapt {
 
     use crate::errors::Errors;
 
-    use crate::channel::nonblocking::{Receiver, Sender};
+    use crate::channel::asyncs::{Receiver, Sender};
 
     pub fn sender<S, P>(sender: S, adapter: impl Fn(P) -> Option<S::Data>) -> impl Sender<Data = P>
     where

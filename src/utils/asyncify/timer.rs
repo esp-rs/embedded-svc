@@ -11,9 +11,9 @@ use futures::task::AtomicWaker;
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::channel::nonblocking::Receiver;
+use crate::channel::asyncs::Receiver;
 use crate::errors::Errors;
-use crate::timer::nonblocking::{OnceTimer, PeriodicTimer, TimerService};
+use crate::timer::asyncs::{OnceTimer, PeriodicTimer, TimerService};
 
 pub struct AsyncTimer<T> {
     blocking_timer: T,
