@@ -63,8 +63,8 @@ impl<U, M, P> AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
 {
-    pub fn new(blocking_client: P) -> Self {
-        Self(Arc::new(M::new(blocking_client)), PhantomData)
+    pub fn new(client: P) -> Self {
+        Self(Arc::new(M::new(client)), PhantomData)
     }
 }
 

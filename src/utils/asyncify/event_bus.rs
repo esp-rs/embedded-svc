@@ -218,15 +218,15 @@ where
 }
 
 pub struct AsyncEventBus<U, CV, E> {
-    blocking_event_bus: E,
+    event_bus: E,
     _unblocker: PhantomData<fn() -> U>,
     _condvar_type: PhantomData<fn() -> CV>,
 }
 
 impl<U, CV, E> AsyncEventBus<U, CV, E> {
-    pub fn new(blocking_event_bus: E) -> Self {
+    pub fn new(event_bus: E) -> Self {
         Self {
-            blocking_event_bus,
+            event_bus,
             _unblocker: PhantomData,
             _condvar_type: PhantomData,
         }
@@ -239,7 +239,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            blocking_event_bus: self.blocking_event_bus.clone(),
+            event_bus: self.event_bus.clone(),
             _unblocker: PhantomData,
             _condvar_type: PhantomData,
         }
@@ -281,7 +281,7 @@ where
 
         let subscription_state = Arc::downgrade(&state);
 
-        let subscription = self.blocking_event_bus.subscribe(move |payload| {
+        let subscription = self.event_bus.subscribe(move |payload| {
             if let Some(state) = subscription_state.upgrade() {
                 let pair: &(CV::Mutex<_>, CV) = &state;
 
@@ -317,6 +317,6 @@ where
     type Postbox = AsyncPostbox<U, P, E::Postbox>;
 
     fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
-        self.blocking_event_bus.postbox().map(AsyncPostbox::new)
+        self.event_bus.postbox().map(AsyncPostbox::new)
     }
 }

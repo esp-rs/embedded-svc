@@ -16,7 +16,7 @@ use crate::errors::Errors;
 use crate::timer::asyncs::{OnceTimer, PeriodicTimer, TimerService};
 
 pub struct AsyncTimer<T> {
-    blocking_timer: T,
+    timer: T,
     ready: Arc<AtomicBool>,
     waker: Arc<AtomicWaker>,
     duration: Option<Duration>,
@@ -36,7 +36,7 @@ where
     type AfterFuture<'a> = TimerFuture<'a, T>;
 
     fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error> {
-        self.blocking_timer.cancel()?;
+        self.timer.cancel()?;
 
         self.waker.take();
         self.ready.store(false, Ordering::SeqCst);
@@ -53,7 +53,7 @@ where
     type Clock<'a> = &'a mut Self;
 
     fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error> {
-        self.blocking_timer.cancel()?;
+        self.timer.cancel()?;
 
         self.waker.take();
         self.ready.store(false, Ordering::SeqCst);
@@ -72,7 +72,7 @@ where
     T: crate::timer::Timer,
 {
     fn drop(&mut self) {
-        self.0.blocking_timer.cancel().unwrap();
+        self.0.timer.cancel().unwrap();
     }
 }
 
@@ -84,7 +84,7 @@ where
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if let Some(duration) = mem::replace(&mut self.1, None) {
-            match self.0.blocking_timer.after(duration) {
+            match self.0.timer.after(duration) {
                 Ok(_) => (),
                 Err(error) => return Poll::Ready(Err(error)),
             }
@@ -122,8 +122,8 @@ where
 pub struct AsyncTimerService<T>(T);
 
 impl<T> AsyncTimerService<T> {
-    pub fn new(blocking_timer_service: T) -> Self {
-        Self(blocking_timer_service)
+    pub fn new(timer_service: T) -> Self {
+        Self(timer_service)
     }
 }
 
@@ -137,8 +137,8 @@ where
 }
 
 impl<U, T> super::AsyncWrapper<U, T> for AsyncTimerService<T> {
-    fn new(blocking_timer_service: T) -> Self {
-        AsyncTimerService::new(blocking_timer_service)
+    fn new(timer_service: T) -> Self {
+        AsyncTimerService::new(timer_service)
     }
 }
 
@@ -163,7 +163,7 @@ where
         let callback_ready = Arc::downgrade(&ready);
         let callback_waker = Arc::downgrade(&waker);
 
-        let blocking_timer = self.0.timer(move || {
+        let timer = self.0.timer(move || {
             if let Some(callback_ready) = callback_ready.upgrade() {
                 if let Some(callback_waker) = callback_waker.upgrade() {
                     callback_ready.store(true, Ordering::SeqCst);
@@ -173,7 +173,7 @@ where
         })?;
 
         Ok(Self::Timer {
-            blocking_timer,
+            timer,
             ready,
             waker,
             duration: None,
