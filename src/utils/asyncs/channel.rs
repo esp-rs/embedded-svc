@@ -6,19 +6,18 @@ pub mod adapt {
 
     use crate::channel::asyncs::{Receiver, Sender};
 
-    pub fn sender<S, P>(sender: S, adapter: impl Fn(P) -> Option<S::Data>) -> impl Sender<Data = P>
+    pub fn sender<S, P, F>(sender: S, adapter: F) -> impl Sender<Data = P>
     where
         S: Sender,
+        F: Fn(P) -> Option<S::Data>,
     {
         SenderAdapter::new(sender, adapter)
     }
 
-    pub fn receiver<R, P>(
-        receiver: R,
-        adapter: impl Fn(R::Data) -> Option<P>,
-    ) -> impl Receiver<Data = P>
+    pub fn receiver<R, P, F>(receiver: R, adapter: F) -> impl Receiver<Data = P>
     where
         R: Receiver,
+        F: Fn(R::Data) -> Option<P>,
     {
         ReceiverAdapter::new(receiver, adapter)
     }
