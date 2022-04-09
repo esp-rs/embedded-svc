@@ -184,8 +184,6 @@ where
 {
     fn drop(&mut self) {
         let mut state = self.0 .0 .0.lock();
-
-        state.value = None;
         state.waker = None;
     }
 }
@@ -201,16 +199,16 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.0 .0 .0.lock();
 
-        if let Some(value) = state.value.as_ref() {
-            let value = value.clone();
+        let value = mem::replace(&mut state.value, None);
 
-            state.value = None;
-
+        if let Some(value) = value {
             self.0 .0 .1.notify_all();
 
             Poll::Ready(Ok(value))
         } else {
             state.waker = Some(cx.waker().clone());
+
+            self.0 .0 .1.notify_all();
 
             Poll::Pending
         }
@@ -287,15 +285,19 @@ where
 
                 let (mut state, condvar) = (pair.0.lock(), &pair.1);
 
-                if let Some(a) = mem::replace(&mut state.waker, None) {
-                    Waker::wake(a);
-                }
-
                 while state.value.is_some() {
+                    if let Some(waker) = mem::replace(&mut state.waker, None) {
+                        waker.wake();
+                    }
+
                     state = condvar.wait(state);
                 }
 
                 state.value = Some(payload.clone());
+
+                if let Some(waker) = mem::replace(&mut state.waker, None) {
+                    waker.wake();
+                }
             }
         })?;
 
