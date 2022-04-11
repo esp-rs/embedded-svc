@@ -1,73 +1,71 @@
 use core::future::Future;
+use core::marker::PhantomData;
 use core::mem;
 use core::pin::Pin;
 use core::result::Result;
-use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll};
 use core::time::Duration;
-
-use futures::task::AtomicWaker;
 
 extern crate alloc;
 use alloc::sync::Arc;
 
 use crate::channel::asyncs::Receiver;
 use crate::errors::Errors;
+use crate::signal::Signal;
 use crate::timer::asyncs::{OnceTimer, PeriodicTimer, TimerService};
 
-pub struct AsyncTimer<T> {
+pub struct AsyncTimer<T, S> {
     timer: T,
-    ready: Arc<AtomicBool>,
-    waker: Arc<AtomicWaker>,
+    signal: Arc<S>,
     duration: Option<Duration>,
 }
 
-impl<T> Errors for AsyncTimer<T>
+impl<T, S> Errors for AsyncTimer<T, S>
 where
     T: Errors,
 {
     type Error = T::Error;
 }
 
-impl<T> OnceTimer for AsyncTimer<T>
+impl<T, S> OnceTimer for AsyncTimer<T, S>
 where
     T: crate::timer::OnceTimer + 'static,
+    S: Signal<Data = ()> + 'static,
 {
-    type AfterFuture<'a> = TimerFuture<'a, T>;
+    type AfterFuture<'a> = TimerFuture<'a, T, S>;
 
     fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error> {
         self.timer.cancel()?;
 
-        self.waker.take();
-        self.ready.store(false, Ordering::SeqCst);
+        self.signal.reset();
         self.duration = None;
 
         Ok(TimerFuture(self, Some(duration)))
     }
 }
 
-impl<T> PeriodicTimer for AsyncTimer<T>
+impl<T, S> PeriodicTimer for AsyncTimer<T, S>
 where
     T: crate::timer::OnceTimer + 'static,
+    S: Signal<Data = ()> + 'static,
 {
     type Clock<'a> = &'a mut Self;
 
     fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error> {
         self.timer.cancel()?;
 
-        self.waker.take();
-        self.ready.store(false, Ordering::SeqCst);
+        self.signal.reset();
         self.duration = Some(duration);
 
         Ok(self)
     }
 }
 
-pub struct TimerFuture<'a, T>(&'a mut AsyncTimer<T>, Option<Duration>)
+pub struct TimerFuture<'a, T, S>(&'a mut AsyncTimer<T, S>, Option<Duration>)
 where
     T: crate::timer::Timer;
 
-impl<'a, T> Drop for TimerFuture<'a, T>
+impl<'a, T, S> Drop for TimerFuture<'a, T, S>
 where
     T: crate::timer::Timer,
 {
@@ -76,9 +74,10 @@ where
     }
 }
 
-impl<'a, T> Future for TimerFuture<'a, T>
+impl<'a, T, S> Future for TimerFuture<'a, T, S>
 where
     T: crate::timer::OnceTimer + 'static,
+    S: Signal<Data = ()>,
 {
     type Output = Result<(), T::Error>;
 
@@ -90,92 +89,83 @@ where
             }
         }
 
-        self.0.waker.register(cx.waker());
-
-        if self.0.ready.load(Ordering::SeqCst) {
-            Poll::Ready(Ok(()))
-        } else {
-            Poll::Pending
-        }
+        self.0.signal.poll_wait(cx).map(|r| Ok(r))
     }
 }
 
-impl<'a, T> Receiver for &'a mut AsyncTimer<T>
+impl<'a, T, S> Receiver for &'a mut AsyncTimer<T, S>
 where
     T: crate::timer::OnceTimer + 'static,
+    S: Signal<Data = ()>,
 {
     type Data = ();
 
     type RecvFuture<'b>
     where
         'a: 'b,
-    = TimerFuture<'b, T>;
+    = TimerFuture<'b, T, S>;
 
     fn recv(&mut self) -> Self::RecvFuture<'_> {
-        self.waker.take();
-        self.ready.store(false, Ordering::SeqCst);
+        self.signal.reset();
 
         TimerFuture(self, self.duration)
     }
 }
 
-pub struct AsyncTimerService<T>(T);
+pub struct AsyncTimerService<T, S>(T, PhantomData<fn() -> S>);
 
-impl<T> AsyncTimerService<T> {
+impl<T, S> AsyncTimerService<T, S> {
     pub fn new(timer_service: T) -> Self {
-        Self(timer_service)
+        Self(timer_service, PhantomData)
     }
 }
 
-impl<T> Clone for AsyncTimerService<T>
+impl<T, S> Clone for AsyncTimerService<T, S>
 where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self(self.0.clone(), PhantomData)
     }
 }
 
-impl<U, T> super::AsyncWrapper<U, T> for AsyncTimerService<T> {
+impl<U, T, S> super::AsyncWrapper<U, T> for AsyncTimerService<T, S> {
     fn new(timer_service: T) -> Self {
         AsyncTimerService::new(timer_service)
     }
 }
 
-impl<T> Errors for AsyncTimerService<T>
+impl<T, S> Errors for AsyncTimerService<T, S>
 where
     T: Errors,
 {
     type Error = T::Error;
 }
 
-impl<T> TimerService for AsyncTimerService<T>
+impl<T, S> TimerService for AsyncTimerService<T, S>
 where
     T: crate::timer::TimerService,
     T::Timer: Send,
+    S: Signal<Data = ()> + Send + Sync + 'static,
 {
-    type Timer = AsyncTimer<T::Timer>;
+    type Timer = AsyncTimer<T::Timer, S>;
 
     fn timer(&mut self) -> Result<Self::Timer, Self::Error> {
-        let ready = Arc::new(AtomicBool::new(false));
-        let waker = Arc::new(AtomicWaker::new());
+        let signal = Arc::new(S::new());
 
-        let callback_ready = Arc::downgrade(&ready);
-        let callback_waker = Arc::downgrade(&waker);
+        let timer = {
+            let signal = Arc::downgrade(&signal);
 
-        let timer = self.0.timer(move || {
-            if let Some(callback_ready) = callback_ready.upgrade() {
-                if let Some(callback_waker) = callback_waker.upgrade() {
-                    callback_ready.store(true, Ordering::SeqCst);
-                    callback_waker.wake();
+            self.0.timer(move || {
+                if let Some(signal) = signal.upgrade() {
+                    signal.signal(());
                 }
-            }
-        })?;
+            })?
+        };
 
         Ok(Self::Timer {
             timer,
-            ready,
-            waker,
+            signal,
             duration: None,
         })
     }

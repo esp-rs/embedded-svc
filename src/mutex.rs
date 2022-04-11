@@ -1,3 +1,4 @@
+use core::cell::{RefCell, RefMut};
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
@@ -26,36 +27,77 @@ pub trait Mutex {
 /// A "std-like" Condvar trait for no_std environments.
 /// Note that it uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
 pub trait Condvar {
-    type Mutex<T>: Mutex<Data = T>
-    where
-        T: Send;
+    type Mutex<T>: Mutex<Data = T>;
 
     fn new() -> Self;
 
     fn wait<'a, T>(
         &self,
         guard: <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>,
-    ) -> <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>
-    where
-        T: Send;
+    ) -> <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>;
+
     fn wait_timeout<'a, T>(
         &self,
         guard: <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>,
         duration: Duration,
-    ) -> (<<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>, bool)
-    where
-        T: Send;
+    ) -> (<<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>, bool);
 
     fn notify_one(&self);
 
     fn notify_all(&self);
 }
 
+pub struct SingleThreadedMutex<T>(RefCell<T>);
+
+impl<T> SingleThreadedMutex<T> {
+    pub fn new(data: T) -> Self {
+        Self(RefCell::new(data))
+    }
+
+    #[inline(always)]
+    pub fn lock(&self) -> SingleThreadedMutexGuard<'_, T> {
+        SingleThreadedMutexGuard(self.0.borrow_mut())
+    }
+}
+
+impl<T> Mutex for SingleThreadedMutex<T> {
+    type Data = T;
+
+    type Guard<'a>
+    where
+        T: 'a,
+        Self: 'a,
+    = SingleThreadedMutexGuard<'a, T>;
+
+    #[inline(always)]
+    fn new(data: Self::Data) -> Self {
+        SingleThreadedMutex::new(data)
+    }
+
+    #[inline(always)]
+    fn lock(&self) -> Self::Guard<'_> {
+        SingleThreadedMutex::lock(self)
+    }
+}
+
+pub struct SingleThreadedMutexGuard<'a, T>(RefMut<'a, T>);
+
+impl<'a, T> Deref for SingleThreadedMutexGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl<'a, T> DerefMut for SingleThreadedMutexGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.0
+    }
+}
+
 #[cfg(feature = "std")]
-impl<T> Mutex for std::sync::Mutex<T>
-where
-    T: Send,
-{
+impl<T> Mutex for std::sync::Mutex<T> {
     type Data = T;
 
     type Guard<'a>
@@ -77,10 +119,7 @@ where
 
 #[cfg(feature = "std")]
 impl Condvar for std::sync::Condvar {
-    type Mutex<T>
-    where
-        T: Send,
-    = std::sync::Mutex<T>;
+    type Mutex<T> = std::sync::Mutex<T>;
 
     #[inline(always)]
     fn new() -> Self {
@@ -91,10 +130,7 @@ impl Condvar for std::sync::Condvar {
     fn wait<'a, T>(
         &self,
         guard: <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>,
-    ) -> <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>
-    where
-        T: Send,
-    {
+    ) -> <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a> {
         std::sync::Condvar::wait(self, guard).unwrap()
     }
 
@@ -103,10 +139,7 @@ impl Condvar for std::sync::Condvar {
         &self,
         guard: <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>,
         duration: Duration,
-    ) -> (<<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>, bool)
-    where
-        T: Send,
-    {
+    ) -> (<<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>, bool) {
         let (guard, timeout_result) =
             std::sync::Condvar::wait_timeout(self, guard, duration).unwrap();
 

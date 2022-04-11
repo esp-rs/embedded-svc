@@ -38,3 +38,5 @@ http-auth-basic = { version = "0.1", optional = true }
 futures = { version = "0.3", default-features = false, optional = true }
 # Uncomment once 0.6.2 which has no_std support is released
 #domain = { version = "0.6", optional = true, default-features = false }
+heapless = "0.7.10"
+async-task = "4"
