@@ -93,9 +93,9 @@ where
 
             if let Some(runnable) = self.queue.dequeue() {
                 runnable.run();
+            } else {
+                self.waiter.wait();
             }
-
-            self.waiter.wait();
         }
     }
 }
