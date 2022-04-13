@@ -11,7 +11,7 @@ use alloc::sync::Arc;
 
 use crate::channel::asyncs::Receiver;
 use crate::errors::Errors;
-use crate::signal::Signal;
+use crate::signal::asyncs::Signal;
 use crate::timer::asyncs::{OnceTimer, PeriodicTimer, TimerService};
 
 pub struct AsyncTimer<T, S> {
@@ -130,7 +130,7 @@ where
 }
 
 impl<U, T, S> super::AsyncWrapper<U, T> for AsyncTimerService<T, S> {
-    fn new(timer_service: T) -> Self {
+    fn new(_unblocker: U, timer_service: T) -> Self {
         AsyncTimerService::new(timer_service)
     }
 }

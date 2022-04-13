@@ -6,7 +6,6 @@ use core::{mem, slice};
 
 extern crate alloc;
 use alloc::borrow::ToOwned;
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
@@ -18,7 +17,7 @@ use crate::unblocker::asyncs::Unblocker;
 use crate::ws::{server::*, *};
 
 pub struct AsyncSender<U, S> {
-    _unblocker: PhantomData<fn() -> U>,
+    unblocker: U,
     sender: S,
 }
 
@@ -50,9 +49,8 @@ where
         let mut sender = self.sender.clone();
         let frame_data: Option<Vec<u8>> = frame_data.map(|frame_data| frame_data.to_owned());
 
-        U::unblock(Box::new(move || {
-            sender.send(frame_type, frame_data.as_deref())
-        }))
+        self.unblocker
+            .unblock(move || sender.send(frame_type, frame_data.as_deref()))
     }
 }
 
@@ -171,7 +169,7 @@ where
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
     S: Send,
 {
-    _unblocker: PhantomData<fn() -> U>,
+    unblocker: U,
     accept: Arc<C::Mutex<SharedAcceptorState<C, S>>>,
     condvar: Arc<C>,
 }
@@ -188,7 +186,7 @@ where
 
 impl<'a, U, C, S> Future for &'a mut AsyncAcceptor<U, C, S>
 where
-    U: Unblocker,
+    U: Unblocker + Clone,
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
@@ -205,7 +203,7 @@ where
         match mem::replace(&mut accept.data, None) {
             Some(Some((shared, sender))) => {
                 let sender = AsyncSender {
-                    _unblocker: PhantomData,
+                    unblocker: self.unblocker.clone(),
                     sender,
                 };
 
@@ -233,7 +231,7 @@ where
 
 impl<U, C, S> asyncs::Acceptor for AsyncAcceptor<U, C, S>
 where
-    U: Unblocker,
+    U: Unblocker + Clone,
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
@@ -277,7 +275,7 @@ where
     S::Sender: Send,
     R: SessionProvider,
 {
-    pub fn new<U>(max_frame_size: usize) -> (Self, AsyncAcceptor<U, C, S::Sender>)
+    pub fn new<U>(unblocker: U, max_frame_size: usize) -> (Self, AsyncAcceptor<U, C, S::Sender>)
     where
         U: Unblocker,
     {
@@ -294,7 +292,7 @@ where
         this.frame_data_buf.resize(max_frame_size, 0);
 
         let acceptor = AsyncAcceptor {
-            _unblocker: PhantomData,
+            unblocker,
             accept: this.accept.clone(),
             condvar: this.condvar.clone(),
         };

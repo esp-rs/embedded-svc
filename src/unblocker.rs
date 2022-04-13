@@ -1,23 +1,19 @@
-#[cfg(all(feature = "alloc", feature = "experimental"))]
+#[cfg(feature = "experimental")]
 pub mod asyncs {
     use core::future::Future;
 
-    extern crate alloc;
-    use alloc::boxed::Box;
-
-    pub trait Blocker {
-        fn block<F>(f: F) -> F::Output
+    pub trait Blocker<'a> {
+        fn block_on<F>(&self, f: F) -> F::Output
         where
-            F: Future;
+            F: Future + 'a;
     }
 
     pub trait Unblocker {
         type UnblockFuture<T>: Future<Output = T>;
 
-        // TODO: Need to box f or else - when we implement the Unblocker trait by calling `smol::unblock()` we get:
-        // "type parameter `F` is part of concrete type but not used in parameter list for the `impl Trait` type alias"
-        fn unblock<T>(f: Box<dyn FnOnce() -> T + Send + 'static>) -> Self::UnblockFuture<T>
+        fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
         where
+            F: FnOnce() -> T + Send + 'static,
             T: Send + 'static;
     }
 }

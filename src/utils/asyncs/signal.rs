@@ -6,7 +6,7 @@ use core::task::{Context, Poll, Waker};
 use futures::task::AtomicWaker;
 
 use crate::mutex::Mutex;
-use crate::signal::Signal;
+use crate::signal::asyncs::Signal;
 use crate::utils::atomic_swap::AtomicSwap;
 
 /// Synchronization primitive. Allows creating awaitable signals that may be passed between tasks.
@@ -185,9 +185,9 @@ pub mod adapt {
 
     use crate::channel::asyncs::{Receiver, Sender};
     use crate::errors::Errors;
-    use crate::signal::Signal;
+    use crate::signal::asyncs::Signal;
 
-    pub struct SignalSender<S, T>(Arc<S>)
+    struct SignalSender<S, T>(Arc<S>)
     where
         S: Signal<Data = T>;
 
@@ -237,7 +237,7 @@ pub mod adapt {
         }
     }
 
-    pub struct SignalReceiver<S, T>(Arc<S>)
+    struct SignalReceiver<S, T>(Arc<S>)
     where
         S: Signal<Data = T>;
 
@@ -285,5 +285,19 @@ pub mod adapt {
                 Ok(value)
             }
         }
+    }
+
+    pub fn into_sender<S, T>(signal: Arc<S>) -> impl Sender<Data = T>
+    where
+        S: Signal<Data = T>,
+    {
+        SignalSender::new(signal)
+    }
+
+    pub fn into_receiver<S, T>(signal: Arc<S>) -> impl Receiver<Data = T>
+    where
+        S: Signal<Data = T>,
+    {
+        SignalReceiver::new(signal)
     }
 }

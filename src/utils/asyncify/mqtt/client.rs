@@ -6,7 +6,6 @@ use core::task::{Context, Poll, Waker};
 
 extern crate alloc;
 use alloc::borrow::Cow;
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -57,14 +56,14 @@ where
     }
 }
 
-pub struct AsyncClient<U, M>(Arc<M>, PhantomData<fn() -> U>);
+pub struct AsyncClient<U, M>(Arc<M>, U);
 
 impl<U, M, P> AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
 {
-    pub fn new(client: P) -> Self {
-        Self(Arc::new(M::new(client)), PhantomData)
+    pub fn new(unblocker: U, client: P) -> Self {
+        Self(Arc::new(M::new(client)), unblocker)
     }
 }
 
@@ -78,10 +77,11 @@ where
 
 impl<U, M, P> Clone for AsyncClient<U, M>
 where
+    U: Clone,
     M: Mutex<Data = P>,
 {
     fn clone(&self) -> Self {
-        Self(self.0.clone(), PhantomData)
+        Self(self.0.clone(), self.1.clone())
     }
 }
 
@@ -109,7 +109,7 @@ where
         let topic: String = topic.into().into_owned();
         let client = self.0.clone();
 
-        U::unblock(Box::new(move || client.lock().subscribe(&topic, qos)))
+        self.1.unblock(move || client.lock().subscribe(&topic, qos))
     }
 
     fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
@@ -119,7 +119,7 @@ where
         let topic: String = topic.into().into_owned();
         let client = self.0.clone();
 
-        U::unblock(Box::new(move || client.lock().unsubscribe(&topic)))
+        self.1.unblock(move || client.lock().unsubscribe(&topic))
     }
 }
 
@@ -151,9 +151,8 @@ where
         let payload: Vec<u8> = payload.into().into_owned();
         let client = self.0.clone();
 
-        U::unblock(Box::new(move || {
-            client.lock().publish(&topic, qos, retain, &payload)
-        }))
+        self.1
+            .unblock(move || client.lock().publish(&topic, qos, retain, &payload))
     }
 }
 
@@ -161,8 +160,8 @@ impl<U, M, P> crate::utils::asyncify::AsyncWrapper<U, P> for AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
 {
-    fn new(sync: P) -> Self {
-        AsyncClient::new(sync)
+    fn new(unblocker: U, sync: P) -> Self {
+        AsyncClient::new(unblocker, sync)
     }
 }
 

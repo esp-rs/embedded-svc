@@ -9,7 +9,7 @@ use heapless::mpmc::MpMcQueue;
 
 use super::signal::*;
 use crate::mutex::SingleThreadedMutex;
-use crate::signal::Signal;
+use crate::signal::asyncs::Signal;
 
 pub trait Waiter {
     fn wait(&self);
