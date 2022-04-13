@@ -3,11 +3,14 @@ use core::marker::PhantomData;
 
 extern crate alloc;
 use alloc::rc::Rc;
+use alloc::sync::Arc;
 
 use async_task::{Runnable, Task};
-use heapless::mpmc::MpMcQueue;
+
+use crossbeam_queue::ArrayQueue;
 
 use super::signal::*;
+
 use crate::mutex::SingleThreadedMutex;
 use crate::signal::asyncs::Signal;
 
@@ -37,21 +40,21 @@ where
     }
 }
 
-pub struct LocalExecutor<'a, const S: usize, W, N> {
-    queue: MpMcQueue<Runnable, S>,
+pub struct LocalExecutor<'a, W, N> {
+    queue: Arc<ArrayQueue<Runnable>>,
     waiter: W,
     notifier: N,
     _lft: PhantomData<&'a ()>,
 }
 
-impl<'a, const S: usize, W, N> LocalExecutor<'a, S, W, N>
+impl<'a, W, N> LocalExecutor<'a, W, N>
 where
-    W: Waiter,
-    N: Notifier,
+    W: Waiter + 'a,
+    N: Notifier + Clone + Send + 'a,
 {
-    pub fn new(waiter: W, notifier: N) -> Self {
+    pub fn new(size: usize, waiter: W, notifier: N) -> Self {
         Self {
-            queue: MpMcQueue::new(),
+            queue: Arc::new(ArrayQueue::new(size)),
             waiter,
             notifier,
             _lft: PhantomData,
@@ -62,9 +65,14 @@ where
     where
         T: 'a,
     {
-        let schedule = |runnable| {
-            self.queue.enqueue(runnable).unwrap();
-            self.notifier.notify();
+        let schedule = {
+            let queue = self.queue.clone();
+            let notifier = self.notifier.clone();
+
+            move |runnable| {
+                queue.push(runnable).unwrap();
+                notifier.notify();
+            }
         };
 
         let (runnable, task) = unsafe { async_task::spawn_unchecked(fut, schedule) };
@@ -91,11 +99,11 @@ where
                 return res;
             }
 
-            if let Some(runnable) = self.queue.dequeue() {
+            if let Some(runnable) = self.queue.pop() {
                 runnable.run();
+            } else {
+                self.waiter.wait();
             }
-
-            self.waiter.wait();
         }
     }
 }
