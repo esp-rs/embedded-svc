@@ -6,7 +6,6 @@ use core::task::{Context, Poll, Waker};
 use core::time::Duration;
 
 extern crate alloc;
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 
 use futures::future::{ready, Either, Ready};
@@ -14,34 +13,35 @@ use futures::future::{ready, Either, Ready};
 use crate::channel::asyncs::{Receiver, Sender};
 use crate::errors::Errors;
 use crate::event_bus::asyncs::{EventBus, PostboxProvider};
-use crate::mutex::{Condvar, Mutex};
+use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asyncs::Unblocker;
 
 pub struct AsyncPostbox<U, P, PB> {
+    unblocker: U,
     blocking_postbox: PB,
     _payload_type: PhantomData<fn() -> P>,
-    _unblocker: PhantomData<fn() -> U>,
 }
 
 impl<U, P, PB> AsyncPostbox<U, P, PB> {
-    pub fn new(blocking_postbox: PB) -> Self {
+    pub fn new(unblocker: U, blocking_postbox: PB) -> Self {
         Self {
+            unblocker,
             blocking_postbox,
             _payload_type: PhantomData,
-            _unblocker: PhantomData,
         }
     }
 }
 
 impl<U, P, PB> Clone for AsyncPostbox<U, P, PB>
 where
+    U: Clone,
     PB: Clone,
 {
     fn clone(&self) -> Self {
         Self {
+            unblocker: self.unblocker.clone(),
             blocking_postbox: self.blocking_postbox.clone(),
             _payload_type: PhantomData,
-            _unblocker: PhantomData,
         }
     }
 }
@@ -77,9 +77,10 @@ where
             let value = value.clone();
             let mut blocking_postbox = self.blocking_postbox.clone();
 
-            Either::Right(U::unblock(Box::new(move || {
-                blocking_postbox.post(&value, None).map(|_| ())
-            })))
+            Either::Right(
+                self.unblocker
+                    .unblock(move || blocking_postbox.post(&value, None).map(|_| ())),
+            )
         } else {
             Either::Left(ready(Ok(())))
         }
@@ -87,8 +88,8 @@ where
 }
 
 impl<U, P, PB> super::AsyncWrapper<U, PB> for AsyncPostbox<U, P, PB> {
-    fn new(sync: PB) -> Self {
-        AsyncPostbox::new(sync)
+    fn new(unblocker: U, sync: PB) -> Self {
+        AsyncPostbox::new(unblocker, sync)
     }
 }
 
@@ -153,7 +154,8 @@ where
 #[cfg(feature = "std")]
 impl<CV, P, S, E> Receiver for AsyncSubscription<CV, P, S, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     S: Send,
     P: Clone + Send,
     E: std::error::Error + Send + Sync + 'static,
@@ -172,13 +174,15 @@ where
 
 pub struct NextFuture<'a, CV, P, S, E>(&'a AsyncSubscription<CV, P, S, E>)
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     P: Clone + Send,
     S: Send;
 
 impl<'a, CV, P, S, E> Drop for NextFuture<'a, CV, P, S, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     P: Clone + Send,
     S: Send,
 {
@@ -190,7 +194,8 @@ where
 
 impl<'a, CV, P, S, E> Future for NextFuture<'a, CV, P, S, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     P: Clone + Send,
     S: Send,
 {
@@ -216,16 +221,16 @@ where
 }
 
 pub struct AsyncEventBus<U, CV, E> {
+    unblocker: U,
     event_bus: E,
-    _unblocker: PhantomData<fn() -> U>,
     _condvar_type: PhantomData<fn() -> CV>,
 }
 
 impl<U, CV, E> AsyncEventBus<U, CV, E> {
-    pub fn new(event_bus: E) -> Self {
+    pub fn new(unblocker: U, event_bus: E) -> Self {
         Self {
+            unblocker,
             event_bus,
-            _unblocker: PhantomData,
             _condvar_type: PhantomData,
         }
     }
@@ -233,20 +238,21 @@ impl<U, CV, E> AsyncEventBus<U, CV, E> {
 
 impl<U, CV, E> Clone for AsyncEventBus<U, CV, E>
 where
+    U: Clone,
     E: Clone,
 {
     fn clone(&self) -> Self {
         Self {
+            unblocker: self.unblocker.clone(),
             event_bus: self.event_bus.clone(),
-            _unblocker: PhantomData,
             _condvar_type: PhantomData,
         }
     }
 }
 
 impl<U, CV, E> super::AsyncWrapper<U, E> for AsyncEventBus<U, CV, E> {
-    fn new(sync: E) -> Self {
-        AsyncEventBus::new(sync)
+    fn new(unblocker: U, sync: E) -> Self {
+        AsyncEventBus::new(unblocker, sync)
     }
 }
 
@@ -309,7 +315,7 @@ where
 
 impl<U, CV, P, E> PostboxProvider<P> for AsyncEventBus<U, CV, E>
 where
-    U: Unblocker,
+    U: Unblocker + Clone,
     CV: Condvar + Send + Sync + 'static,
     P: Clone + Send + 'static,
     E::Postbox: Clone + Send + 'static,
@@ -319,6 +325,8 @@ where
     type Postbox = AsyncPostbox<U, P, E::Postbox>;
 
     fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
-        self.event_bus.postbox().map(AsyncPostbox::new)
+        self.event_bus
+            .postbox()
+            .map(|blocking_postbox| AsyncPostbox::new(self.unblocker.clone(), blocking_postbox))
     }
 }

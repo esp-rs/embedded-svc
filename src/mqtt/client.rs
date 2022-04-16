@@ -31,6 +31,24 @@ pub enum Event<M> {
     Deleted(MessageId),
 }
 
+impl<M> Event<M> {
+    pub fn transform_received<F, O>(&self, f: F) -> Event<O>
+    where
+        F: FnOnce(&M) -> O,
+    {
+        match self {
+            Self::Received(message) => Event::Received(f(message)),
+            Self::BeforeConnect => Event::BeforeConnect,
+            Self::Connected(connected) => Event::Connected(*connected),
+            Self::Disconnected => Event::Disconnected,
+            Self::Subscribed(message_id) => Event::Subscribed(*message_id),
+            Self::Unsubscribed(message_id) => Event::Unsubscribed(*message_id),
+            Self::Published(message_id) => Event::Published(*message_id),
+            Self::Deleted(message_id) => Event::Deleted(*message_id),
+        }
+    }
+}
+
 impl<M> Display for Event<M>
 where
     M: Display,
@@ -228,10 +246,10 @@ pub mod asyncs {
     use crate::errors::Errors;
 
     pub trait Client: Errors {
-        type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
-        type UnsubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        type UnsubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
 
@@ -245,7 +263,7 @@ pub mod asyncs {
     }
 
     pub trait Publish: Errors {
-        type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>>
+        type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
 
@@ -264,23 +282,15 @@ pub mod asyncs {
     /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
     /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
     pub trait Connection: Errors {
-        type Message<'a>: Message
-        where
-            Self: 'a;
+        type Message: Message;
 
-        type NextFuture<'a, FM, OM, FE, OE>: Future<Output = Option<Result<Event<OM>, OE>>>
+        type NextFuture<'a, F, O>: Future<Output = Option<O>> + Send
         where
             Self: 'a,
-            FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
-            FE: FnMut(&'a Self::Error) -> OE + Unpin;
+            F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send;
 
-        fn next<'a, FM, OM, FE, OE>(
-            &'a mut self,
-            fm: FM,
-            fe: FE,
-        ) -> Self::NextFuture<'a, FM, OM, FE, OE>
+        fn next<'a, F, O>(&'a mut self, f: F) -> Self::NextFuture<'a, F, O>
         where
-            FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
-            FE: FnMut(&'a Self::Error) -> OE + Unpin;
+            F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send;
     }
 }

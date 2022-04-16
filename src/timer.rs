@@ -53,7 +53,7 @@ pub mod asyncs {
 
     #[must_use]
     pub trait OnceTimer: Errors {
-        type AfterFuture<'a>: Future<Output = Result<(), Self::Error>>
+        type AfterFuture<'a>: Future<Output = Result<(), Self::Error>> + Send
         where
             Self: 'a;
 
@@ -62,7 +62,7 @@ pub mod asyncs {
 
     #[must_use]
     pub trait PeriodicTimer: Errors {
-        type Clock<'a>: Receiver<Data = (), Error = Self::Error>
+        type Clock<'a>: Receiver<Data = (), Error = Self::Error> + Send
         where
             Self: 'a;
 
@@ -70,7 +70,7 @@ pub mod asyncs {
     }
 
     pub trait TimerService: Errors {
-        type Timer: OnceTimer + PeriodicTimer + 'static;
+        type Timer: OnceTimer + PeriodicTimer + Send + 'static;
 
         fn timer(&mut self) -> Result<Self::Timer, Self::Error>;
     }

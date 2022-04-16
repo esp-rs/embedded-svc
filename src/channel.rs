@@ -5,9 +5,9 @@ pub mod asyncs {
     use crate::errors::Errors;
 
     pub trait Sender: Errors {
-        type Data;
+        type Data: Send;
 
-        type SendFuture<'a>: Future<Output = Result<(), Self::Error>>
+        type SendFuture<'a>: Future<Output = Result<(), Self::Error>> + Send
         where
             Self: 'a;
 
@@ -15,9 +15,9 @@ pub mod asyncs {
     }
 
     pub trait Receiver: Errors {
-        type Data;
+        type Data: Send;
 
-        type RecvFuture<'a>: Future<Output = Result<Self::Data, Self::Error>>
+        type RecvFuture<'a>: Future<Output = Result<Self::Data, Self::Error>> + Send
         where
             Self: 'a;
 

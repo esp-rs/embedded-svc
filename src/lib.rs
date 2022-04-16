@@ -25,6 +25,7 @@ pub mod mutex;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod ota;
 pub mod ping;
+pub mod signal;
 #[cfg(feature = "alloc")]
 pub mod storage;
 pub mod sys_time;

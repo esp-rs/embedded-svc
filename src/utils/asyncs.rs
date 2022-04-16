@@ -1,3 +1,4 @@
 pub mod channel;
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "isr-async-executor", feature = "alloc"))]
+pub mod executor;
 pub mod signal;

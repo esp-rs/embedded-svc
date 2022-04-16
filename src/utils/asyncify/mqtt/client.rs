@@ -6,14 +6,13 @@ use core::task::{Context, Poll, Waker};
 
 extern crate alloc;
 use alloc::borrow::Cow;
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use crate::errors::Errors;
 use crate::mqtt::client::asyncs::{Client, Connection, Event, Message, MessageId, Publish, QoS};
-use crate::mutex::{Condvar, Mutex};
+use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asyncs::Unblocker;
 
 pub struct EnqueueFuture<E>(Result<MessageId, E>);
@@ -57,14 +56,14 @@ where
     }
 }
 
-pub struct AsyncClient<U, M>(Arc<M>, PhantomData<fn() -> U>);
+pub struct AsyncClient<U, M>(Arc<M>, U);
 
 impl<U, M, P> AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
 {
-    pub fn new(client: P) -> Self {
-        Self(Arc::new(M::new(client)), PhantomData)
+    pub fn new(unblocker: U, client: P) -> Self {
+        Self(Arc::new(M::new(client)), unblocker)
     }
 }
 
@@ -78,10 +77,11 @@ where
 
 impl<U, M, P> Clone for AsyncClient<U, M>
 where
+    U: Clone,
     M: Mutex<Data = P>,
 {
     fn clone(&self) -> Self {
-        Self(self.0.clone(), PhantomData)
+        Self(self.0.clone(), self.1.clone())
     }
 }
 
@@ -109,7 +109,7 @@ where
         let topic: String = topic.into().into_owned();
         let client = self.0.clone();
 
-        U::unblock(Box::new(move || client.lock().subscribe(&topic, qos)))
+        self.1.unblock(move || client.lock().subscribe(&topic, qos))
     }
 
     fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
@@ -119,7 +119,7 @@ where
         let topic: String = topic.into().into_owned();
         let client = self.0.clone();
 
-        U::unblock(Box::new(move || client.lock().unsubscribe(&topic)))
+        self.1.unblock(move || client.lock().unsubscribe(&topic))
     }
 }
 
@@ -151,9 +151,8 @@ where
         let payload: Vec<u8> = payload.into().into_owned();
         let client = self.0.clone();
 
-        U::unblock(Box::new(move || {
-            client.lock().publish(&topic, qos, retain, &payload)
-        }))
+        self.1
+            .unblock(move || client.lock().publish(&topic, qos, retain, &payload))
     }
 }
 
@@ -161,8 +160,8 @@ impl<U, M, P> crate::utils::asyncify::AsyncWrapper<U, P> for AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
 {
-    fn new(sync: P) -> Self {
-        AsyncClient::new(sync)
+    fn new(unblocker: U, sync: P) -> Self {
+        AsyncClient::new(unblocker, sync)
     }
 }
 
@@ -183,22 +182,20 @@ where
     state_changed: CV,
 }
 
-pub struct NextFuture<'a, CV, FM, OM, FE, OE, M, E>
+pub struct NextFuture<'a, CV, F, O, M, E>
 where
     CV: Condvar + 'a,
     M: Message + 'a,
     E: 'a,
 {
     connection_state: &'a ConnectionState<CV>,
-    message_converter: FM,
-    error_converter: FE,
-    _output: PhantomData<fn() -> OM>,
-    _error_output: PhantomData<fn() -> OE>,
+    converter: Option<F>,
+    _output: PhantomData<fn() -> O>,
     _message: PhantomData<fn() -> M>,
     _error: PhantomData<fn() -> E>,
 }
 
-impl<'a, CV, FM, OM, FE, OE, M, E> Drop for NextFuture<'a, CV, FM, OM, FE, OE, M, E>
+impl<'a, CV, F, O, M, E> Drop for NextFuture<'a, CV, F, O, M, E>
 where
     CV: Condvar + 'a,
     M: Message + 'a,
@@ -216,43 +213,28 @@ where
     }
 }
 
-impl<'a, CV, FM, OM, FE, OE, M, E> Future for NextFuture<'a, CV, FM, OM, FE, OE, M, E>
+impl<'a, CV, F, O, M, E> Future for NextFuture<'a, CV, F, O, M, E>
 where
     CV: Condvar + 'a,
-    FM: FnMut(&'a M) -> OM + Unpin,
-    FE: FnMut(&'a E) -> OE + Unpin,
+    F: FnOnce(&Result<Event<M>, E>) -> O + Unpin,
     M: Message + 'a,
     E: 'a,
 {
-    type Output = Option<Result<Event<OM>, OE>>;
+    type Output = Option<O>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut payload = self.connection_state.payload.lock();
 
         if let Some(event) = payload.event {
+            let converter = mem::replace(&mut self.converter, None).unwrap();
+
             let event_ref = unsafe {
                 (event as *const Option<Result<Event<M>, E>>)
                     .as_ref()
                     .unwrap()
             };
 
-            let result = match event_ref {
-                Some(Ok(event)) => match event {
-                    Event::Received(message) => {
-                        Some(Ok(Event::Received((self.message_converter)(message))))
-                    }
-                    Event::BeforeConnect => Some(Ok(Event::BeforeConnect)),
-                    Event::Connected(session) => Some(Ok(Event::Connected(*session))),
-                    Event::Disconnected => Some(Ok(Event::Disconnected)),
-                    Event::Subscribed(message_id) => Some(Ok(Event::Subscribed(*message_id))),
-                    Event::Unsubscribed(message_id) => Some(Ok(Event::Unsubscribed(*message_id))),
-                    Event::Published(message_id) => Some(Ok(Event::Published(*message_id))),
-                    Event::Deleted(message_id) => Some(Ok(Event::Deleted(*message_id))),
-                },
-                Some(Err(error)) => Some(Err((self.error_converter)(error))),
-                None => None,
-            };
-
+            let result = event_ref.as_ref().map(|result| converter(result));
             payload.handed_over = true;
 
             Poll::Ready(result)
@@ -371,7 +353,8 @@ where
 #[cfg(not(feature = "std"))]
 impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<Payload>: Sync,
     M: Message,
     E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
 {
@@ -381,30 +364,22 @@ where
         M: 'a,
     = M;
 
-    type NextFuture<'a, FM, OM, FE, OE>
+    type NextFuture<'a, F, O>
     where
         Self: 'a,
         CV: 'a,
         M: 'a,
-        FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
-        FE: FnMut(&'a Self::Error) -> OE + Unpin,
-    = NextFuture<'a, CV, FM, OM, FE, OE, Self::Message<'a>, Self::Error>;
+        F: FnOnce(Result<Event<Self::Message<'a>>, Self::Error>) -> O + Unpin + Send,
+    = NextFuture<'a, CV, F, O, Self::Message<'a>, Self::Error>;
 
-    fn next<'a, FM, OM, FE, OE>(
-        &'a mut self,
-        fm: FM,
-        fe: FE,
-    ) -> Self::NextFuture<'a, FM, OM, FE, OE>
+    fn next<'a, F, O>(&'a mut self, f: F) -> Self::NextFuture<'a, F, O>
     where
-        FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
-        FE: FnMut(&'a Self::Error) -> OE + Unpin,
+        F: FnOnce(Result<Event<Self::Message<'a>>, Self::Error>) -> O + Unpin + Send,
     {
         NextFuture {
             connection_state: &self.connection_state,
-            message_converter: fm,
-            error_converter: fe,
+            converter: Some(f),
             _output: PhantomData,
-            _error_output: PhantomData,
             _message: PhantomData,
             _error: PhantomData,
         }
@@ -414,40 +389,29 @@ where
 #[cfg(feature = "std")]
 impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync + 'static,
+    <CV as MutexFamily>::Mutex<Payload>: Sync + 'static,
     M: Message,
     E: std::error::Error + Send + Sync + 'static,
 {
-    type Message<'a>
-    where
-        CV: 'a,
-        M: 'a,
-    = M;
+    type Message = M;
 
-    type NextFuture<'a, FM, OM, FE, OE>
+    type NextFuture<'a, F, O>
     where
         Self: 'a,
         CV: 'a,
         M: 'a,
-        FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
-        FE: FnMut(&'a Self::Error) -> OE + Unpin,
-    = NextFuture<'a, CV, FM, OM, FE, OE, Self::Message<'a>, Self::Error>;
+        F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send,
+    = NextFuture<'a, CV, F, O, Self::Message, Self::Error>;
 
-    fn next<'a, FM, OM, FE, OE>(
-        &'a mut self,
-        fm: FM,
-        fe: FE,
-    ) -> Self::NextFuture<'a, FM, OM, FE, OE>
+    fn next<'a, F, O>(&'a mut self, f: F) -> Self::NextFuture<'a, F, O>
     where
-        FM: FnMut(&'a Self::Message<'a>) -> OM + Unpin,
-        FE: FnMut(&'a Self::Error) -> OE + Unpin,
+        F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send,
     {
         NextFuture {
             connection_state: &self.connection_state,
-            message_converter: fm,
-            error_converter: fe,
+            converter: Some(f),
             _output: PhantomData,
-            _error_output: PhantomData,
             _message: PhantomData,
             _error: PhantomData,
         }
