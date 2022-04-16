@@ -51,12 +51,11 @@ pub mod asyncs {
     pub use super::{Fragmented, FrameType};
 
     pub trait Acceptor: Errors {
-        type Sender: Sender<Error = Self::Error>;
-        type Receiver: Receiver<Error = Self::Error>;
+        type Sender: Sender<Error = Self::Error> + Send;
+        type Receiver: Receiver<Error = Self::Error> + Send;
 
-        type AcceptFuture<'a>: Future<
-            Output = Result<Option<(Self::Sender, Self::Receiver)>, Self::Error>,
-        >
+        type AcceptFuture<'a>: Future<Output = Result<Option<(Self::Sender, Self::Receiver)>, Self::Error>>
+            + Send
         where
             Self: 'a;
 
@@ -64,7 +63,7 @@ pub mod asyncs {
     }
 
     pub trait Receiver: Errors {
-        type ReceiveFuture<'a>: Future<Output = Result<(FrameType, usize), Self::Error>>
+        type ReceiveFuture<'a>: Future<Output = Result<(FrameType, usize), Self::Error>> + Send
         where
             Self: 'a;
 
@@ -72,7 +71,7 @@ pub mod asyncs {
     }
 
     pub trait Sender: Errors {
-        type SendFuture<'a>: Future<Output = Result<(), Self::Error>>
+        type SendFuture<'a>: Future<Output = Result<(), Self::Error>> + Send
         where
             Self: 'a;
 

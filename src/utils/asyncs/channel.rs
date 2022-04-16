@@ -8,16 +8,18 @@ pub mod adapt {
 
     pub fn sender<S, P, F>(sender: S, adapter: F) -> impl Sender<Data = P>
     where
-        S: Sender,
-        F: Fn(P) -> Option<S::Data>,
+        S: Sender + Send + 'static,
+        P: Send,
+        F: Fn(P) -> Option<S::Data> + Send + Sync,
     {
         SenderAdapter::new(sender, adapter)
     }
 
     pub fn receiver<R, P, F>(receiver: R, adapter: F) -> impl Receiver<Data = P>
     where
-        R: Receiver,
-        F: Fn(R::Data) -> Option<P>,
+        R: Receiver + Send + 'static,
+        P: Send,
+        F: Fn(R::Data) -> Option<P> + Send + Sync,
     {
         ReceiverAdapter::new(receiver, adapter)
     }
@@ -47,15 +49,16 @@ pub mod adapt {
 
     impl<S, F, P> Sender for SenderAdapter<S, F, P>
     where
-        S: Sender,
-        F: Fn(P) -> Option<S::Data>,
+        S: Sender + Send + 'static,
+        F: Fn(P) -> Option<S::Data> + Send + Sync,
+        P: Send,
     {
         type Data = P;
 
         type SendFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>>;
+        = impl Future<Output = Result<(), Self::Error>> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
             let inner_sender = &mut self.inner_sender;
@@ -90,15 +93,16 @@ pub mod adapt {
 
     impl<R, F, P> Receiver for ReceiverAdapter<R, F, P>
     where
-        R: Receiver,
-        F: Fn(R::Data) -> Option<P>,
+        R: Receiver + Send + 'static,
+        F: Fn(R::Data) -> Option<P> + Send + Sync,
+        P: Send,
     {
         type Data = P;
 
         type RecvFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Result<Self::Data, Self::Error>>;
+        = impl Future<Output = Result<Self::Data, Self::Error>> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             let inner_receiver = &mut self.inner_receiver;

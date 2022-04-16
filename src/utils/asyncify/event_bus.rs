@@ -13,7 +13,7 @@ use futures::future::{ready, Either, Ready};
 use crate::channel::asyncs::{Receiver, Sender};
 use crate::errors::Errors;
 use crate::event_bus::asyncs::{EventBus, PostboxProvider};
-use crate::mutex::{Condvar, Mutex};
+use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asyncs::Unblocker;
 
 pub struct AsyncPostbox<U, P, PB> {
@@ -154,7 +154,8 @@ where
 #[cfg(feature = "std")]
 impl<CV, P, S, E> Receiver for AsyncSubscription<CV, P, S, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     S: Send,
     P: Clone + Send,
     E: std::error::Error + Send + Sync + 'static,
@@ -173,13 +174,15 @@ where
 
 pub struct NextFuture<'a, CV, P, S, E>(&'a AsyncSubscription<CV, P, S, E>)
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     P: Clone + Send,
     S: Send;
 
 impl<'a, CV, P, S, E> Drop for NextFuture<'a, CV, P, S, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     P: Clone + Send,
     S: Send,
 {
@@ -191,7 +194,8 @@ where
 
 impl<'a, CV, P, S, E> Future for NextFuture<'a, CV, P, S, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     P: Clone + Send,
     S: Send,
 {

@@ -135,7 +135,8 @@ where
 
 impl<C, E> asyncs::Receiver for AsyncReceiver<C, E>
 where
-    C: Condvar,
+    C: Condvar + Send + Sync,
+    <C as MutexFamily>::Mutex<SharedReceiverState>: Send + Sync,
     E: Error,
 {
     type ReceiveFuture<'a>
@@ -231,7 +232,7 @@ where
 
 impl<U, C, S> asyncs::Acceptor for AsyncAcceptor<U, C, S>
 where
-    U: Unblocker + Clone,
+    U: Unblocker + Clone + Send,
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,

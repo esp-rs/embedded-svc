@@ -29,8 +29,8 @@ where
 
 impl<T, S> OnceTimer for AsyncTimer<T, S>
 where
-    T: crate::timer::OnceTimer + 'static,
-    S: Signal<Data = ()> + 'static,
+    T: crate::timer::OnceTimer + Send + 'static,
+    S: Signal<Data = ()> + Send + Sync + 'static,
 {
     type AfterFuture<'a> = TimerFuture<'a, T, S>;
 
@@ -46,8 +46,8 @@ where
 
 impl<T, S> PeriodicTimer for AsyncTimer<T, S>
 where
-    T: crate::timer::OnceTimer + 'static,
-    S: Signal<Data = ()> + 'static,
+    T: crate::timer::OnceTimer + Send + 'static,
+    S: Signal<Data = ()> + Send + Sync + 'static,
 {
     type Clock<'a> = &'a mut Self;
 
@@ -95,8 +95,8 @@ where
 
 impl<'a, T, S> Receiver for &'a mut AsyncTimer<T, S>
 where
-    T: crate::timer::OnceTimer + 'static,
-    S: Signal<Data = ()>,
+    T: crate::timer::OnceTimer + Send + 'static,
+    S: Signal<Data = ()> + Send + Sync,
 {
     type Data = ();
 

@@ -9,7 +9,9 @@ pub mod asyncs {
     }
 
     pub trait Unblocker {
-        type UnblockFuture<T>: Future<Output = T>;
+        type UnblockFuture<T>: Future<Output = T> + Send
+        where
+            T: Send;
 
         fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
         where
@@ -21,7 +23,10 @@ pub mod asyncs {
     struct BlockingUnblocker;
 
     impl Unblocker for BlockingUnblocker {
-        type UnblockFuture<T> = Ready<T>;
+        type UnblockFuture<T>
+        where
+            T: Send,
+        = Ready<T>;
 
         fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
         where

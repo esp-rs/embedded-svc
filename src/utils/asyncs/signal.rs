@@ -218,7 +218,8 @@ pub mod adapt {
 
     impl<S, T> Sender for SignalSender<S, T>
     where
-        S: Signal<Data = T>,
+        S: Signal<Data = T> + Send + Sync,
+        T: Send,
     {
         type Data = T;
 
@@ -226,11 +227,13 @@ pub mod adapt {
         where
             T: 'a,
             S: 'a,
-        = impl Future<Output = Result<(), Self::Error>>;
+        = impl Future<Output = Result<(), Self::Error>> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
+            let signal = self.0.clone();
+
             async move {
-                self.0.signal(value);
+                signal.signal(value);
 
                 Ok(())
             }
@@ -268,7 +271,8 @@ pub mod adapt {
 
     impl<S, T> Receiver for SignalReceiver<S, T>
     where
-        S: Signal<Data = T>,
+        S: Signal<Data = T> + Send + Sync,
+        T: Send,
     {
         type Data = T;
 
@@ -276,7 +280,7 @@ pub mod adapt {
         where
             T: 'a,
             S: 'a,
-        = impl Future<Output = Result<T, Self::Error>>;
+        = impl Future<Output = Result<T, Self::Error>> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             async move {
@@ -289,14 +293,16 @@ pub mod adapt {
 
     pub fn into_sender<S, T>(signal: Arc<S>) -> impl Sender<Data = T>
     where
-        S: Signal<Data = T>,
+        S: Signal<Data = T> + Send + Sync,
+        T: Send,
     {
         SignalSender::new(signal)
     }
 
     pub fn into_receiver<S, T>(signal: Arc<S>) -> impl Receiver<Data = T>
     where
-        S: Signal<Data = T>,
+        S: Signal<Data = T> + Send + Sync,
+        T: Send,
     {
         SignalReceiver::new(signal)
     }
