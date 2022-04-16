@@ -24,27 +24,37 @@ pub trait Mutex {
     fn lock(&self) -> Self::Guard<'_>;
 }
 
+/// A HKT trait for specifying mutex types.
+/// Note that it uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
+pub trait MutexFamily {
+    type Mutex<T>: Mutex<Data = T>;
+}
+
 /// A "std-like" Condvar trait for no_std environments.
 /// Note that it uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
-pub trait Condvar {
-    type Mutex<T>: Mutex<Data = T>;
-
+pub trait Condvar: MutexFamily {
     fn new() -> Self;
 
     fn wait<'a, T>(
         &self,
-        guard: <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>,
-    ) -> <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>;
+        guard: <<Self as MutexFamily>::Mutex<T> as Mutex>::Guard<'a>,
+    ) -> <<Self as MutexFamily>::Mutex<T> as Mutex>::Guard<'a>;
 
     fn wait_timeout<'a, T>(
         &self,
-        guard: <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>,
+        guard: <<Self as MutexFamily>::Mutex<T> as Mutex>::Guard<'a>,
         duration: Duration,
-    ) -> (<<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>, bool);
+    ) -> (<<Self as MutexFamily>::Mutex<T> as Mutex>::Guard<'a>, bool);
 
     fn notify_one(&self);
 
     fn notify_all(&self);
+}
+
+pub struct SingleThreadedMutexFamily;
+
+impl MutexFamily for SingleThreadedMutexFamily {
+    type Mutex<T> = SingleThreadedMutex<T>;
 }
 
 pub struct SingleThreadedMutex<T>(RefCell<T>);
@@ -118,9 +128,12 @@ impl<T> Mutex for std::sync::Mutex<T> {
 }
 
 #[cfg(feature = "std")]
-impl Condvar for std::sync::Condvar {
+impl MutexFamily for std::sync::Condvar {
     type Mutex<T> = std::sync::Mutex<T>;
+}
 
+#[cfg(feature = "std")]
+impl Condvar for std::sync::Condvar {
     #[inline(always)]
     fn new() -> Self {
         std::sync::Condvar::new()
@@ -129,17 +142,17 @@ impl Condvar for std::sync::Condvar {
     #[inline(always)]
     fn wait<'a, T>(
         &self,
-        guard: <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>,
-    ) -> <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a> {
+        guard: <<Self as MutexFamily>::Mutex<T> as Mutex>::Guard<'a>,
+    ) -> <<Self as MutexFamily>::Mutex<T> as Mutex>::Guard<'a> {
         std::sync::Condvar::wait(self, guard).unwrap()
     }
 
     #[inline(always)]
     fn wait_timeout<'a, T>(
         &self,
-        guard: <<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>,
+        guard: <<Self as MutexFamily>::Mutex<T> as Mutex>::Guard<'a>,
         duration: Duration,
-    ) -> (<<Self as Condvar>::Mutex<T> as Mutex>::Guard<'a>, bool) {
+    ) -> (<<Self as MutexFamily>::Mutex<T> as Mutex>::Guard<'a>, bool) {
         let (guard, timeout_result) =
             std::sync::Condvar::wait_timeout(self, guard, duration).unwrap();
 
