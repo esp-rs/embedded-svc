@@ -1,6 +1,6 @@
 [package]
 name = "embedded-svc"
-version = "0.20.2"
+version = "0.20.3"
 authors = ["Ivan Markov <ivan.markov@gmail.com>"]
 edition = "2018"
 resolver = "2"
@@ -19,11 +19,11 @@ default = ["std", "use_serde", "use_strum", "use_numenum"]
 experimental = ["futures"]
 
 std = ["alloc", "anyhow/std", "serde/std", "serde_json/std", "strum/std", "num_enum/std", "http-auth-basic"]
-alloc = ["anyhow", "serde/alloc", "serde_json/alloc", "crossbeam-queue/alloc"]
+alloc = ["anyhow", "serde/alloc", "serde_json/alloc"]
 use_serde = ["enumset/serde", "no-std-net/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
-isr-async-executor = ["alloc", "experimental", "async-task", "crossbeam-queue"]
+isr-async-executor = ["alloc", "experimental", "async-task", "crossbeam-queue/alloc"]
 
 [dependencies]
 log = { version = "0.4", default-features = false }
