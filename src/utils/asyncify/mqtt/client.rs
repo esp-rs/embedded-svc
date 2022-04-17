@@ -353,28 +353,24 @@ where
 #[cfg(not(feature = "std"))]
 impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
-    CV: Condvar + Send + Sync,
-    <CV as MutexFamily>::Mutex<Payload>: Sync,
+    CV: Condvar + Send + Sync + 'static,
+    <CV as MutexFamily>::Mutex<Payload>: Sync + 'static,
     M: Message,
     E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
 {
-    type Message<'a>
-    where
-        CV: 'a,
-        M: 'a,
-    = M;
+    type Message = M;
 
     type NextFuture<'a, F, O>
     where
         Self: 'a,
         CV: 'a,
         M: 'a,
-        F: FnOnce(Result<Event<Self::Message<'a>>, Self::Error>) -> O + Unpin + Send,
-    = NextFuture<'a, CV, F, O, Self::Message<'a>, Self::Error>;
+        F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send,
+    = NextFuture<'a, CV, F, O, Self::Message, Self::Error>;
 
     fn next<'a, F, O>(&'a mut self, f: F) -> Self::NextFuture<'a, F, O>
     where
-        F: FnOnce(Result<Event<Self::Message<'a>>, Self::Error>) -> O + Unpin + Send,
+        F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send,
     {
         NextFuture {
             connection_state: &self.connection_state,
