@@ -134,7 +134,8 @@ where
 #[cfg(not(feature = "std"))]
 impl<CV, P, S, E> Receiver for AsyncSubscription<CV, P, S, E>
 where
-    CV: Condvar,
+    CV: Condvar + Send + Sync,
+    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     S: Send,
     P: Clone + Send,
     E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
