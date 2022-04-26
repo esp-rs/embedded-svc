@@ -1,20 +1,13 @@
-use core::borrow::Borrow;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::ptr;
 
 extern crate alloc;
-use alloc::rc::Rc;
 use alloc::sync::Arc;
 
 use async_task::{Runnable, Task};
 
 use crossbeam_queue::ArrayQueue;
-
-use super::signal::*;
-
-use crate::mutex::{MutexFamily, SingleThreadedMutex};
-use crate::signal::asyncs::Signal;
 
 pub trait Wait {
     fn wait(&self);
@@ -65,36 +58,23 @@ where
         unsafe { self.0.spawn(fut) }
     }
 
-    pub fn run<F, T>(&mut self, fut: F) -> T
+    pub fn run<C, T>(&mut self, until: C, tasks: Option<T>)
     where
-        F: Future<Output = T> + 'a,
-        T: 'a,
+        C: Fn() -> bool,
     {
-        self.0.notify.prerun();
-
-        let result = unsafe {
-            self.0.run::<_, _, _, MutexSignal<_, _>>(
-                fut,
-                Rc::new(MutexSignal::<SingleThreadedMutex<_>, _>::new()),
-            )
-        };
-
-        self.0.notify.postrun();
-
-        result
+        unsafe { self.0.run(until, tasks) }
     }
 }
 
-pub struct SendableExecutor<'a, W, N, M>(Executor<'a, W, N>, PhantomData<fn() -> M>);
+pub struct SendableExecutor<'a, W, N>(Executor<'a, W, N>);
 
-impl<'a, W, N, M> SendableExecutor<'a, W, N, M>
+impl<'a, W, N> SendableExecutor<'a, W, N>
 where
     W: Wait + 'a,
     N: Notify + Clone + Send + 'a,
-    M: MutexFamily + Send + Sync + 'a,
 {
     pub fn new(size: usize, wait: W, notify: N) -> Self {
-        Self(Executor::new(size, wait, notify), PhantomData)
+        Self(Executor::new(size, wait, notify))
     }
 
     pub fn spawn<F, T>(&mut self, fut: F) -> Task<T>
@@ -105,23 +85,11 @@ where
         unsafe { self.0.spawn(fut) }
     }
 
-    pub fn run<F, T>(&mut self, fut: F) -> T
+    pub fn run<C, T>(&mut self, until: C, tasks: Option<T>)
     where
-        F: Future<Output = T> + Send + 'a,
-        T: Send + 'a,
+        C: Fn() -> bool,
     {
-        self.0.notify.prerun();
-
-        let result = unsafe {
-            self.0.run::<_, _, _, MutexSignal<_, _>>(
-                fut,
-                Arc::new(MutexSignal::<M::Mutex<State<T>>, _>::new()),
-            )
-        };
-
-        self.0.notify.postrun();
-
-        result
+        unsafe { self.0.run(until, tasks) }
     }
 }
 
@@ -137,11 +105,11 @@ where
     W: Wait + 'a,
     N: Notify + Clone + Send + 'a,
 {
-    pub fn new(size: usize, waiter: W, notifier: N) -> Self {
+    pub fn new(size: usize, wait: W, notify: N) -> Self {
         Self {
             queue: Arc::new(ArrayQueue::new(size)),
-            wait: waiter,
-            notify: notifier,
+            wait,
+            notify,
             _lft: PhantomData,
         }
     }
@@ -153,11 +121,11 @@ where
     {
         let schedule = {
             let queue = self.queue.clone();
-            let notifier = self.notify.clone();
+            let notify = self.notify.clone();
 
             move |runnable| {
                 queue.push(runnable).unwrap();
-                notifier.notify();
+                notify.notify();
             }
         };
 
@@ -168,29 +136,42 @@ where
         task
     }
 
-    pub unsafe fn run<F, T, B, S>(&mut self, fut: F, signal_ref: B) -> T
+    pub unsafe fn run<C, T>(&mut self, until: C, tasks: Option<T>)
     where
-        F: Future<Output = T> + 'a,
-        T: 'a,
-        B: Borrow<S> + Clone + 'a,
-        S: Signal<Data = T>,
+        C: Fn() -> bool,
     {
-        let _task = {
-            let signal_ref = signal_ref.clone();
+        self.notifier().prerun();
 
-            self.spawn(async move { signal_ref.borrow().signal(fut.await) })
-        };
-
-        loop {
-            if let Some(res) = signal_ref.borrow().try_get() {
-                return res;
-            }
-
-            if let Some(runnable) = self.queue.pop() {
-                runnable.run();
-            } else {
-                self.wait.wait();
+        while !until() {
+            if !self.tick() {
+                self.wait();
             }
         }
+
+        if let Some(tasks) = tasks {
+            drop(tasks);
+
+            while self.tick() {}
+        }
+
+        self.notifier().postrun();
+    }
+
+    pub unsafe fn tick(&mut self) -> bool {
+        if let Some(runnable) = self.queue.pop() {
+            runnable.run();
+
+            true
+        } else {
+            false
+        }
+    }
+
+    pub unsafe fn wait(&mut self) {
+        self.wait.wait();
+    }
+
+    pub unsafe fn notifier(&mut self) -> &N {
+        &self.notify
     }
 }

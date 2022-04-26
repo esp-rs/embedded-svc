@@ -2,6 +2,16 @@
 pub mod asyncs {
     use core::task::{Context, Poll};
 
+    pub trait SignalFamily {
+        type Signal<T>: Signal<Data = T>;
+    }
+
+    pub trait SendSyncSignalFamily {
+        type Signal<T>: Signal<Data = T> + Send + Sync
+        where
+            T: Send;
+    }
+
     pub trait Signal {
         type Data;
 

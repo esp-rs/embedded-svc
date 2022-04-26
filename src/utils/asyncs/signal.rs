@@ -307,3 +307,19 @@ pub mod adapt {
         SignalReceiver::new(signal)
     }
 }
+
+#[cfg(feature = "std")]
+pub struct MutexSignalFamily;
+
+#[cfg(feature = "std")]
+impl crate::signal::asyncs::SignalFamily for MutexSignalFamily {
+    type Signal<T> = MutexSignal<std::sync::Mutex<State<T>>, T>;
+}
+
+#[cfg(feature = "std")]
+impl crate::signal::asyncs::SendSyncSignalFamily for MutexSignalFamily {
+    type Signal<T>
+    where
+        T: Send,
+    = MutexSignal<std::sync::Mutex<State<T>>, T>;
+}
