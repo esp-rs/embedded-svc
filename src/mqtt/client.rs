@@ -234,6 +234,45 @@ where
     }
 }
 
+pub mod utils {
+    use crate::mutex::{Condvar, Mutex};
+
+    pub struct State<P> {
+        pub payload: P,
+        pub closed: bool,
+    }
+
+    pub struct ConnectionState<CV, P>
+    where
+        CV: Condvar,
+    {
+        pub state: CV::Mutex<State<P>>,
+        pub state_changed: CV,
+    }
+
+    impl<CV, P> ConnectionState<CV, P>
+    where
+        CV: Condvar,
+    {
+        pub fn new(payload: P) -> Self {
+            Self {
+                state: CV::Mutex::new(State {
+                    payload,
+                    closed: false,
+                }),
+                state_changed: CV::new(),
+            }
+        }
+
+        pub fn close(&self) {
+            let mut state = self.state.lock();
+
+            state.closed = true;
+            self.state_changed.notify_all();
+        }
+    }
+}
+
 #[cfg(feature = "experimental")]
 pub mod asyncs {
     use core::future::Future;
