@@ -13,6 +13,7 @@ pub mod channel;
 pub mod errors;
 pub mod eth;
 pub mod event_bus;
+pub mod executor;
 #[cfg(all(feature = "experimental", feature = "alloc"))]
 pub mod http;
 #[cfg(feature = "std")] // TODO: Lower requirements to "alloc"

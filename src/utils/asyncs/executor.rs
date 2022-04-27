@@ -1,6 +1,4 @@
-use core::future::Future;
-use core::marker::PhantomData;
-use core::ptr;
+use core::{future::Future, marker::PhantomData};
 
 extern crate alloc;
 use alloc::sync::Arc;
@@ -8,6 +6,8 @@ use alloc::sync::Arc;
 use async_task::{Runnable, Task};
 
 use crossbeam_queue::ArrayQueue;
+
+use crate::executor::asyncs::{Executor, LocalSpawner, Spawner, WaitableExecutor};
 
 pub trait Wait {
     fn wait(&self);
@@ -23,11 +23,7 @@ where
 }
 
 pub trait Notify {
-    fn prerun(&self) {}
-
     fn notify(&self);
-
-    fn postrun(&self) {}
 }
 
 impl<F> Notify for F
@@ -39,89 +35,50 @@ where
     }
 }
 
-pub struct LocalExecutor<'a, W, N>(Executor<'a, W, N>, *const ());
+pub trait NotifyFactory {
+    type Notify: Notify;
 
-impl<'a, W, N> LocalExecutor<'a, W, N>
-where
-    W: Wait + 'a,
-    N: Notify + Clone + Send + 'a,
-{
-    pub fn new(size: usize, wait: W, notify: N) -> Self {
-        Self(Executor::new(size, wait, notify), ptr::null())
-    }
-
-    pub fn spawn<F, T>(&mut self, fut: F) -> Task<T>
-    where
-        F: Future<Output = T> + 'a,
-        T: 'a,
-    {
-        unsafe { self.0.spawn(fut) }
-    }
-
-    pub fn run<C, T>(&mut self, until: C, tasks: Option<T>)
-    where
-        C: Fn() -> bool,
-    {
-        unsafe { self.0.run(until, tasks) }
-    }
+    fn notifier(&self) -> Self::Notify;
 }
 
-pub struct SendableExecutor<'a, W, N>(Executor<'a, W, N>);
-
-impl<'a, W, N> SendableExecutor<'a, W, N>
-where
-    W: Wait + 'a,
-    N: Notify + Clone + Send + 'a,
-{
-    pub fn new(size: usize, wait: W, notify: N) -> Self {
-        Self(Executor::new(size, wait, notify))
-    }
-
-    pub fn spawn<F, T>(&mut self, fut: F) -> Task<T>
-    where
-        F: Future<Output = T> + Send + 'a,
-        T: Send + 'a,
-    {
-        unsafe { self.0.spawn(fut) }
-    }
-
-    pub fn run<C, T>(&mut self, until: C, tasks: Option<T>)
-    where
-        C: Fn() -> bool,
-    {
-        unsafe { self.0.run(until, tasks) }
-    }
+pub trait RunContextFactory {
+    fn prerun(&self) {}
+    fn postrun(&self) {}
 }
 
-pub struct Executor<'a, W, N> {
+pub struct RunContext(());
+
+pub struct ISRExecutor<'a, N, W, S = ()> {
     queue: Arc<ArrayQueue<Runnable>>,
+    notify_factory: N,
     wait: W,
-    notify: N,
-    _lft: PhantomData<&'a ()>,
+    _sendable: PhantomData<S>,
+    _marker: PhantomData<core::cell::UnsafeCell<&'a ()>>,
 }
 
-impl<'a, W, N> Executor<'a, W, N>
-where
-    W: Wait + 'a,
-    N: Notify + Clone + Send + 'a,
-{
-    pub fn new(size: usize, wait: W, notify: N) -> Self {
+impl<'a, N, W, S> ISRExecutor<'a, N, W, S> {
+    pub unsafe fn new_unchecked(size: usize, notify_factory: N, wait: W) -> Self {
         Self {
             queue: Arc::new(ArrayQueue::new(size)),
+            notify_factory,
             wait,
-            notify,
-            _lft: PhantomData,
+            _sendable: PhantomData,
+            _marker: PhantomData,
         }
     }
+}
 
-    pub unsafe fn spawn<F, T>(&mut self, fut: F) -> Task<T>
+impl<'a, N, W, S> ISRExecutor<'a, N, W, S>
+where
+    N: NotifyFactory,
+{
+    pub unsafe fn spawn_unchecked<F, T>(&mut self, fut: F) -> Task<T>
     where
-        F: Future<Output = T> + 'a,
-        T: 'a,
+        F: Future<Output = T>,
     {
         let schedule = {
             let queue = self.queue.clone();
-            let notify = self.notify.clone();
+            let notify = self.notify_factory.notifier();
 
             move |runnable| {
                 queue.push(runnable).unwrap();
@@ -135,29 +92,75 @@ where
 
         task
     }
+}
 
-    pub unsafe fn run<C, T>(&mut self, until: C, tasks: Option<T>)
+pub type Local = *const ();
+
+impl<'a, N, W> ISRExecutor<'a, N, W, Local> {
+    pub fn new(size: usize, notify_factory: N, wait: W) -> Self {
+        unsafe { Self::new_unchecked(size, notify_factory, wait) }
+    }
+}
+
+pub type Sendable = ();
+
+impl<'a, N, W> ISRExecutor<'a, N, W, Sendable> {
+    pub fn new(size: usize, notify_factory: N, wait: W) -> Self {
+        unsafe { Self::new_unchecked(size, notify_factory, wait) }
+    }
+}
+
+impl<'a, N, W, S> Spawner<'a> for ISRExecutor<'a, N, W, S>
+where
+    N: NotifyFactory,
+{
+    type Task<T>
     where
-        C: Fn() -> bool,
+        T: 'a,
+    = Task<T>;
+
+    fn spawn<F, T>(&mut self, fut: F) -> Task<T>
+    where
+        F: Future<Output = T> + Send + 'a,
+        T: 'a,
     {
-        self.notifier().prerun();
+        unsafe { self.spawn_unchecked(fut) }
+    }
+}
 
-        while !until() {
-            if !self.tick() {
-                self.wait();
-            }
-        }
+impl<'a, N, W> LocalSpawner<'a> for ISRExecutor<'a, N, W, Local>
+where
+    N: NotifyFactory,
+{
+    fn spawn_local<F, T>(&mut self, fut: F) -> Task<T>
+    where
+        F: Future<Output = T> + 'a,
+        T: 'a,
+    {
+        unsafe { self.spawn_unchecked(fut) }
+    }
+}
 
-        if let Some(tasks) = tasks {
-            drop(tasks);
+impl<'a, N, W, S> Executor for ISRExecutor<'a, N, W, S>
+where
+    N: RunContextFactory,
+{
+    type RunContext = RunContext;
 
-            while self.tick() {}
-        }
+    fn with_context<F, T>(&mut self, run: F) -> T
+    where
+        F: FnOnce(&mut Self, &RunContext) -> T,
+    {
+        self.notify_factory.prerun();
 
-        self.notifier().postrun();
+        let result = run(self, &RunContext(()));
+
+        self.notify_factory.postrun();
+
+        result
     }
 
-    pub unsafe fn tick(&mut self) -> bool {
+    fn tick(&mut self, _context: &RunContext) -> bool {
         if let Some(runnable) = self.queue.pop() {
             runnable.run();
 
@@ -166,12 +169,14 @@ where
             false
         }
     }
+}
 
-    pub unsafe fn wait(&mut self) {
+impl<'a, N, W, S> WaitableExecutor for ISRExecutor<'a, N, W, S>
+where
+    N: RunContextFactory,
+    W: Wait,
+{
+    fn wait(&mut self, _context: &RunContext) {
         self.wait.wait();
-    }
-
-    pub unsafe fn notifier(&mut self) -> &N {
-        &self.notify
     }
 }
