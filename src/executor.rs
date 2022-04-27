@@ -1,20 +1,23 @@
 #[cfg(feature = "experimental")]
 pub mod asyncs {
     use core::future::Future;
+    use core::result::Result;
 
-    pub trait Spawner<'a> {
+    use crate::errors::Errors;
+
+    pub trait Spawner<'a>: Errors {
         type Task<T>
         where
             T: 'a;
 
-        fn spawn<F, T>(&mut self, fut: F) -> Self::Task<T>
+        fn spawn<F, T>(&mut self, fut: F) -> Result<Self::Task<T>, Self::Error>
         where
             F: Future<Output = T> + Send + 'a,
             T: 'a;
     }
 
     pub trait LocalSpawner<'a>: Spawner<'a> {
-        fn spawn_local<F, T>(&mut self, fut: F) -> Self::Task<T>
+        fn spawn_local<F, T>(&mut self, fut: F) -> Result<Self::Task<T>, Self::Error>
         where
             F: Future<Output = T> + 'a,
             T: 'a;

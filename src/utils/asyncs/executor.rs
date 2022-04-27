@@ -1,4 +1,6 @@
-use core::{future::Future, marker::PhantomData};
+use core::fmt;
+use core::future::Future;
+use core::marker::PhantomData;
 
 extern crate alloc;
 use alloc::sync::Arc;
@@ -7,6 +9,7 @@ use async_task::{Runnable, Task};
 
 use crossbeam_queue::ArrayQueue;
 
+use crate::errors::Errors;
 use crate::executor::asyncs::{Executor, LocalSpawner, Spawner, WaitableExecutor};
 
 pub trait Wait {
@@ -72,10 +75,12 @@ impl<'a, N, W, S> ISRExecutor<'a, N, W, S>
 where
     N: NotifyFactory,
 {
-    pub unsafe fn spawn_unchecked<F, T>(&mut self, fut: F) -> Task<T>
+    pub unsafe fn spawn_unchecked<F, T>(&mut self, fut: F) -> Result<Task<T>, SpawnError>
     where
         F: Future<Output = T>,
     {
+        if self.queue.is_full() {}
+
         let schedule = {
             let queue = self.queue.clone();
             let notify = self.notify_factory.notifier();
@@ -90,7 +95,7 @@ where
 
         runnable.schedule();
 
-        task
+        Ok(task)
     }
 }
 
@@ -110,6 +115,32 @@ impl<'a, N, W> ISRExecutor<'a, N, W, Sendable> {
     }
 }
 
+#[derive(Debug)]
+pub enum SpawnError {
+    QueueFull,
+}
+
+impl fmt::Display for SpawnError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Queue Full Error")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SpawnError {
+    // TODO
+    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    //     match self {
+    //         Self::ReadError(r) => Some(r),
+    //         CopyError::WriteError(w) => Some(w),
+    //     }
+    // }
+}
+
+impl<'a, N, W, S> Errors for ISRExecutor<'a, N, W, S> {
+    type Error = SpawnError;
+}
+
 impl<'a, N, W, S> Spawner<'a> for ISRExecutor<'a, N, W, S>
 where
     N: NotifyFactory,
@@ -119,7 +150,7 @@ where
         T: 'a,
     = Task<T>;
 
-    fn spawn<F, T>(&mut self, fut: F) -> Task<T>
+    fn spawn<F, T>(&mut self, fut: F) -> Result<Self::Task<T>, Self::Error>
     where
         F: Future<Output = T> + Send + 'a,
         T: 'a,
@@ -132,7 +163,7 @@ impl<'a, N, W> LocalSpawner<'a> for ISRExecutor<'a, N, W, Local>
 where
     N: NotifyFactory,
 {
-    fn spawn_local<F, T>(&mut self, fut: F) -> Task<T>
+    fn spawn_local<F, T>(&mut self, fut: F) -> Result<Self::Task<T>, Self::Error>
     where
         F: Future<Output = T> + 'a,
         T: 'a,
