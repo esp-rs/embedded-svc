@@ -1,5 +1,4 @@
 use core::future::Future;
-use core::marker::PhantomData;
 use core::mem;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
@@ -10,9 +9,9 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use crate::errors::Errors;
-use crate::mqtt::client::asyncs::{Client, Connection, Event, Message, MessageId, Publish, QoS};
-use crate::mqtt::client::utils::{ConnectionState, State};
+use crate::errors::{self, Errors};
+use crate::mqtt::client::asyncs::{Client, Connection, Event, MessageId, Publish, QoS};
+use crate::mqtt::client::utils::ConnectionState;
 use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asyncs::Unblocker;
 
@@ -166,264 +165,148 @@ where
     }
 }
 
-pub struct ConnectionStateAsyncPayload {
-    event: Option<*const core::ffi::c_void>,
-    waker: Option<Waker>,
-    handed_over: bool,
+pub enum AsyncState<R, E> {
+    None,
+    Waiting(Waker),
+    Received(Result<Event<R>, E>),
 }
 
-impl ConnectionStateAsyncPayload {
+impl<R, E> AsyncState<R, E> {
     pub fn new() -> Self {
-        Self {
-            event: None,
-            waker: None,
-            handed_over: false,
-        }
+        Self::None
     }
 }
 
-impl Default for ConnectionStateAsyncPayload {
+impl<R, E> Default for AsyncState<R, E> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-unsafe impl Send for ConnectionStateAsyncPayload {}
-unsafe impl Sync for ConnectionStateAsyncPayload {}
-
-pub struct NextFuture<'a, CV, F, O, M, E>
+pub struct NextFuture<'a, CV, R, E>(&'a ConnectionState<CV, AsyncState<R, E>>)
 where
     CV: Condvar + 'a,
-    M: Message + 'a,
-    E: 'a,
-{
-    connection_state: &'a ConnectionState<CV, ConnectionStateAsyncPayload>,
-    converter: Option<F>,
-    _output: PhantomData<fn() -> O>,
-    _message: PhantomData<fn() -> M>,
-    _error: PhantomData<fn() -> E>,
-}
+    R: 'a,
+    E: 'a;
 
-impl<'a, CV, F, O, M, E> Drop for NextFuture<'a, CV, F, O, M, E>
+impl<'a, CV, R, E> Future for NextFuture<'a, CV, R, E>
 where
     CV: Condvar + 'a,
-    M: Message + 'a,
+    R: 'a,
     E: 'a,
 {
-    fn drop(&mut self) {
-        let mut state = self.connection_state.state.lock();
+    type Output = Option<Result<Event<R>, E>>;
 
-        state.payload.waker = None;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut state = self.0.state.lock();
 
-        if state.payload.handed_over {
-            state.payload.event = None;
-            self.connection_state.state_changed.notify_all();
-        }
-    }
-}
+        if let Some(state) = &mut *state {
+            let pulled = mem::replace(state, AsyncState::None);
 
-impl<'a, CV, F, O, M, E> Future for NextFuture<'a, CV, F, O, M, E>
-where
-    CV: Condvar + 'a,
-    F: FnOnce(&Result<Event<M>, E>) -> O + Unpin,
-    M: Message + 'a,
-    E: 'a,
-{
-    type Output = Option<O>;
+            match pulled {
+                AsyncState::Received(event) => {
+                    self.0.state_changed.notify_all();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut state = self.connection_state.state.lock();
+                    Poll::Ready(Some(event))
+                }
+                _ => {
+                    *state = AsyncState::Waiting(cx.waker().clone());
+                    self.0.state_changed.notify_all();
 
-        if state.closed {
-            Poll::Ready(None)
-        } else if let Some(event) = state.payload.event {
-            let converter = mem::replace(&mut self.converter, None).unwrap();
-
-            let event_ref = unsafe {
-                (event as *const Option<Result<Event<M>, E>>)
-                    .as_ref()
-                    .unwrap()
-            };
-
-            let result = event_ref.as_ref().map(|result| converter(result));
-            state.payload.handed_over = true;
-
-            Poll::Ready(result)
+                    Poll::Pending
+                }
+            }
         } else {
-            state.payload.waker = Some(cx.waker().clone());
-            self.connection_state.state_changed.notify_all();
-
-            Poll::Pending
+            Poll::Ready(None)
         }
     }
 }
 
-pub struct AsyncPoster<CV, M, E>
+pub struct AsyncPostbox<CV, R, E>(Arc<ConnectionState<CV, AsyncState<R, E>>>)
 where
-    CV: Condvar,
-    M: Message,
-{
-    connection_state: Arc<ConnectionState<CV, ConnectionStateAsyncPayload>>,
-    _message: PhantomData<fn() -> M>,
-    _error: PhantomData<fn() -> E>,
-}
+    CV: Condvar;
 
-impl<CV, M, E> AsyncPoster<CV, M, E>
+impl<CV, R, E> AsyncPostbox<CV, R, E>
 where
     CV: Condvar,
-    M: Message,
+    R: Send,
+    E: Send,
 {
-    pub fn new(connection_state: Arc<ConnectionState<CV, ConnectionStateAsyncPayload>>) -> Self {
-        Self {
-            connection_state,
-            _message: PhantomData,
-            _error: PhantomData,
-        }
+    pub fn new(connection_state: Arc<ConnectionState<CV, AsyncState<R, E>>>) -> Self {
+        Self(connection_state)
     }
 
-    pub fn post<'a>(&'a self, event: &'a Option<Result<Event<M>, E>>)
-    where
-        M: 'a,
-        E: 'a,
-    {
-        let mut state = self.connection_state.state.lock();
+    pub fn post(&mut self, event: Result<Event<R>, E>) {
+        let mut state = self.0.state.lock();
 
-        while !state.closed && state.payload.event.is_some() {
-            let waker = mem::replace(&mut state.payload.waker, None);
-            if let Some(waker) = waker {
-                waker.wake();
+        loop {
+            if state.is_none() {
+                return;
+            } else if matches!(&*state, Some(AsyncState::Received(_))) {
+                state = self.0.state_changed.wait(state);
+            } else {
+                break;
             }
-
-            state = self.connection_state.state_changed.wait(state);
         }
 
-        state.payload.event = Some(event as *const _ as *const _);
-
-        while !state.closed && state.payload.event.is_some() {
-            let waker = mem::replace(&mut state.payload.waker, None);
-            if let Some(waker) = waker {
-                waker.wake();
-            }
-
-            state = self.connection_state.state_changed.wait(state);
+        if let Some(AsyncState::Waiting(waker)) =
+            mem::replace(&mut *state, Some(AsyncState::Received(event)))
+        {
+            waker.wake();
         }
     }
 }
 
-pub struct AsyncConnection<CV, M, E>
+pub struct AsyncConnection<CV, R, E>(Arc<ConnectionState<CV, AsyncState<R, E>>>)
 where
-    CV: Condvar,
-    M: Message,
-{
-    connection_state: Arc<ConnectionState<CV, ConnectionStateAsyncPayload>>,
-    _message: PhantomData<fn() -> M>,
-    _error: PhantomData<fn() -> E>,
-}
+    CV: Condvar;
 
-impl<CV, M, E> AsyncConnection<CV, M, E>
+impl<CV, R, E> AsyncConnection<CV, R, E>
 where
     CV: Condvar,
-    M: Message,
 {
-    pub fn new(connection_state: Arc<ConnectionState<CV, ConnectionStateAsyncPayload>>) -> Self {
-        Self {
-            connection_state,
-            _message: PhantomData,
-            _error: PhantomData,
-        }
+    pub fn new(connection_state: Arc<ConnectionState<CV, AsyncState<R, E>>>) -> Self {
+        Self(connection_state)
     }
 }
 
-impl<CV, M, E> Drop for AsyncConnection<CV, M, E>
+impl<CV, R, E> Drop for AsyncConnection<CV, R, E>
 where
     CV: Condvar,
-    M: Message,
 {
     fn drop(&mut self) {
-        self.connection_state.close();
+        log::info!("!!!!! About to drop the MQTT async connection");
+
+        self.0.close();
+
+        log::info!("!!!!! The MQTT async connection dropped");
     }
 }
 
-#[cfg(not(feature = "std"))]
-impl<CV, M, E> Errors for AsyncConnection<CV, M, E>
+impl<CV, R, E> Errors for AsyncConnection<CV, R, E>
 where
     CV: Condvar,
-    M: Message,
-    E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
+    E: errors::Error,
 {
     type Error = E;
 }
 
-#[cfg(feature = "std")]
-impl<CV, M, E> Errors for AsyncConnection<CV, M, E>
-where
-    CV: Condvar,
-    M: Message,
-    E: std::error::Error + Send + Sync + 'static,
-{
-    type Error = E;
-}
-
-#[cfg(not(feature = "std"))]
-impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
+impl<CV, R, E> Connection for AsyncConnection<CV, R, E>
 where
     CV: Condvar + Send + Sync + 'static,
-    <CV as MutexFamily>::Mutex<State<ConnectionStateAsyncPayload>>: Sync + 'static,
-    M: Message,
-    E: core::fmt::Debug + core::fmt::Display + Send + Sync + 'static,
+    <CV as MutexFamily>::Mutex<Option<AsyncState<R, E>>>: Sync + 'static,
+    E: errors::Error,
 {
-    type Message = M;
+    type Message = R;
 
-    type NextFuture<'a, F, O>
+    type NextFuture<'a>
     where
         Self: 'a,
         CV: 'a,
-        M: 'a,
-        F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send,
-    = NextFuture<'a, CV, F, O, Self::Message, Self::Error>;
+        R: 'a,
+    = NextFuture<'a, CV, Self::Message, Self::Error>;
 
-    fn next<'a, F, O>(&'a mut self, f: F) -> Self::NextFuture<'a, F, O>
-    where
-        F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send,
-    {
-        NextFuture {
-            connection_state: &self.connection_state,
-            converter: Some(f),
-            _output: PhantomData,
-            _message: PhantomData,
-            _error: PhantomData,
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
-where
-    CV: Condvar + Send + Sync + 'static,
-    <CV as MutexFamily>::Mutex<State<ConnectionStateAsyncPayload>>: Sync + 'static,
-    M: Message,
-    E: std::error::Error + Send + Sync + 'static,
-{
-    type Message = M;
-
-    type NextFuture<'a, F, O>
-    where
-        Self: 'a,
-        CV: 'a,
-        M: 'a,
-        F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send,
-    = NextFuture<'a, CV, F, O, Self::Message, Self::Error>;
-
-    fn next<'a, F, O>(&'a mut self, f: F) -> Self::NextFuture<'a, F, O>
-    where
-        F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send,
-    {
-        NextFuture {
-            connection_state: &self.connection_state,
-            converter: Some(f),
-            _output: PhantomData,
-            _message: PhantomData,
-            _error: PhantomData,
-        }
+    fn next(&mut self) -> Self::NextFuture<'_> {
+        NextFuture(&self.0)
     }
 }

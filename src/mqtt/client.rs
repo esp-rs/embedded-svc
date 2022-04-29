@@ -211,64 +211,159 @@ where
 }
 
 pub trait Connection: Errors {
-    type Message<'a>: Message
-    where
-        Self: 'a;
+    type Message;
 
-    /// GATs do not (yet) define a standard streaming iterator,
-    /// so we have to put the next() method directly in the Connection trait
-    fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>>;
+    fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>>;
 }
 
 impl<'b, C> Connection for &'b mut C
 where
     C: Connection,
 {
-    type Message<'a>
-    where
-        Self: 'a,
-    = C::Message<'a>;
+    type Message = C::Message;
 
-    fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
+    fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>> {
         (*self).next()
     }
 }
 
+#[cfg(feature = "alloc")]
 pub mod utils {
-    use crate::mutex::{Condvar, Mutex};
+    use core::mem;
 
-    pub struct State<P> {
-        pub payload: P,
-        pub closed: bool,
-    }
+    use alloc::sync::Arc;
 
-    pub struct ConnectionState<CV, P>
+    use crate::{
+        errors,
+        mutex::{Condvar, Mutex},
+    };
+
+    use super::{Connection, Event};
+
+    pub struct ConnectionState<CV, S>
     where
         CV: Condvar,
     {
-        pub state: CV::Mutex<State<P>>,
+        pub state: CV::Mutex<Option<S>>,
         pub state_changed: CV,
     }
 
-    impl<CV, P> ConnectionState<CV, P>
+    impl<CV, S> ConnectionState<CV, S>
     where
         CV: Condvar,
+        S: Default,
     {
-        pub fn new(payload: P) -> Self {
+        pub fn new(state: S) -> Self {
             Self {
-                state: CV::Mutex::new(State {
-                    payload,
-                    closed: false,
-                }),
+                state: CV::Mutex::new(Some(state)),
                 state_changed: CV::new(),
             }
         }
+    }
 
+    impl<CV, S> ConnectionState<CV, S>
+    where
+        CV: Condvar,
+    {
         pub fn close(&self) {
             let mut state = self.state.lock();
 
-            state.closed = true;
+            *state = None;
             self.state_changed.notify_all();
+        }
+    }
+
+    impl<CV, S> Default for ConnectionState<CV, S>
+    where
+        CV: Condvar,
+        S: Default,
+    {
+        fn default() -> Self {
+            Self::new(Default::default())
+        }
+    }
+
+    pub struct SyncState<R, E>(Option<Result<Event<R>, E>>);
+
+    pub struct SyncPostbox<CV, R, E>(Arc<ConnectionState<CV, SyncState<R, E>>>)
+    where
+        CV: Condvar;
+
+    impl<CV, R, E> SyncPostbox<CV, R, E>
+    where
+        CV: Condvar,
+    {
+        pub fn new(connection_state: Arc<ConnectionState<CV, SyncState<R, E>>>) -> Self {
+            Self(connection_state)
+        }
+
+        pub fn post(&mut self, event: Result<Event<R>, E>) {
+            let mut state = self.0.state.lock();
+
+            loop {
+                if let Some(data) = &mut *state {
+                    if data.0.is_some() {
+                        state = self.0.state_changed.wait(state);
+                    } else {
+                        break;
+                    }
+                } else {
+                    return;
+                }
+            }
+
+            *state = Some(SyncState(Some(event)));
+            self.0.state_changed.notify_all();
+        }
+    }
+
+    pub struct SyncConnection<CV, R, E>(Arc<ConnectionState<CV, SyncState<R, E>>>)
+    where
+        CV: Condvar;
+
+    impl<CV, R, E> SyncConnection<CV, R, E>
+    where
+        CV: Condvar,
+        E: errors::Error,
+    {
+        pub fn new(connection_state: Arc<ConnectionState<CV, SyncState<R, E>>>) -> Self {
+            Self(connection_state)
+        }
+    }
+
+    impl<CV, R, E> errors::Errors for SyncConnection<CV, R, E>
+    where
+        CV: Condvar,
+        E: errors::Error,
+    {
+        type Error = E;
+    }
+
+    impl<CV, R, E> Connection for SyncConnection<CV, R, E>
+    where
+        CV: Condvar,
+        E: errors::Error,
+    {
+        type Message = R;
+
+        fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>> {
+            let mut state = self.0.state.lock();
+
+            loop {
+                if let Some(data) = &mut *state {
+                    let pulled = mem::replace(data, SyncState(None));
+
+                    match pulled {
+                        SyncState(Some(event)) => {
+                            self.0.state_changed.notify_all();
+                            return Some(event);
+                        }
+                        SyncState(None) => state = self.0.state_changed.wait(state),
+                    }
+                } else {
+                    return None;
+                }
+            }
         }
     }
 }
@@ -321,15 +416,13 @@ pub mod asyncs {
     /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
     /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
     pub trait Connection: Errors {
-        type Message: Message;
+        type Message;
 
-        type NextFuture<'a, F, O>: Future<Output = Option<O>> + Send
+        type NextFuture<'a>: Future<Output = Option<Result<Event<Self::Message>, Self::Error>>>
+            + Send
         where
-            Self: 'a,
-            F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send;
+            Self: 'a;
 
-        fn next<'a, F, O>(&'a mut self, f: F) -> Self::NextFuture<'a, F, O>
-        where
-            F: FnOnce(&Result<Event<Self::Message>, Self::Error>) -> O + Unpin + Send;
+        fn next(&mut self) -> Self::NextFuture<'_>;
     }
 }
