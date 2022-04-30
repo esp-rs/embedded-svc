@@ -15,31 +15,27 @@ use crate::mqtt::client::utils::ConnectionState;
 use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asyncs::Unblocker;
 
-pub struct EnqueueFuture<E>(Result<MessageId, E>);
-
-impl<E> Future for EnqueueFuture<E>
+fn enqueue_publish<'a, E>(
+    enqueue: &'a mut E,
+    topic: Cow<'a, str>,
+    qos: QoS,
+    retain: bool,
+    payload: Cow<'a, [u8]>,
+) -> impl Future<Output = Result<MessageId, E::Error>> + 'a
 where
-    E: Clone,
+    E: crate::mqtt::client::Enqueue + 'a,
 {
-    type Output = Result<MessageId, E>;
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.0.as_ref() {
-            Ok(message_id) => Poll::Ready(Ok(*message_id)),
-            Err(err) => Poll::Ready(Err(err.clone())),
-        }
-    }
+    async move { enqueue.enqueue(topic, qos, retain, payload) }
 }
 
 impl<E> Publish for E
 where
-    E: crate::mqtt::client::Enqueue,
-    E::Error: Clone,
+    E: crate::mqtt::client::Enqueue + Send,
 {
     type PublishFuture<'a>
     where
         Self: 'a,
-    = EnqueueFuture<E::Error>;
+    = impl Future<Output = Result<MessageId, E::Error>> + Send + 'a;
 
     fn publish<'a, S, V>(
         &'a mut self,
@@ -52,33 +48,33 @@ where
         S: Into<Cow<'a, str>>,
         V: Into<Cow<'a, [u8]>>,
     {
-        EnqueueFuture(self.enqueue(topic, qos, retain, payload))
+        enqueue_publish(self, topic.into(), qos, retain, payload.into())
     }
 }
 
 pub struct AsyncClient<U, M>(Arc<M>, U);
 
-impl<U, M, P> AsyncClient<U, M>
+impl<U, M, C> AsyncClient<U, M>
 where
-    M: Mutex<Data = P>,
+    M: Mutex<Data = C>,
 {
-    pub fn new(unblocker: U, client: P) -> Self {
+    pub fn new(unblocker: U, client: C) -> Self {
         Self(Arc::new(M::new(client)), unblocker)
     }
 }
 
-impl<U, M, P> Errors for AsyncClient<U, M>
+impl<U, M, C> Errors for AsyncClient<U, M>
 where
-    M: Mutex<Data = P>,
-    P: Errors,
+    M: Mutex<Data = C>,
+    C: Errors,
 {
-    type Error = P::Error;
+    type Error = C::Error;
 }
 
-impl<U, M, P> Clone for AsyncClient<U, M>
+impl<U, M, C> Clone for AsyncClient<U, M>
 where
     U: Clone,
-    M: Mutex<Data = P>,
+    M: Mutex<Data = C>,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone(), self.1.clone())
@@ -87,16 +83,17 @@ where
 
 impl<U, M, C> Client for AsyncClient<U, M>
 where
+    U: Unblocker,
     M: Mutex<Data = C> + Send + Sync + 'static,
     C: crate::mqtt::client::Client,
     C::Error: Clone,
-    U: Unblocker,
     Self::Error: Send + Sync + 'static,
 {
     type SubscribeFuture<'a>
     where
         Self: 'a,
     = U::UnblockFuture<Result<MessageId, C::Error>>;
+
     type UnsubscribeFuture<'a>
     where
         Self: 'a,
@@ -123,18 +120,18 @@ where
     }
 }
 
-impl<U, M, P> Publish for AsyncClient<U, M>
+impl<U, M, C> Publish for AsyncClient<U, M>
 where
-    M: Mutex<Data = P> + Send + Sync + 'static,
-    P: crate::mqtt::client::Publish,
-    P::Error: Clone,
     U: Unblocker,
+    M: Mutex<Data = C> + Send + Sync + 'static,
+    C: crate::mqtt::client::Publish,
+    C::Error: Clone,
     Self::Error: Send + Sync + 'static,
 {
     type PublishFuture<'a>
     where
         Self: 'a,
-    = U::UnblockFuture<Result<MessageId, P::Error>>;
+    = U::UnblockFuture<Result<MessageId, C::Error>>;
 
     fn publish<'a, S, V>(
         &'a mut self,
@@ -156,11 +153,11 @@ where
     }
 }
 
-impl<U, M, P> crate::utils::asyncify::UnblockingAsyncWrapper<U, P> for AsyncClient<U, M>
+impl<U, M, C> crate::utils::asyncify::UnblockingAsyncWrapper<U, C> for AsyncClient<U, M>
 where
-    M: Mutex<Data = P>,
+    M: Mutex<Data = C>,
 {
-    fn new(unblocker: U, sync: P) -> Self {
+    fn new(unblocker: U, sync: C) -> Self {
         AsyncClient::new(unblocker, sync)
     }
 }
