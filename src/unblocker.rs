@@ -20,7 +20,7 @@ pub mod asyncs {
     }
 
     #[cfg(feature = "alloc")]
-    use utils::*;
+    pub use utils::*;
 
     #[cfg(feature = "alloc")]
     mod utils {
