@@ -251,13 +251,22 @@ pub mod utils {
     impl<CV, S> ConnectionState<CV, S>
     where
         CV: Condvar,
-        S: Default,
     {
         pub fn new(state: S) -> Self {
             Self {
                 state: CV::Mutex::new(Some(state)),
                 state_changed: CV::new(),
             }
+        }
+    }
+
+    impl<CV, S> ConnectionState<CV, S>
+    where
+        CV: Condvar,
+        S: Default,
+    {
+        pub fn new_default() -> Self {
+            Self::new(Default::default())
         }
     }
 

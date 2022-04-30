@@ -54,6 +54,30 @@ where
     }
 }
 
+impl<S> asyncs::Sender for AsyncSender<(), S>
+where
+    S: Sender + SessionProvider + Send + Clone + 'static,
+{
+    type SendFuture<'a>
+    where
+        Self: 'a,
+    = impl Future<Output = Result<(), Self::Error>>;
+
+    fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>) -> Self::SendFuture<'_> {
+        info!(
+            "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
+            frame_type,
+            frame_data.map(|d| d.len()).unwrap_or(0),
+            self.sender.session()
+        );
+
+        let mut sender = self.sender.clone();
+        let frame_data: Option<Vec<u8>> = frame_data.map(|frame_data| frame_data.to_owned());
+
+        async move { sender.send(frame_type, frame_data.as_deref()) }
+    }
+}
+
 pub enum ReceiverData {
     None,
     Metadata((FrameType, usize)),
@@ -187,7 +211,7 @@ where
 
 impl<'a, U, C, S> Future for &'a mut AsyncAcceptor<U, C, S>
 where
-    U: Unblocker + Clone,
+    U: Clone,
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
@@ -252,6 +276,27 @@ where
     }
 }
 
+impl<C, S> asyncs::Acceptor for AsyncAcceptor<(), C, S>
+where
+    C: Condvar + Send + Sync,
+    C::Mutex<SharedReceiverState>: Send + Sync,
+    C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
+    S: Sender + SessionProvider + Errors + Send + Clone + 'static,
+{
+    type Sender = AsyncSender<(), S>;
+
+    type Receiver = AsyncReceiver<C, <S as Errors>::Error>;
+
+    type AcceptFuture<'a>
+    where
+        Self: 'a,
+    = &'a mut Self;
+
+    fn accept(&mut self) -> Self::AcceptFuture<'_> {
+        self
+    }
+}
+
 pub struct Processor<C, S, R>
 where
     C: Condvar + Send + Sync,
@@ -276,10 +321,7 @@ where
     S::Sender: Send,
     R: SessionProvider,
 {
-    pub fn new<U>(unblocker: U, max_frame_size: usize) -> (Self, AsyncAcceptor<U, C, S::Sender>)
-    where
-        U: Unblocker,
-    {
+    pub fn new<U>(unblocker: U, max_frame_size: usize) -> (Self, AsyncAcceptor<U, C, S::Sender>) {
         let mut this = Self {
             connections: Vec::new(),
             frame_data_buf: Vec::new(),

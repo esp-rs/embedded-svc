@@ -87,7 +87,7 @@ where
     }
 }
 
-impl<U, P, PB> super::AsyncWrapper<U, PB> for AsyncPostbox<U, P, PB> {
+impl<U, P, PB> super::UnblockingAsyncWrapper<U, PB> for AsyncPostbox<U, P, PB> {
     fn new(unblocker: U, sync: PB) -> Self {
         AsyncPostbox::new(unblocker, sync)
     }
@@ -251,9 +251,15 @@ where
     }
 }
 
-impl<U, CV, E> super::AsyncWrapper<U, E> for AsyncEventBus<U, CV, E> {
+impl<U, CV, E> super::UnblockingAsyncWrapper<U, E> for AsyncEventBus<U, CV, E> {
     fn new(unblocker: U, sync: E) -> Self {
         AsyncEventBus::new(unblocker, sync)
+    }
+}
+
+impl<CV, E> super::AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
+    fn new(sync: E) -> Self {
+        AsyncEventBus::new((), sync)
     }
 }
 

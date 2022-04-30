@@ -7,27 +7,31 @@ pub mod timer;
 #[cfg(feature = "alloc")]
 pub mod ws;
 
-pub trait AsyncWrapper<U, S> {
-    fn new(unblocker: U, sync: S) -> Self;
+pub trait AsyncWrapper<S> {
+    fn new(sync: S) -> Self;
 }
 
 pub trait Asyncify {
-    type AsyncWrapper<S>: AsyncWrapper<(), S>;
+    type AsyncWrapper<S>: AsyncWrapper<S>;
 
     fn into_async(self) -> Self::AsyncWrapper<Self>
     where
         Self: Sized,
     {
-        Self::AsyncWrapper::new((), self)
+        Self::AsyncWrapper::new(self)
     }
 
     fn as_async(&mut self) -> Self::AsyncWrapper<&mut Self> {
-        Self::AsyncWrapper::new((), self)
+        Self::AsyncWrapper::new(self)
     }
 }
 
+pub trait UnblockingAsyncWrapper<U, S> {
+    fn new(unblocker: U, sync: S) -> Self;
+}
+
 pub trait UnblockingAsyncify {
-    type AsyncWrapper<U, S>: AsyncWrapper<U, S>;
+    type AsyncWrapper<U, S>: UnblockingAsyncWrapper<U, S>;
 
     fn into_async_with_unblocker<U>(self, unblocker: U) -> Self::AsyncWrapper<U, Self>
     where

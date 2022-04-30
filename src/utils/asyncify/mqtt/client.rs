@@ -156,7 +156,7 @@ where
     }
 }
 
-impl<U, M, P> crate::utils::asyncify::AsyncWrapper<U, P> for AsyncClient<U, M>
+impl<U, M, P> crate::utils::asyncify::UnblockingAsyncWrapper<U, P> for AsyncClient<U, M>
 where
     M: Mutex<Data = P>,
 {
