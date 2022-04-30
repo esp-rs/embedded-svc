@@ -91,7 +91,7 @@ pub mod asyncs {
             }
         }
 
-        pub fn blocking_unblocker() -> impl Unblocker + Clone {
+        pub fn blocking_unblocker() -> impl super::Unblocker + Clone {
             BlockingUnblocker
         }
     }
