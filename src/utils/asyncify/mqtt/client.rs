@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 
 use crate::errors::{self, Errors};
 use crate::mqtt::client::asyncs::{Client, Connection, Event, MessageId, Publish, QoS};
-use crate::mqtt::client::utils::ConnectionState;
+use crate::mqtt::client::utils::ConnStateGuard;
 use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asyncs::Unblocker;
 
@@ -269,52 +269,52 @@ impl<C> crate::utils::asyncify::AsyncWrapper<C> for AsyncClient<(), C> {
     }
 }
 
-pub enum AsyncState<R, E> {
+pub enum AsyncConnState<M, E> {
     None,
     Waiting(Waker),
-    Received(Result<Event<R>, E>),
+    Received(Result<Event<M>, E>),
 }
 
-impl<R, E> AsyncState<R, E> {
+impl<M, E> AsyncConnState<M, E> {
     pub fn new() -> Self {
         Self::None
     }
 }
 
-impl<R, E> Default for AsyncState<R, E> {
+impl<M, E> Default for AsyncConnState<M, E> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct NextFuture<'a, CV, R, E>(&'a ConnectionState<CV, AsyncState<R, E>>)
+pub struct NextFuture<'a, CV, M, E>(&'a ConnStateGuard<CV, AsyncConnState<M, E>>)
 where
     CV: Condvar + 'a,
-    R: 'a,
+    M: 'a,
     E: 'a;
 
-impl<'a, CV, R, E> Future for NextFuture<'a, CV, R, E>
+impl<'a, CV, M, E> Future for NextFuture<'a, CV, M, E>
 where
     CV: Condvar + 'a,
-    R: 'a,
+    M: 'a,
     E: 'a,
 {
-    type Output = Option<Result<Event<R>, E>>;
+    type Output = Option<Result<Event<M>, E>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.0.state.lock();
 
         if let Some(state) = &mut *state {
-            let pulled = mem::replace(state, AsyncState::None);
+            let pulled = mem::replace(state, AsyncConnState::None);
 
             match pulled {
-                AsyncState::Received(event) => {
+                AsyncConnState::Received(event) => {
                     self.0.state_changed.notify_all();
 
                     Poll::Ready(Some(event))
                 }
                 _ => {
-                    *state = AsyncState::Waiting(cx.waker().clone());
+                    *state = AsyncConnState::Waiting(cx.waker().clone());
                     self.0.state_changed.notify_all();
 
                     Poll::Pending
@@ -326,68 +326,64 @@ where
     }
 }
 
-pub struct AsyncPostbox<CV, R, E>(Arc<ConnectionState<CV, AsyncState<R, E>>>)
+pub struct AsyncPostbox<CV, M, E>(Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>)
 where
     CV: Condvar;
 
-impl<CV, R, E> AsyncPostbox<CV, R, E>
+impl<CV, M, E> AsyncPostbox<CV, M, E>
 where
     CV: Condvar,
-    R: Send,
+    M: Send,
     E: Send,
 {
-    pub fn new(connection_state: Arc<ConnectionState<CV, AsyncState<R, E>>>) -> Self {
+    pub fn new(connection_state: Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>) -> Self {
         Self(connection_state)
     }
 
-    pub fn post(&mut self, event: Result<Event<R>, E>) {
+    pub fn post(&mut self, event: Result<Event<M>, E>) {
         let mut state = self.0.state.lock();
 
         loop {
             if state.is_none() {
                 return;
-            } else if matches!(&*state, Some(AsyncState::Received(_))) {
+            } else if matches!(&*state, Some(AsyncConnState::Received(_))) {
                 state = self.0.state_changed.wait(state);
             } else {
                 break;
             }
         }
 
-        if let Some(AsyncState::Waiting(waker)) =
-            mem::replace(&mut *state, Some(AsyncState::Received(event)))
+        if let Some(AsyncConnState::Waiting(waker)) =
+            mem::replace(&mut *state, Some(AsyncConnState::Received(event)))
         {
             waker.wake();
         }
     }
 }
 
-pub struct AsyncConnection<CV, R, E>(Arc<ConnectionState<CV, AsyncState<R, E>>>)
+pub struct AsyncConnection<CV, M, E>(Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>)
 where
     CV: Condvar;
 
-impl<CV, R, E> AsyncConnection<CV, R, E>
+impl<CV, M, E> AsyncConnection<CV, M, E>
 where
     CV: Condvar,
 {
-    pub fn new(connection_state: Arc<ConnectionState<CV, AsyncState<R, E>>>) -> Self {
+    pub fn new(connection_state: Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>) -> Self {
         Self(connection_state)
     }
 }
 
-impl<CV, R, E> Drop for AsyncConnection<CV, R, E>
+impl<CV, M, E> Drop for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
 {
     fn drop(&mut self) {
-        log::info!("!!!!! About to drop the MQTT async connection");
-
         self.0.close();
-
-        log::info!("!!!!! The MQTT async connection dropped");
     }
 }
 
-impl<CV, R, E> Errors for AsyncConnection<CV, R, E>
+impl<CV, M, E> Errors for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
     E: errors::Error,
@@ -395,19 +391,19 @@ where
     type Error = E;
 }
 
-impl<CV, R, E> Connection for AsyncConnection<CV, R, E>
+impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
     CV: Condvar + Send + Sync + 'static,
-    <CV as MutexFamily>::Mutex<Option<AsyncState<R, E>>>: Sync + 'static,
+    <CV as MutexFamily>::Mutex<Option<AsyncConnState<M, E>>>: Sync + 'static,
     E: errors::Error,
 {
-    type Message = R;
+    type Message = M;
 
     type NextFuture<'a>
     where
         Self: 'a,
         CV: 'a,
-        R: 'a,
+        M: 'a,
     = NextFuture<'a, CV, Self::Message, Self::Error>;
 
     fn next(&mut self) -> Self::NextFuture<'_> {

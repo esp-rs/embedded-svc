@@ -1,5 +1,4 @@
 use core::fmt::{self, Debug, Display, Formatter};
-use core::marker::PhantomData;
 
 extern crate alloc;
 use alloc::borrow::Cow;
@@ -70,51 +69,71 @@ where
 pub trait Message {
     fn id(&self) -> MessageId;
 
-    fn topic(&self, topic_token: &TopicToken) -> Cow<'_, str>;
+    fn topic(&self) -> Option<Cow<'_, str>>;
 
     fn data(&self) -> Cow<'_, [u8]>;
 
     fn details(&self) -> &Details;
+}
 
-    fn retrieve_topic(&self) -> Option<Cow<'_, str>> {
-        let topic_token = match self.details() {
-            Details::Complete(topic_token) => Some(topic_token),
-            Details::InitialChunk(chunk) => Some(&chunk.topic_token),
-            _ => None,
-        };
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageImpl {
+    id: MessageId,
+    topic: Option<String>,
+    details: Details,
+    data: Vec<u8>,
+}
 
-        topic_token.map(|topic_token| self.topic(topic_token))
+impl MessageImpl {
+    pub fn new<M>(message: &M) -> Self
+    where
+        M: Message,
+    {
+        Self {
+            id: message.id(),
+            data: message.data().to_vec(),
+            topic: message.topic().map(|topic| topic.into_owned()),
+            details: message.details().clone(),
+        }
     }
 }
 
-#[derive(Debug)]
+impl Message for MessageImpl {
+    fn id(&self) -> MessageId {
+        self.id
+    }
+
+    fn topic(&self) -> Option<Cow<'_, str>> {
+        self.topic
+            .as_ref()
+            .map(|topic| Cow::Borrowed(topic.as_str()))
+    }
+
+    fn data(&self) -> Cow<'_, [u8]> {
+        Cow::Borrowed(&self.data)
+    }
+
+    fn details(&self) -> &Details {
+        &self.details
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Details {
-    Complete(TopicToken),
+    Complete,
     InitialChunk(InitialChunkData),
     SubsequentChunk(SubsequentChunkData),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InitialChunkData {
-    pub topic_token: TopicToken,
     pub total_data_size: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubsequentChunkData {
     pub current_data_offset: usize,
     pub total_data_size: usize,
-}
-
-#[derive(Debug)]
-pub struct TopicToken(PhantomData<*const ()>);
-
-impl TopicToken {
-    /// # Safety
-    /// This function is marked as unsafe because it is an internal API and is NOT supposed to be called by the user
-    pub unsafe fn new() -> Self {
-        Self(PhantomData)
-    }
 }
 
 pub trait Client: Errors {
@@ -238,9 +257,9 @@ pub mod utils {
         mutex::{Condvar, Mutex},
     };
 
-    use super::{Connection, Event};
+    use super::Event;
 
-    pub struct ConnectionState<CV, S>
+    pub struct ConnStateGuard<CV, S>
     where
         CV: Condvar,
     {
@@ -248,7 +267,7 @@ pub mod utils {
         pub state_changed: CV,
     }
 
-    impl<CV, S> ConnectionState<CV, S>
+    impl<CV, S> ConnStateGuard<CV, S>
     where
         CV: Condvar,
     {
@@ -260,7 +279,7 @@ pub mod utils {
         }
     }
 
-    impl<CV, S> ConnectionState<CV, S>
+    impl<CV, S> ConnStateGuard<CV, S>
     where
         CV: Condvar,
         S: Default,
@@ -270,7 +289,7 @@ pub mod utils {
         }
     }
 
-    impl<CV, S> ConnectionState<CV, S>
+    impl<CV, S> ConnStateGuard<CV, S>
     where
         CV: Condvar,
     {
@@ -282,7 +301,7 @@ pub mod utils {
         }
     }
 
-    impl<CV, S> Default for ConnectionState<CV, S>
+    impl<CV, S> Default for ConnStateGuard<CV, S>
     where
         CV: Condvar,
         S: Default,
@@ -292,21 +311,27 @@ pub mod utils {
         }
     }
 
-    pub struct SyncState<R, E>(Option<Result<Event<R>, E>>);
+    pub struct ConnState<M, E>(Option<Result<Event<M>, E>>);
 
-    pub struct SyncPostbox<CV, R, E>(Arc<ConnectionState<CV, SyncState<R, E>>>)
+    impl<M, E> Default for ConnState<M, E> {
+        fn default() -> Self {
+            Self(Default::default())
+        }
+    }
+
+    pub struct Postbox<CV, M, E>(Arc<ConnStateGuard<CV, ConnState<M, E>>>)
     where
         CV: Condvar;
 
-    impl<CV, R, E> SyncPostbox<CV, R, E>
+    impl<CV, M, E> Postbox<CV, M, E>
     where
         CV: Condvar,
     {
-        pub fn new(connection_state: Arc<ConnectionState<CV, SyncState<R, E>>>) -> Self {
+        pub fn new(connection_state: Arc<ConnStateGuard<CV, ConnState<M, E>>>) -> Self {
             Self(connection_state)
         }
 
-        pub fn post(&mut self, event: Result<Event<R>, E>) {
+        pub fn post(&mut self, event: Result<Event<M>, E>) {
             let mut state = self.0.state.lock();
 
             loop {
@@ -321,26 +346,26 @@ pub mod utils {
                 }
             }
 
-            *state = Some(SyncState(Some(event)));
+            *state = Some(ConnState(Some(event)));
             self.0.state_changed.notify_all();
         }
     }
 
-    pub struct SyncConnection<CV, R, E>(Arc<ConnectionState<CV, SyncState<R, E>>>)
+    pub struct Connection<CV, M, E>(Arc<ConnStateGuard<CV, ConnState<M, E>>>)
     where
         CV: Condvar;
 
-    impl<CV, R, E> SyncConnection<CV, R, E>
+    impl<CV, M, E> Connection<CV, M, E>
     where
         CV: Condvar,
         E: errors::Error,
     {
-        pub fn new(connection_state: Arc<ConnectionState<CV, SyncState<R, E>>>) -> Self {
+        pub fn new(connection_state: Arc<ConnStateGuard<CV, ConnState<M, E>>>) -> Self {
             Self(connection_state)
         }
     }
 
-    impl<CV, R, E> errors::Errors for SyncConnection<CV, R, E>
+    impl<CV, M, E> errors::Errors for Connection<CV, M, E>
     where
         CV: Condvar,
         E: errors::Error,
@@ -348,26 +373,26 @@ pub mod utils {
         type Error = E;
     }
 
-    impl<CV, R, E> Connection for SyncConnection<CV, R, E>
+    impl<CV, M, E> super::Connection for Connection<CV, M, E>
     where
         CV: Condvar,
         E: errors::Error,
     {
-        type Message = R;
+        type Message = M;
 
         fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>> {
             let mut state = self.0.state.lock();
 
             loop {
                 if let Some(data) = &mut *state {
-                    let pulled = mem::replace(data, SyncState(None));
+                    let pulled = mem::replace(data, ConnState(None));
 
                     match pulled {
-                        SyncState(Some(event)) => {
+                        ConnState(Some(event)) => {
                             self.0.state_changed.notify_all();
                             return Some(event);
                         }
-                        SyncState(None) => state = self.0.state_changed.wait(state),
+                        ConnState(None) => state = self.0.state_changed.wait(state),
                     }
                 } else {
                     return None;
