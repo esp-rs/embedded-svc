@@ -1,6 +1,9 @@
 #[cfg(feature = "experimental")]
 pub mod asyncs {
-    use core::future::{ready, Future, Ready};
+    use core::future::Future;
+    use core::marker::PhantomData;
+    use core::mem;
+    use core::task::Poll;
 
     pub trait Blocker<'a> {
         fn block_on<F>(&self, f: F) -> F::Output
@@ -22,18 +25,58 @@ pub mod asyncs {
     #[derive(Clone)]
     struct BlockingUnblocker;
 
+    pub struct BlockingFuture<T> {
+        // TODO: Need to box or else we get rustc error:
+        // "type parameter `F` is part of concrete type but not used in parameter list for the `impl Trait` type alias"
+        computation: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
+        _result: PhantomData<fn() -> T>,
+    }
+
+    impl<T> BlockingFuture<T> {
+        pub fn new<F>(computation: F) -> Self
+        where
+            F: FnOnce() -> T + Send + 'static,
+            T: Send + 'static,
+        {
+            Self {
+                computation: Some(Box::new(computation)),
+                _result: PhantomData,
+            }
+        }
+    }
+
+    impl<T> Future for BlockingFuture<T>
+    where
+        T: Send,
+    {
+        type Output = T;
+
+        fn poll(
+            mut self: core::pin::Pin<&mut Self>,
+            _cx: &mut core::task::Context<'_>,
+        ) -> Poll<Self::Output> {
+            let computation = mem::replace(&mut self.computation, None);
+
+            if let Some(computation) = computation {
+                Poll::Ready((computation)())
+            } else {
+                unreachable!()
+            }
+        }
+    }
+
     impl Unblocker for BlockingUnblocker {
         type UnblockFuture<T>
         where
             T: Send,
-        = Ready<T>;
+        = BlockingFuture<T>;
 
         fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
         where
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static,
         {
-            ready(f())
+            BlockingFuture::new(f)
         }
     }
 
