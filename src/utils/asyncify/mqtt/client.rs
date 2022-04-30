@@ -15,27 +15,85 @@ use crate::mqtt::client::utils::ConnectionState;
 use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asyncs::Unblocker;
 
-fn enqueue_publish<'a, E>(
-    enqueue: &'a mut E,
+// fn enqueue_publish<'a, E>(
+//     enqueue: &'a mut E,
+//     topic: Cow<'a, str>,
+//     qos: QoS,
+//     retain: bool,
+//     payload: Cow<'a, [u8]>,
+// ) -> impl Future<Output = Result<MessageId, E::Error>> + 'a
+// where
+//     E: crate::mqtt::client::Enqueue + 'a,
+// {
+//     async move { enqueue.enqueue(topic, qos, retain, payload) }
+// }
+
+fn publish_publish<'a, P>(
+    publish: &'a mut P,
     topic: Cow<'a, str>,
     qos: QoS,
     retain: bool,
     payload: Cow<'a, [u8]>,
-) -> impl Future<Output = Result<MessageId, E::Error>> + 'a
+) -> impl Future<Output = Result<MessageId, P::Error>> + 'a
 where
-    E: crate::mqtt::client::Enqueue + 'a,
+    P: crate::mqtt::client::Publish + 'a,
 {
-    async move { enqueue.enqueue(topic, qos, retain, payload) }
+    async move { publish.publish(topic, qos, retain, payload) }
 }
 
-impl<E> Publish for E
+fn client_subscribe<'a, C>(
+    client: &'a mut C,
+    topic: Cow<'a, str>,
+    qos: QoS,
+) -> impl Future<Output = Result<MessageId, C::Error>> + 'a
 where
-    E: crate::mqtt::client::Enqueue + Send,
+    C: crate::mqtt::client::Client + 'a,
+{
+    async move { client.subscribe(topic, qos) }
+}
+
+fn client_unsubscribe<'a, C>(
+    client: &'a mut C,
+    topic: Cow<'a, str>,
+) -> impl Future<Output = Result<MessageId, C::Error>> + 'a
+where
+    C: crate::mqtt::client::Client + 'a,
+{
+    async move { client.unsubscribe(topic) }
+}
+
+// impl<E> Publish for E
+// where
+//     E: crate::mqtt::client::Enqueue + Send,
+// {
+//     type PublishFuture<'a>
+//     where
+//         Self: 'a,
+//     = impl Future<Output = Result<MessageId, E::Error>> + Send + 'a;
+
+//     fn publish<'a, S, V>(
+//         &'a mut self,
+//         topic: S,
+//         qos: QoS,
+//         retain: bool,
+//         payload: V,
+//     ) -> Self::PublishFuture<'a>
+//     where
+//         S: Into<Cow<'a, str>>,
+//         V: Into<Cow<'a, [u8]>>,
+//     {
+//         enqueue_publish(self, topic.into(), qos, retain, payload.into())
+//     }
+// }
+
+impl<P> Publish for P
+where
+    P: crate::mqtt::client::Publish + Send,
 {
     type PublishFuture<'a>
     where
         Self: 'a,
-    = impl Future<Output = Result<MessageId, E::Error>> + Send + 'a;
+    = impl Future<Output = Result<MessageId, P::Error>> + Send + 'a;
 
     fn publish<'a, S, V>(
         &'a mut self,
@@ -48,7 +106,36 @@ where
         S: Into<Cow<'a, str>>,
         V: Into<Cow<'a, [u8]>>,
     {
-        enqueue_publish(self, topic.into(), qos, retain, payload.into())
+        publish_publish(self, topic.into(), qos, retain, payload.into())
+    }
+}
+
+impl<C> Client for C
+where
+    C: crate::mqtt::client::Client + Send,
+{
+    type SubscribeFuture<'a>
+    where
+        Self: 'a,
+    = impl Future<Output = Result<MessageId, C::Error>> + Send + 'a;
+
+    type UnsubscribeFuture<'a>
+    where
+        Self: 'a,
+    = impl Future<Output = Result<MessageId, C::Error>> + Send + 'a;
+
+    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Self::SubscribeFuture<'a>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        client_subscribe(self, topic.into(), qos)
+    }
+
+    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
+    where
+        S: Into<Cow<'a, str>>,
+    {
+        client_unsubscribe(self, topic.into())
     }
 }
 
@@ -69,16 +156,6 @@ where
     C: Errors,
 {
     type Error = C::Error;
-}
-
-impl<U, M, C> Clone for AsyncClient<U, M>
-where
-    U: Clone,
-    M: Mutex<Data = C>,
-{
-    fn clone(&self) -> Self {
-        Self(self.0.clone(), self.1.clone())
-    }
 }
 
 impl<U, M, C> Client for AsyncClient<U, M>
