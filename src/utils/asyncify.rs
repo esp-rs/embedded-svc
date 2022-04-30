@@ -33,14 +33,14 @@ pub trait UnblockingAsyncWrapper<U, S> {
 pub trait UnblockingAsyncify {
     type AsyncWrapper<U, S>: UnblockingAsyncWrapper<U, S>;
 
-    fn into_async_with_unblocker<U>(self, unblocker: U) -> Self::AsyncWrapper<U, Self>
+    fn unblock_into_async<U>(self, unblocker: U) -> Self::AsyncWrapper<U, Self>
     where
         Self: Sized,
     {
         Self::AsyncWrapper::new(unblocker, self)
     }
 
-    fn as_async_with_unblocker<U>(&mut self, unblocker: U) -> Self::AsyncWrapper<U, &mut Self> {
+    fn unblock_as_async<U>(&mut self, unblocker: U) -> Self::AsyncWrapper<U, &mut Self> {
         Self::AsyncWrapper::new(unblocker, self)
     }
 }
