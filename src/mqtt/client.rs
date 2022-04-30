@@ -2,6 +2,8 @@ use core::fmt::{self, Debug, Display, Formatter};
 
 extern crate alloc;
 use alloc::borrow::Cow;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
