@@ -1,9 +1,6 @@
 #[cfg(feature = "experimental")]
 pub mod asyncs {
     use core::future::Future;
-    use core::marker::PhantomData;
-    use core::mem;
-    use core::task::Poll;
 
     pub trait Blocker<'a> {
         fn block_on<F>(&self, f: F) -> F::Output
@@ -27,6 +24,11 @@ pub mod asyncs {
 
     #[cfg(feature = "alloc")]
     mod utils {
+        use core::future::Future;
+        use core::marker::PhantomData;
+        use core::mem;
+        use core::task::Poll;
+
         extern crate alloc;
 
         use alloc::boxed::Box;
@@ -74,7 +76,7 @@ pub mod asyncs {
             }
         }
 
-        impl Unblocker for BlockingUnblocker {
+        impl super::Unblocker for BlockingUnblocker {
             type UnblockFuture<T>
             where
                 T: Send,
