@@ -248,7 +248,7 @@ where
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod utils {
     use core::mem;
 

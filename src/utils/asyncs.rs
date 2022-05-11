@@ -3,8 +3,13 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 pub mod channel;
-#[cfg(all(feature = "isr-async-executor", feature = "alloc"))]
+#[cfg(all(
+    feature = "isr-async-executor",
+    feature = "alloc",
+    target_has_atomic = "ptr"
+))]
 pub mod executor;
+pub mod select;
 pub mod signal;
 
 /// Yield from the current task once, allowing other tasks to run.

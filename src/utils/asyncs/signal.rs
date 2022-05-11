@@ -3,11 +3,11 @@
 use core::mem;
 use core::task::{Context, Poll, Waker};
 
-use futures::task::AtomicWaker;
-
 use crate::mutex::Mutex;
 use crate::signal::asyncs::Signal;
-use crate::utils::atomic_swap::AtomicSwap;
+
+#[cfg(target_has_atomic = "ptr")]
+pub use atomic_signal::*;
 
 /// Synchronization primitive. Allows creating awaitable signals that may be passed between tasks.
 /// For a simple use-case where the receiver is only ever interested in the latest value of
@@ -109,73 +109,84 @@ where
     }
 }
 
-pub struct AtomicSignal<S, T>
-where
-    S: AtomicSwap<Data = Option<T>>,
-{
-    waker: AtomicWaker,
-    data: S,
-}
+#[cfg(target_has_atomic = "ptr")]
+mod atomic_signal {
+    use core::task::{Context, Poll};
 
-impl<S, T> AtomicSignal<S, T>
-where
-    S: AtomicSwap<Data = Option<T>>,
-{
-    pub fn new() -> Self {
-        Self {
-            data: S::new(None),
-            waker: AtomicWaker::new(),
+    use futures::task::AtomicWaker;
+
+    use crate::signal::asyncs::Signal;
+    use crate::utils::atomic_swap::AtomicSwap;
+
+    pub struct AtomicSignal<S, T>
+    where
+        S: AtomicSwap<Data = Option<T>>,
+    {
+        waker: AtomicWaker,
+        data: S,
+    }
+
+    impl<S, T> AtomicSignal<S, T>
+    where
+        S: AtomicSwap<Data = Option<T>>,
+    {
+        pub fn new() -> Self {
+            Self {
+                data: S::new(None),
+                waker: AtomicWaker::new(),
+            }
+        }
+    }
+
+    impl<S, T> Default for AtomicSignal<S, T>
+    where
+        S: AtomicSwap<Data = Option<T>>,
+    {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl<S, T> Signal for AtomicSignal<S, T>
+    where
+        S: AtomicSwap<Data = Option<T>>,
+    {
+        type Data = T;
+
+        fn new() -> Self {
+            Default::default()
+        }
+
+        fn reset(&self) {
+            self.data.swap(None);
+            self.waker.take();
+        }
+
+        fn signal(&self, data: T) {
+            self.data.swap(Some(data));
+            self.waker.wake();
+        }
+
+        fn poll_wait(&self, cx: &mut Context<'_>) -> Poll<T> {
+            self.waker.register(cx.waker());
+
+            if let Some(data) = self.data.swap(None) {
+                Poll::Ready(data)
+            } else {
+                Poll::Pending
+            }
+        }
+
+        fn try_get(&self) -> Option<Self::Data> {
+            let data = self.data.swap(None);
+            self.waker.take();
+
+            data
         }
     }
 }
 
-impl<S, T> Default for AtomicSignal<S, T>
-where
-    S: AtomicSwap<Data = Option<T>>,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<S, T> Signal for AtomicSignal<S, T>
-where
-    S: AtomicSwap<Data = Option<T>>,
-{
-    type Data = T;
-
-    fn new() -> Self {
-        Default::default()
-    }
-
-    fn reset(&self) {
-        self.data.swap(None);
-        self.waker.take();
-    }
-
-    fn signal(&self, data: T) {
-        self.data.swap(Some(data));
-        self.waker.wake();
-    }
-
-    fn poll_wait(&self, cx: &mut Context<'_>) -> Poll<T> {
-        self.waker.register(cx.waker());
-
-        if let Some(data) = self.data.swap(None) {
-            Poll::Ready(data)
-        } else {
-            Poll::Pending
-        }
-    }
-
-    fn try_get(&self) -> Option<Self::Data> {
-        let data = self.data.swap(None);
-        self.waker.take();
-
-        data
-    }
-}
-
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod adapt {
     use core::convert::Infallible;
     use core::future::Future;

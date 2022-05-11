@@ -3,6 +3,8 @@ use alloc::borrow::Cow;
 use alloc::string::ToString;
 
 pub mod client;
+
+#[cfg(target_has_atomic = "ptr")] // TODO: Lift in future
 pub mod server;
 
 pub mod status {

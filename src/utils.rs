@@ -14,7 +14,12 @@ pub mod asyncs;
 #[cfg(all(feature = "experimental", feature = "alloc", feature = "use_serde"))]
 pub mod ghota;
 
-#[cfg(all(feature = "experimental", feature = "alloc", feature = "use_serde"))]
+#[cfg(all(
+    feature = "experimental",
+    feature = "alloc",
+    target_has_atomic = "ptr",
+    feature = "use_serde"
+))]
 pub mod rest;
 
 pub mod role;
