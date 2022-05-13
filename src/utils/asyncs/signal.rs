@@ -186,48 +186,35 @@ mod atomic_signal {
     }
 }
 
-#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod adapt {
     use core::convert::Infallible;
     use core::future::Future;
-
-    extern crate alloc;
-    use alloc::sync::Arc;
 
     use crate::channel::asyncs::{Receiver, Sender};
     use crate::errors::Errors;
     use crate::signal::asyncs::Signal;
 
-    struct SignalSender<S, T>(Arc<S>)
+    struct SignalSender<'a, S, T>(&'a S)
     where
         S: Signal<Data = T>;
 
-    impl<S, T> SignalSender<S, T>
+    impl<'a, S, T> SignalSender<'a, S, T>
     where
         S: Signal<Data = T>,
     {
-        pub fn new(signal: Arc<S>) -> Self {
+        pub fn new(signal: &'a S) -> Self {
             Self(signal)
         }
     }
 
-    impl<S, T> Clone for SignalSender<S, T>
-    where
-        S: Signal<Data = T>,
-    {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl<S, T> Errors for SignalSender<S, T>
+    impl<'a, S, T> Errors for SignalSender<'a, S, T>
     where
         S: Signal<Data = T>,
     {
         type Error = Infallible;
     }
 
-    impl<S, T> Sender for SignalSender<S, T>
+    impl<'s, S, T> Sender for SignalSender<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync,
         T: Send,
@@ -238,6 +225,7 @@ pub mod adapt {
         where
             T: 'a,
             S: 'a,
+            Self: 'a,
         = impl Future<Output = Result<(), Self::Error>> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
@@ -251,36 +239,27 @@ pub mod adapt {
         }
     }
 
-    struct SignalReceiver<S, T>(Arc<S>)
+    struct SignalReceiver<'a, S, T>(&'a S)
     where
         S: Signal<Data = T>;
 
-    impl<S, T> SignalReceiver<S, T>
+    impl<'a, S, T> SignalReceiver<'a, S, T>
     where
         S: Signal<Data = T>,
     {
-        pub fn new(signal: Arc<S>) -> Self {
+        pub fn new(signal: &'a S) -> Self {
             Self(signal)
         }
     }
 
-    impl<S, T> Clone for SignalReceiver<S, T>
-    where
-        S: Signal<Data = T>,
-    {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl<S, T> Errors for SignalReceiver<S, T>
+    impl<'a, S, T> Errors for SignalReceiver<'a, S, T>
     where
         S: Signal<Data = T>,
     {
         type Error = Infallible;
     }
 
-    impl<S, T> Receiver for SignalReceiver<S, T>
+    impl<'s, S, T> Receiver for SignalReceiver<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync,
         T: Send,
@@ -291,6 +270,7 @@ pub mod adapt {
         where
             T: 'a,
             S: 'a,
+            Self: 'a,
         = impl Future<Output = Result<T, Self::Error>> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
@@ -302,18 +282,18 @@ pub mod adapt {
         }
     }
 
-    pub fn into_sender<S, T>(signal: Arc<S>) -> impl Sender<Data = T>
+    pub fn as_sender<'a, S, T>(signal: &'a S) -> impl Sender<Data = T> + 'a
     where
         S: Signal<Data = T> + Send + Sync,
-        T: Send,
+        T: Send + 'a,
     {
         SignalSender::new(signal)
     }
 
-    pub fn into_receiver<S, T>(signal: Arc<S>) -> impl Receiver<Data = T>
+    pub fn as_receiver<'a, S, T>(signal: &'a S) -> impl Receiver<Data = T> + 'a
     where
         S: Signal<Data = T> + Send + Sync,
-        T: Send,
+        T: Send + 'a,
     {
         SignalReceiver::new(signal)
     }

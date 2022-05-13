@@ -9,6 +9,8 @@ pub mod channel;
     target_has_atomic = "ptr"
 ))]
 pub mod executor;
+#[cfg(target_has_atomic = "8")]
+pub mod forever;
 pub mod select;
 pub mod signal;
 
