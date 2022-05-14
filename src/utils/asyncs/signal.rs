@@ -300,15 +300,12 @@ pub mod adapt {
 }
 
 #[cfg(feature = "std")]
-pub struct MutexSignalFamily;
-
-#[cfg(feature = "std")]
-impl crate::signal::asyncs::SignalFamily for MutexSignalFamily {
+impl crate::signal::asyncs::SignalFamily for std::sync::Condvar {
     type Signal<T> = MutexSignal<std::sync::Mutex<State<T>>, T>;
 }
 
 #[cfg(feature = "std")]
-impl crate::signal::asyncs::SendSyncSignalFamily for MutexSignalFamily {
+impl crate::signal::asyncs::SendSyncSignalFamily for std::sync::Condvar {
     type Signal<T>
     where
         T: Send,
