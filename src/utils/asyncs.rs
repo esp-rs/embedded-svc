@@ -3,11 +3,6 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 
 pub mod channel;
-#[cfg(all(
-    feature = "isr-async-executor",
-    feature = "alloc",
-    target_has_atomic = "ptr"
-))]
 pub mod executor;
 #[cfg(target_has_atomic = "8")]
 pub mod forever;
