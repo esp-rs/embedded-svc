@@ -96,6 +96,15 @@ where
         }
     }
 
+    fn is_set(&self) -> bool {
+        let state = self.0.lock();
+
+        match &*state {
+            State::Signaled(_) => true,
+            _ => false,
+        }
+    }
+
     fn try_get(&self) -> Option<Self::Data> {
         let mut state = self.0.lock();
 
@@ -150,6 +159,7 @@ mod atomic_signal {
     impl<S, T> Signal for AtomicSignal<S, T>
     where
         S: AtomicSwap<Data = Option<T>>,
+        T: Copy,
     {
         type Data = T;
 
@@ -175,6 +185,10 @@ mod atomic_signal {
             } else {
                 Poll::Pending
             }
+        }
+
+        fn is_set(&self) -> bool {
+            self.data.load().is_some()
         }
 
         fn try_get(&self) -> Option<Self::Data> {

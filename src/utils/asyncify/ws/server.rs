@@ -354,12 +354,13 @@ where
             info!("New WS connection {:?}", session);
 
             if !self.process_accept(session, sender) {
-                return sender.send(FrameType::Close, None)
+                return sender.send(FrameType::Close, None);
             }
         } else if receiver.is_closed() {
             let session = receiver.session();
 
-            if let Some(index) = self.connections
+            if let Some(index) = self
+                .connections
                 .iter()
                 .enumerate()
                 .find_map(|(index, conn)| (conn.session == session).then(|| index))

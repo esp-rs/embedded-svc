@@ -1,8 +1,9 @@
 pub mod adapt {
-    use core::future::Future;
+    use core::convert::Infallible;
+    use core::future::{pending, ready, Future, Pending, Ready};
     use core::marker::PhantomData;
 
-    use crate::errors::{Errors, EitherError};
+    use crate::errors::{EitherError, Errors};
 
     use crate::channel::asyncs::{Receiver, Sender};
     use crate::utils::asyncs::select::{select, Either};
@@ -13,7 +14,7 @@ pub mod adapt {
         P: Send,
         F: Fn(P) -> Option<S::Data> + Send + Sync,
     {
-        SenderAdapter::new(sender, adapter)
+        Adapter::new(sender, adapter)
     }
 
     pub fn receiver<R, P, F>(receiver: R, adapter: F) -> impl Receiver<Data = P>
@@ -22,39 +23,47 @@ pub mod adapt {
         P: Send,
         F: Fn(R::Data) -> Option<P> + Send + Sync,
     {
-        ReceiverAdapter::new(receiver, adapter)
+        Adapter::new(receiver, adapter)
     }
 
-    struct SenderAdapter<S, F, P> {
-        inner_sender: S,
+    pub fn dummy<T: Send>() -> impl Sender<Data = T> + Receiver<Data = T> {
+        Dummy(PhantomData)
+    }
+
+    pub fn both<A, B>(first: A, second: B) -> Both<A, B> {
+        Both::new(first, second)
+    }
+
+    struct Adapter<I, F, T> {
+        inner: I,
         adapter: F,
-        _input: PhantomData<fn() -> P>,
+        _input: PhantomData<fn() -> T>,
     }
 
-    impl<S, F, P> SenderAdapter<S, F, P> {
-        pub fn new(inner_sender: S, adapter: F) -> Self {
+    impl<I, F, T> Adapter<I, F, T> {
+        pub fn new(inner: I, adapter: F) -> Self {
             Self {
-                inner_sender,
+                inner,
                 adapter,
                 _input: PhantomData,
             }
         }
     }
 
-    impl<S, F, P> Errors for SenderAdapter<S, F, P>
+    impl<I, F, T> Errors for Adapter<I, F, T>
     where
-        S: Errors,
+        I: Errors,
     {
-        type Error = S::Error;
+        type Error = I::Error;
     }
 
-    impl<S, F, P> Sender for SenderAdapter<S, F, P>
+    impl<I, F, T> Sender for Adapter<I, F, T>
     where
-        S: Sender + Send + 'static,
-        F: Fn(P) -> Option<S::Data> + Send + Sync,
-        P: Send,
+        I: Sender + Send + 'static,
+        F: Fn(T) -> Option<I::Data> + Send + Sync,
+        T: Send,
     {
-        type Data = P;
+        type Data = T;
 
         type SendFuture<'a>
         where
@@ -62,43 +71,20 @@ pub mod adapt {
         = impl Future<Output = Result<(), Self::Error>> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
-            let inner_sender = &mut self.inner_sender;
+            let inner = &mut self.inner;
             let adapter = &self.adapter;
 
-            send(inner_sender, value, adapter)
+            send(inner, value, adapter)
         }
     }
 
-    struct ReceiverAdapter<R, F, P> {
-        inner_receiver: R,
-        adapter: F,
-        _output: PhantomData<fn() -> P>,
-    }
-
-    impl<R, F, P> ReceiverAdapter<R, F, P> {
-        pub fn new(inner_receiver: R, adapter: F) -> Self {
-            Self {
-                inner_receiver,
-                adapter,
-                _output: PhantomData,
-            }
-        }
-    }
-
-    impl<R, F, P> Errors for ReceiverAdapter<R, F, P>
+    impl<I, F, T> Receiver for Adapter<I, F, T>
     where
-        R: Errors,
+        I: Receiver + Send + 'static,
+        F: Fn(I::Data) -> Option<T> + Send + Sync,
+        T: Send,
     {
-        type Error = R::Error;
-    }
-
-    impl<R, F, P> Receiver for ReceiverAdapter<R, F, P>
-    where
-        R: Receiver + Send + 'static,
-        F: Fn(R::Data) -> Option<P> + Send + Sync,
-        P: Send,
-    {
-        type Data = P;
+        type Data = T;
 
         type RecvFuture<'a>
         where
@@ -106,15 +92,11 @@ pub mod adapt {
         = impl Future<Output = Result<Self::Data, Self::Error>> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
-            let inner_receiver = &mut self.inner_receiver;
+            let inner = &mut self.inner;
             let adapter = &self.adapter;
 
-            recv(inner_receiver, adapter)
+            recv(inner, adapter)
         }
-    }
-
-    pub fn both<A, B>(first: A, second: B) -> Both<A, B> {
-        Both::new(first, second)
     }
 
     pub struct Both<A, B> {
@@ -124,10 +106,7 @@ pub mod adapt {
 
     impl<A, B> Both<A, B> {
         pub fn new(first: A, second: B) -> Self {
-            Self {
-                first,
-                second,
-            }
+            Self { first, second }
         }
 
         pub fn and<T>(self, third: T) -> Both<Self, T> {
@@ -157,9 +136,7 @@ pub mod adapt {
         = impl Future<Output = Result<(), Self::Error>> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
-            async move {
-                send_both(&mut self.first, &mut self.second, value).await
-            }
+            async move { send_both(&mut self.first, &mut self.second, value).await }
         }
     }
 
@@ -178,9 +155,45 @@ pub mod adapt {
         = impl Future<Output = Result<Self::Data, Self::Error>> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
-            async move {
-                recv_both(&mut self.first, &mut self.second).await
-            }
+            async move { recv_both(&mut self.first, &mut self.second).await }
+        }
+    }
+
+    struct Dummy<T>(PhantomData<fn() -> T>);
+
+    impl<T> Errors for Dummy<T> {
+        type Error = Infallible;
+    }
+
+    impl<T> Sender for Dummy<T>
+    where
+        T: Send,
+    {
+        type Data = T;
+
+        type SendFuture<'a>
+        where
+            Self: 'a,
+        = Ready<Result<(), Self::Error>>;
+
+        fn send(&mut self, _value: Self::Data) -> Self::SendFuture<'_> {
+            ready(Ok(()))
+        }
+    }
+
+    impl<T> Receiver for Dummy<T>
+    where
+        T: Send,
+    {
+        type Data = T;
+
+        type RecvFuture<'a>
+        where
+            Self: 'a,
+        = Pending<Result<Self::Data, Self::Error>>;
+
+        fn recv(&mut self) -> Self::RecvFuture<'_> {
+            pending()
         }
     }
 
@@ -213,19 +226,29 @@ pub mod adapt {
         }
     }
 
-    pub async fn send_both<S1, S2>(sender1: &mut S1, sender2: &mut S2, value: S1::Data) -> Result<(), EitherError<S1::Error, S2::Error>>
+    pub async fn send_both<S1, S2>(
+        sender1: &mut S1,
+        sender2: &mut S2,
+        value: S1::Data,
+    ) -> Result<(), EitherError<S1::Error, S2::Error>>
     where
         S1: Sender + Errors,
         S1::Data: Send + Clone,
         S2: Sender<Data = S1::Data> + Errors,
     {
-        sender1.send(value.clone()).await.map_err(EitherError::First)?;
+        sender1
+            .send(value.clone())
+            .await
+            .map_err(EitherError::First)?;
         sender2.send(value).await.map_err(EitherError::Second)?;
 
         Ok(())
     }
 
-    pub async fn recv_both<R1, R2>(receiver1: &mut R1, receiver2: &mut R2) -> Result<R1::Data, EitherError<R1::Error, R2::Error>>
+    pub async fn recv_both<R1, R2>(
+        receiver1: &mut R1,
+        receiver2: &mut R2,
+    ) -> Result<R1::Data, EitherError<R1::Error, R2::Error>>
     where
         R1: Receiver + Errors,
         R2: Receiver<Data = R1::Data> + Errors,
