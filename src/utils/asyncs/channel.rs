@@ -8,40 +8,26 @@ pub mod adapt {
     use crate::channel::asyncs::{Receiver, Sender};
     use crate::utils::asyncs::select::{select, Either};
 
-    pub fn sender<S, P, F>(sender: S, adapter: F) -> impl Sender<Data = P>
-    where
-        S: Sender + Send + 'static,
-        P: Send,
-        F: Fn(P) -> Option<S::Data> + Send + Sync,
-    {
-        Adapter::new(sender, adapter)
+    pub fn adapt<C, T, F>(channel: C, adapter: F) -> AdapterChannel<C, F, T> {
+        AdapterChannel::new(channel, adapter)
     }
 
-    pub fn receiver<R, P, F>(receiver: R, adapter: F) -> impl Receiver<Data = P>
-    where
-        R: Receiver + Send + 'static,
-        P: Send,
-        F: Fn(R::Data) -> Option<P> + Send + Sync,
-    {
-        Adapter::new(receiver, adapter)
+    pub fn dummy<T: Send>() -> DummyChannel<T> {
+        DummyChannel::new()
     }
 
-    pub fn dummy<T: Send>() -> impl Sender<Data = T> + Receiver<Data = T> {
-        Dummy(PhantomData)
+    pub fn merge<A, B>(first: A, second: B) -> MergedChannel<A, B> {
+        MergedChannel::new(first, second)
     }
 
-    pub fn both<A, B>(first: A, second: B) -> Both<A, B> {
-        Both::new(first, second)
-    }
-
-    struct Adapter<I, F, T> {
-        inner: I,
+    pub struct AdapterChannel<C, F, T> {
+        inner: C,
         adapter: F,
         _input: PhantomData<fn() -> T>,
     }
 
-    impl<I, F, T> Adapter<I, F, T> {
-        pub fn new(inner: I, adapter: F) -> Self {
+    impl<C, F, T> AdapterChannel<C, F, T> {
+        pub fn new(inner: C, adapter: F) -> Self {
             Self {
                 inner,
                 adapter,
@@ -50,17 +36,17 @@ pub mod adapt {
         }
     }
 
-    impl<I, F, T> Errors for Adapter<I, F, T>
+    impl<C, F, T> Errors for AdapterChannel<C, F, T>
     where
-        I: Errors,
+        C: Errors,
     {
-        type Error = I::Error;
+        type Error = C::Error;
     }
 
-    impl<I, F, T> Sender for Adapter<I, F, T>
+    impl<C, F, T> Sender for AdapterChannel<C, F, T>
     where
-        I: Sender + Send + 'static,
-        F: Fn(T) -> Option<I::Data> + Send + Sync,
+        C: Sender + Send + 'static,
+        F: Fn(T) -> Option<C::Data> + Send + Sync,
         T: Send,
     {
         type Data = T;
@@ -78,10 +64,10 @@ pub mod adapt {
         }
     }
 
-    impl<I, F, T> Receiver for Adapter<I, F, T>
+    impl<C, F, T> Receiver for AdapterChannel<C, F, T>
     where
-        I: Receiver + Send + 'static,
-        F: Fn(I::Data) -> Option<T> + Send + Sync,
+        C: Receiver + Send + 'static,
+        F: Fn(C::Data) -> Option<T> + Send + Sync,
         T: Send,
     {
         type Data = T;
@@ -99,22 +85,22 @@ pub mod adapt {
         }
     }
 
-    pub struct Both<A, B> {
+    pub struct MergedChannel<A, B> {
         first: A,
         second: B,
     }
 
-    impl<A, B> Both<A, B> {
+    impl<A, B> MergedChannel<A, B> {
         pub fn new(first: A, second: B) -> Self {
             Self { first, second }
         }
 
-        pub fn and<T>(self, third: T) -> Both<Self, T> {
-            Both::new(self, third)
+        pub fn and<T>(self, third: T) -> MergedChannel<Self, T> {
+            MergedChannel::new(self, third)
         }
     }
 
-    impl<A, B> Errors for Both<A, B>
+    impl<A, B> Errors for MergedChannel<A, B>
     where
         A: Errors,
         B: Errors,
@@ -122,7 +108,7 @@ pub mod adapt {
         type Error = EitherError<A::Error, B::Error>;
     }
 
-    impl<A, B> Sender for Both<A, B>
+    impl<A, B> Sender for MergedChannel<A, B>
     where
         A: Sender + Send + 'static,
         A::Data: Send + Sync + Clone,
@@ -140,7 +126,7 @@ pub mod adapt {
         }
     }
 
-    impl<A, B> Receiver for Both<A, B>
+    impl<A, B> Receiver for MergedChannel<A, B>
     where
         A: Receiver + Send + 'static,
         A: Errors,
@@ -159,13 +145,19 @@ pub mod adapt {
         }
     }
 
-    struct Dummy<T>(PhantomData<fn() -> T>);
+    pub struct DummyChannel<T>(PhantomData<fn() -> T>);
 
-    impl<T> Errors for Dummy<T> {
+    impl<T> DummyChannel<T> {
+        pub fn new() -> Self {
+            Self(PhantomData)
+        }
+    }
+
+    impl<T> Errors for DummyChannel<T> {
         type Error = Infallible;
     }
 
-    impl<T> Sender for Dummy<T>
+    impl<T> Sender for DummyChannel<T>
     where
         T: Send,
     {
@@ -181,7 +173,7 @@ pub mod adapt {
         }
     }
 
-    impl<T> Receiver for Dummy<T>
+    impl<T> Receiver for DummyChannel<T>
     where
         T: Send,
     {

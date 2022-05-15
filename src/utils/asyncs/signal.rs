@@ -208,11 +208,19 @@ pub mod adapt {
     use crate::errors::Errors;
     use crate::signal::asyncs::Signal;
 
-    struct SignalSender<'a, S, T>(&'a S)
+    pub fn as_channel<S, T>(signal: &'static S) -> SignalChannel<'static, S, T>
+    where
+        S: Signal<Data = T> + Send + Sync,
+        T: Send + 'static,
+    {
+        SignalChannel::new(signal)
+    }
+
+    pub struct SignalChannel<'a, S, T>(&'a S)
     where
         S: Signal<Data = T>;
 
-    impl<'a, S, T> SignalSender<'a, S, T>
+    impl<'a, S, T> SignalChannel<'a, S, T>
     where
         S: Signal<Data = T>,
     {
@@ -221,14 +229,14 @@ pub mod adapt {
         }
     }
 
-    impl<'a, S, T> Errors for SignalSender<'a, S, T>
+    impl<'a, S, T> Errors for SignalChannel<'a, S, T>
     where
         S: Signal<Data = T>,
     {
         type Error = Infallible;
     }
 
-    impl<'s, S, T> Sender for SignalSender<'s, S, T>
+    impl<'s, S, T> Sender for SignalChannel<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync,
         T: Send,
@@ -253,27 +261,7 @@ pub mod adapt {
         }
     }
 
-    struct SignalReceiver<'a, S, T>(&'a S)
-    where
-        S: Signal<Data = T>;
-
-    impl<'a, S, T> SignalReceiver<'a, S, T>
-    where
-        S: Signal<Data = T>,
-    {
-        pub fn new(signal: &'a S) -> Self {
-            Self(signal)
-        }
-    }
-
-    impl<'a, S, T> Errors for SignalReceiver<'a, S, T>
-    where
-        S: Signal<Data = T>,
-    {
-        type Error = Infallible;
-    }
-
-    impl<'s, S, T> Receiver for SignalReceiver<'s, S, T>
+    impl<'s, S, T> Receiver for SignalChannel<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync,
         T: Send,
@@ -294,22 +282,6 @@ pub mod adapt {
                 Ok(value)
             }
         }
-    }
-
-    pub fn as_sender<'a, S, T>(signal: &'a S) -> impl Sender<Data = T> + 'a
-    where
-        S: Signal<Data = T> + Send + Sync,
-        T: Send + 'a,
-    {
-        SignalSender::new(signal)
-    }
-
-    pub fn as_receiver<'a, S, T>(signal: &'a S) -> impl Receiver<Data = T> + 'a
-    where
-        S: Signal<Data = T> + Send + Sync,
-        T: Send + 'a,
-    {
-        SignalReceiver::new(signal)
     }
 }
 
