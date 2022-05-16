@@ -25,6 +25,8 @@ pub mod asyncs {
         /// Non-blocking method to retrieve the value of this signal.
         fn try_get(&self) -> Option<Self::Data>;
 
+        fn is_set(&self) -> bool;
+
         /// Non-blocking method to asynchronously wait on this signal.
         fn poll_wait(&self, cx: &mut Context<'_>) -> Poll<Self::Data>;
     }

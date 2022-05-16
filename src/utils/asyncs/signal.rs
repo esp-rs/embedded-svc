@@ -96,6 +96,15 @@ where
         }
     }
 
+    fn is_set(&self) -> bool {
+        let state = self.0.lock();
+
+        match &*state {
+            State::Signaled(_) => true,
+            _ => false,
+        }
+    }
+
     fn try_get(&self) -> Option<Self::Data> {
         let mut state = self.0.lock();
 
@@ -150,6 +159,7 @@ mod atomic_signal {
     impl<S, T> Signal for AtomicSignal<S, T>
     where
         S: AtomicSwap<Data = Option<T>>,
+        T: Copy,
     {
         type Data = T;
 
@@ -177,6 +187,10 @@ mod atomic_signal {
             }
         }
 
+        fn is_set(&self) -> bool {
+            self.data.load().is_some()
+        }
+
         fn try_get(&self) -> Option<Self::Data> {
             let data = self.data.swap(None);
             self.waker.take();
@@ -186,48 +200,43 @@ mod atomic_signal {
     }
 }
 
-#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod adapt {
     use core::convert::Infallible;
     use core::future::Future;
-
-    extern crate alloc;
-    use alloc::sync::Arc;
 
     use crate::channel::asyncs::{Receiver, Sender};
     use crate::errors::Errors;
     use crate::signal::asyncs::Signal;
 
-    struct SignalSender<S, T>(Arc<S>)
+    pub fn as_channel<S, T>(signal: &'static S) -> SignalChannel<'static, S, T>
+    where
+        S: Signal<Data = T> + Send + Sync,
+        T: Send + 'static,
+    {
+        SignalChannel::new(signal)
+    }
+
+    pub struct SignalChannel<'a, S, T>(&'a S)
     where
         S: Signal<Data = T>;
 
-    impl<S, T> SignalSender<S, T>
+    impl<'a, S, T> SignalChannel<'a, S, T>
     where
         S: Signal<Data = T>,
     {
-        pub fn new(signal: Arc<S>) -> Self {
+        pub fn new(signal: &'a S) -> Self {
             Self(signal)
         }
     }
 
-    impl<S, T> Clone for SignalSender<S, T>
-    where
-        S: Signal<Data = T>,
-    {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl<S, T> Errors for SignalSender<S, T>
+    impl<'a, S, T> Errors for SignalChannel<'a, S, T>
     where
         S: Signal<Data = T>,
     {
         type Error = Infallible;
     }
 
-    impl<S, T> Sender for SignalSender<S, T>
+    impl<'s, S, T> Sender for SignalChannel<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync,
         T: Send,
@@ -238,6 +247,7 @@ pub mod adapt {
         where
             T: 'a,
             S: 'a,
+            Self: 'a,
         = impl Future<Output = Result<(), Self::Error>> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
@@ -251,36 +261,7 @@ pub mod adapt {
         }
     }
 
-    struct SignalReceiver<S, T>(Arc<S>)
-    where
-        S: Signal<Data = T>;
-
-    impl<S, T> SignalReceiver<S, T>
-    where
-        S: Signal<Data = T>,
-    {
-        pub fn new(signal: Arc<S>) -> Self {
-            Self(signal)
-        }
-    }
-
-    impl<S, T> Clone for SignalReceiver<S, T>
-    where
-        S: Signal<Data = T>,
-    {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl<S, T> Errors for SignalReceiver<S, T>
-    where
-        S: Signal<Data = T>,
-    {
-        type Error = Infallible;
-    }
-
-    impl<S, T> Receiver for SignalReceiver<S, T>
+    impl<'s, S, T> Receiver for SignalChannel<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync,
         T: Send,
@@ -291,6 +272,7 @@ pub mod adapt {
         where
             T: 'a,
             S: 'a,
+            Self: 'a,
         = impl Future<Output = Result<T, Self::Error>> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
@@ -301,34 +283,15 @@ pub mod adapt {
             }
         }
     }
-
-    pub fn into_sender<S, T>(signal: Arc<S>) -> impl Sender<Data = T>
-    where
-        S: Signal<Data = T> + Send + Sync,
-        T: Send,
-    {
-        SignalSender::new(signal)
-    }
-
-    pub fn into_receiver<S, T>(signal: Arc<S>) -> impl Receiver<Data = T>
-    where
-        S: Signal<Data = T> + Send + Sync,
-        T: Send,
-    {
-        SignalReceiver::new(signal)
-    }
 }
 
 #[cfg(feature = "std")]
-pub struct MutexSignalFamily;
-
-#[cfg(feature = "std")]
-impl crate::signal::asyncs::SignalFamily for MutexSignalFamily {
+impl crate::signal::asyncs::SignalFamily for std::sync::Condvar {
     type Signal<T> = MutexSignal<std::sync::Mutex<State<T>>, T>;
 }
 
 #[cfg(feature = "std")]
-impl crate::signal::asyncs::SendSyncSignalFamily for MutexSignalFamily {
+impl crate::signal::asyncs::SendSyncSignalFamily for std::sync::Condvar {
     type Signal<T>
     where
         T: Send,

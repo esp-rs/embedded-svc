@@ -9,6 +9,8 @@ use alloc::borrow::ToOwned;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+use heapless;
+
 use log::info;
 
 use crate::errors::*;
@@ -297,7 +299,7 @@ where
     }
 }
 
-pub struct Processor<C, S, R>
+pub struct Processor<C, S, R, const N: usize, const F: usize>
 where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
@@ -306,13 +308,13 @@ where
     S::Sender: Send,
     R: SessionProvider,
 {
-    connections: Vec<ConnectionState<C::Mutex<SharedReceiverState>, R::Session>>,
-    frame_data_buf: Vec<u8>,
+    connections: heapless::Vec<ConnectionState<C::Mutex<SharedReceiverState>, R::Session>, N>,
+    frame_data_buf: [u8; F],
     accept: Arc<C::Mutex<SharedAcceptorState<C, S::Sender>>>,
     condvar: Arc<C>,
 }
 
-impl<C, S, R> Processor<C, S, R>
+impl<C, S, R, const N: usize, const F: usize> Processor<C, S, R, N, F>
 where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
@@ -321,18 +323,16 @@ where
     S::Sender: Send,
     R: SessionProvider,
 {
-    pub fn new<U>(unblocker: U, max_frame_size: usize) -> (Self, AsyncAcceptor<U, C, S::Sender>) {
-        let mut this = Self {
-            connections: Vec::new(),
-            frame_data_buf: Vec::new(),
+    pub fn new<U>(unblocker: U) -> (Self, AsyncAcceptor<U, C, S::Sender>) {
+        let this = Self {
+            connections: heapless::Vec::new(),
+            frame_data_buf: [0_u8; F],
             accept: Arc::new(C::Mutex::new(SharedAcceptorState {
                 waker: None,
                 data: None,
             })),
             condvar: Arc::new(C::new()),
         };
-
-        this.frame_data_buf.resize(max_frame_size, 0);
 
         let acceptor = AsyncAcceptor {
             unblocker,
@@ -346,26 +346,30 @@ where
     pub fn process<'a>(&'a mut self, receiver: &'a mut R, sender: &'a mut S) -> Result<(), R::Error>
     where
         R: Receiver,
+        S: Sender<Error = R::Error>,
     {
         if receiver.is_new() {
             let session = receiver.session();
 
             info!("New WS connection {:?}", session);
 
-            self.process_accept(session, sender);
+            if !self.process_accept(session, sender) {
+                return sender.send(FrameType::Close, None);
+            }
         } else if receiver.is_closed() {
             let session = receiver.session();
 
-            self.connections.retain(|receiver| {
-                if receiver.session == session {
-                    Self::process_receive_close(&receiver.receiver_state);
-                    info!("Closed WS connection {:?}", session);
+            if let Some(index) = self
+                .connections
+                .iter()
+                .enumerate()
+                .find_map(|(index, conn)| (conn.session == session).then(|| index))
+            {
+                let conn = self.connections.swap_remove(index);
 
-                    false
-                } else {
-                    true
-                }
-            });
+                Self::process_receive_close(&conn.receiver_state);
+                info!("Closed WS connection {:?}", session);
+            }
         } else {
             let session = receiver.session();
             let (frame_type, len) = receiver.recv(&mut self.frame_data_buf)?;
@@ -384,31 +388,37 @@ where
         Ok(())
     }
 
-    fn process_accept<'a>(&'a mut self, session: R::Session, sender: &'a mut S) {
-        let receiver_state = Arc::new(C::Mutex::new(SharedReceiverState {
-            waker: None,
-            data: ReceiverData::None,
-        }));
+    fn process_accept<'a>(&'a mut self, session: R::Session, sender: &'a mut S) -> bool {
+        if self.connections.len() < F {
+            let receiver_state = Arc::new(C::Mutex::new(SharedReceiverState {
+                waker: None,
+                data: ReceiverData::None,
+            }));
 
-        let state = ConnectionState {
-            session,
-            receiver_state: receiver_state.clone(),
-        };
+            let state = ConnectionState {
+                session,
+                receiver_state: receiver_state.clone(),
+            };
 
-        self.connections.push(state);
+            self.connections.push(state).unwrap_or_else(|_| panic!());
 
-        let sender = sender.create().unwrap();
+            let sender = sender.create().unwrap();
 
-        let mut accept = self.accept.lock();
+            let mut accept = self.accept.lock();
 
-        accept.data = Some(Some((receiver_state, sender)));
+            accept.data = Some(Some((receiver_state, sender)));
 
-        if let Some(waker) = mem::replace(&mut accept.waker, None) {
-            waker.wake();
-        }
+            if let Some(waker) = mem::replace(&mut accept.waker, None) {
+                waker.wake();
+            }
 
-        while accept.data.is_some() {
-            accept = self.condvar.wait(accept);
+            while accept.data.is_some() {
+                accept = self.condvar.wait(accept);
+            }
+
+            true
+        } else {
+            false
         }
     }
 
@@ -465,7 +475,7 @@ where
     }
 }
 
-impl<C, S, R> Drop for Processor<C, S, R>
+impl<C, S, R, const N: usize, const F: usize> Drop for Processor<C, S, R, N, F>
 where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,

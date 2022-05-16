@@ -23,7 +23,7 @@ alloc = ["anyhow", "serde/alloc", "serde_json/alloc"]
 use_serde = ["enumset/serde", "no-std-net/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
-isr-async-executor = ["alloc", "experimental", "async-task", "crossbeam-queue/alloc"]
+isr-async-executor = ["alloc", "experimental", "async-task", "heapless"]
 
 [dependencies]
 log = { version = "0.4", default-features = false }
@@ -37,8 +37,7 @@ serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, optional = true }
 http-auth-basic = { version = "0.1", optional = true }
 futures = { version = "0.3", default-features = false, optional = true }
+async-task = { version = "4", default-features = false, optional = true }
+heapless = { version = "0.7", default-features = false, optional = true }
 # Uncomment once 0.6.2 which has no_std support is released
 #domain = { version = "0.6", optional = true, default-features = false }
-async-task = { version = "4", default-features = false, optional = true }
-crossbeam-queue = { version = "0.3", default-features = false, optional = true }
-heapless = { version = "0.7", default-features = false, optional = true }

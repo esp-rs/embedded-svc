@@ -6,6 +6,10 @@ pub trait AtomicSwap {
     fn new(data: Self::Data) -> Self;
 
     fn swap(&self, data: Self::Data) -> Self::Data;
+
+    fn load(&self) -> Self::Data
+    where
+        Self::Data: Copy;
 }
 
 #[cfg(target_has_atomic = "8")]
@@ -30,6 +34,13 @@ impl AtomicSwap for AtomicOption {
 
         data.then(|| ())
     }
+
+    fn load(&self) -> Self::Data {
+        let data =
+            core::sync::atomic::AtomicBool::load(&self.0, core::sync::atomic::Ordering::SeqCst);
+
+        data.then(|| ())
+    }
 }
 
 impl<T> AtomicSwap for Cell<T> {
@@ -46,6 +57,13 @@ impl<T> AtomicSwap for Cell<T> {
 
         swap.into_inner()
     }
+
+    fn load(&self) -> Self::Data
+    where
+        Self::Data: Copy,
+    {
+        self.get()
+    }
 }
 
 #[cfg(target_has_atomic = "ptr")]
@@ -58,6 +76,10 @@ impl<T> AtomicSwap for core::sync::atomic::AtomicPtr<T> {
 
     fn swap(&self, data: Self::Data) -> Self::Data {
         core::sync::atomic::AtomicPtr::swap(self, data, core::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn load(&self) -> Self::Data {
+        core::sync::atomic::AtomicPtr::load(self, core::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -73,6 +95,10 @@ macro_rules! atomic_swap {
 
             fn swap(&self, data: Self::Data) -> Self::Data {
                 core::sync::atomic::$at::swap(self, data, core::sync::atomic::Ordering::SeqCst)
+            }
+
+            fn load(&self) -> Self::Data {
+                core::sync::atomic::$at::load(self, core::sync::atomic::Ordering::SeqCst)
             }
         }
     };
