@@ -4,8 +4,6 @@ use core::task::{Context, Poll};
 
 pub mod channel;
 pub mod executor;
-#[cfg(target_has_atomic = "8")]
-pub mod forever;
 pub mod select;
 pub mod signal;
 
