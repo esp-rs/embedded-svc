@@ -89,7 +89,7 @@ where
             }
         }
 
-        self.0.signal.poll_wait(cx).map(|r| Ok(r))
+        self.0.signal.poll_wait(cx).map(Ok)
     }
 }
 

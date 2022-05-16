@@ -59,7 +59,9 @@ pub mod asyncs {
         {
             self.run_until(context, until);
 
-            tasks.map(|tasks| self.drop_tasks(context, tasks));
+            if let Some(tasks) = tasks {
+                self.drop_tasks(context, tasks)
+            }
         }
 
         fn run_until<C>(&mut self, context: &Self::RunContext, until: C)

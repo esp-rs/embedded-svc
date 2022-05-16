@@ -248,7 +248,7 @@ mod select_all_vec {
     ///
     /// This function will panic if the array specified contains no items.
     pub fn select_all_vec<Fut: Future>(vec: alloc::vec::Vec<Fut>) -> SelectAllVec<Fut> {
-        assert!(vec.len() > 0);
+        assert!(!vec.is_empty());
         SelectAllVec { inner: vec }
     }
 

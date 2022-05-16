@@ -99,10 +99,7 @@ where
     fn is_set(&self) -> bool {
         let state = self.0.lock();
 
-        match &*state {
-            State::Signaled(_) => true,
-            _ => false,
-        }
+        matches!(&*state, State::Signaled(_))
     }
 
     fn try_get(&self) -> Option<Self::Data> {
@@ -251,6 +248,7 @@ pub mod adapt {
         = impl Future<Output = Result<(), Self::Error>> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
+            #[allow(clippy::clone_double_ref)]
             let signal = self.0.clone();
 
             async move {

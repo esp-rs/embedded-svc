@@ -153,6 +153,12 @@ pub mod adapt {
         }
     }
 
+    impl<T> Default for DummyChannel<T> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl<T> Errors for DummyChannel<T> {
         type Error = Infallible;
     }

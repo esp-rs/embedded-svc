@@ -22,51 +22,51 @@ pub struct Enqueueing;
 impl PublishPolicy for () {}
 impl PublishPolicy for Enqueueing {}
 
-fn enqueue_publish<'a, E>(
+async fn enqueue_publish<'a, E>(
     enqueue: &'a mut E,
     topic: Cow<'a, str>,
     qos: QoS,
     retain: bool,
     payload: Cow<'a, [u8]>,
-) -> impl Future<Output = Result<MessageId, E::Error>> + 'a
+) -> Result<MessageId, E::Error>
 where
     E: crate::mqtt::client::Enqueue + 'a,
 {
-    async move { enqueue.enqueue(topic, qos, retain, payload) }
+    enqueue.enqueue(topic, qos, retain, payload)
 }
 
-fn publish_publish<'a, P>(
+async fn publish_publish<'a, P>(
     publish: &'a mut P,
     topic: Cow<'a, str>,
     qos: QoS,
     retain: bool,
     payload: Cow<'a, [u8]>,
-) -> impl Future<Output = Result<MessageId, P::Error>> + 'a
+) -> Result<MessageId, P::Error>
 where
     P: crate::mqtt::client::Publish + 'a,
 {
-    async move { publish.publish(topic, qos, retain, payload) }
+    publish.publish(topic, qos, retain, payload)
 }
 
-fn client_subscribe<'a, C>(
+async fn client_subscribe<'a, C>(
     client: &'a mut C,
     topic: Cow<'a, str>,
     qos: QoS,
-) -> impl Future<Output = Result<MessageId, C::Error>> + 'a
+) -> Result<MessageId, C::Error>
 where
     C: crate::mqtt::client::Client + 'a,
 {
-    async move { client.subscribe(topic, qos) }
+    client.subscribe(topic, qos)
 }
 
-fn client_unsubscribe<'a, C>(
+async fn client_unsubscribe<'a, C>(
     client: &'a mut C,
     topic: Cow<'a, str>,
-) -> impl Future<Output = Result<MessageId, C::Error>> + 'a
+) -> Result<MessageId, C::Error>
 where
     C: crate::mqtt::client::Client + 'a,
 {
-    async move { client.unsubscribe(topic) }
+    client.unsubscribe(topic)
 }
 
 pub struct AsyncClient<U, W>(W, U);

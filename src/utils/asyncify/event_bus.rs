@@ -65,7 +65,7 @@ where
     = U::UnblockFuture<Result<(), Self::Error>>;
 
     fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
-        let value = value.clone();
+        let value = value;
         let mut blocking_postbox = self.blocking_postbox.clone();
 
         self.unblocker
