@@ -4,7 +4,7 @@ pub mod event_bus;
 pub mod mqtt;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod timer;
-#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+#[cfg(all(feature = "alloc", feature = "heapless", target_has_atomic = "ptr"))]
 pub mod ws;
 
 pub trait AsyncWrapper<S> {

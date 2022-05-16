@@ -1,10 +1,34 @@
+use core::fmt;
+
+#[derive(Debug)]
+pub enum SpawnError {
+    QueueFull,
+}
+
+impl fmt::Display for SpawnError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Queue Full Error")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SpawnError {
+    // TODO
+    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    //     match self {
+    //         Self::ReadError(r) => Some(r),
+    //         CopyError::WriteError(w) => Some(w),
+    //     }
+    // }
+}
+
 #[cfg(all(
     feature = "isr-async-executor",
+    feature = "heapless",
     feature = "alloc",
     target_has_atomic = "ptr"
 ))]
 pub mod isr {
-    use core::fmt;
     use core::future::Future;
     use core::marker::PhantomData;
 
@@ -13,10 +37,12 @@ pub mod isr {
 
     use async_task::{Runnable, Task};
 
-    use crossbeam_queue::ArrayQueue;
+    use heapless::mpmc::MpMcQueue;
 
     use crate::errors::Errors;
     use crate::executor::asyncs::{Executor, LocalSpawner, Spawner, WaitableExecutor};
+
+    use super::SpawnError;
 
     pub trait Wait {
         fn wait(&self);
@@ -57,18 +83,18 @@ pub mod isr {
 
     pub struct RunContext(());
 
-    pub struct ISRExecutor<'a, N, W, S = ()> {
-        queue: Arc<ArrayQueue<Runnable>>,
+    pub struct ISRExecutor<'a, const C: usize, N, W, S = ()> {
+        queue: Arc<MpMcQueue<Runnable, C>>,
         notify_factory: N,
         wait: W,
         _sendable: PhantomData<S>,
         _marker: PhantomData<core::cell::UnsafeCell<&'a ()>>,
     }
 
-    impl<'a, N, W, S> ISRExecutor<'a, N, W, S> {
-        pub unsafe fn new_unchecked(size: usize, notify_factory: N, wait: W) -> Self {
+    impl<'a, const C: usize, N, W, S> ISRExecutor<'a, C, N, W, S> {
+        pub unsafe fn new_unchecked(notify_factory: N, wait: W) -> Self {
             Self {
-                queue: Arc::new(ArrayQueue::new(size)),
+                queue: Arc::new(MpMcQueue::<_, C>::new()),
                 notify_factory,
                 wait,
                 _sendable: PhantomData,
@@ -77,7 +103,7 @@ pub mod isr {
         }
     }
 
-    impl<'a, N, W, S> ISRExecutor<'a, N, W, S>
+    impl<'a, const C: usize, N, W, S> ISRExecutor<'a, C, N, W, S>
     where
         N: NotifyFactory,
     {
@@ -85,14 +111,12 @@ pub mod isr {
         where
             F: Future<Output = T>,
         {
-            if self.queue.is_full() {}
-
             let schedule = {
                 let queue = self.queue.clone();
                 let notify = self.notify_factory.notifier();
 
                 move |runnable| {
-                    queue.push(runnable).unwrap();
+                    queue.enqueue(runnable).unwrap();
                     notify.notify();
                 }
             };
@@ -107,47 +131,25 @@ pub mod isr {
 
     pub type Local = *const ();
 
-    impl<'a, N, W> ISRExecutor<'a, N, W, Local> {
-        pub fn new(size: usize, notify_factory: N, wait: W) -> Self {
-            unsafe { Self::new_unchecked(size, notify_factory, wait) }
+    impl<'a, const C: usize, N, W> ISRExecutor<'a, C, N, W, Local> {
+        pub fn new(notify_factory: N, wait: W) -> Self {
+            unsafe { Self::new_unchecked(notify_factory, wait) }
         }
     }
 
     pub type Sendable = ();
 
-    impl<'a, N, W> ISRExecutor<'a, N, W, Sendable> {
-        pub fn new(size: usize, notify_factory: N, wait: W) -> Self {
-            unsafe { Self::new_unchecked(size, notify_factory, wait) }
+    impl<'a, const C: usize, N, W> ISRExecutor<'a, C, N, W, Sendable> {
+        pub fn new(notify_factory: N, wait: W) -> Self {
+            unsafe { Self::new_unchecked(notify_factory, wait) }
         }
     }
 
-    #[derive(Debug)]
-    pub enum SpawnError {
-        QueueFull,
-    }
-
-    impl fmt::Display for SpawnError {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "Queue Full Error")
-        }
-    }
-
-    #[cfg(feature = "std")]
-    impl std::error::Error for SpawnError {
-        // TODO
-        // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        //     match self {
-        //         Self::ReadError(r) => Some(r),
-        //         CopyError::WriteError(w) => Some(w),
-        //     }
-        // }
-    }
-
-    impl<'a, N, W, S> Errors for ISRExecutor<'a, N, W, S> {
+    impl<'a, const C: usize, N, W, S> Errors for ISRExecutor<'a, C, N, W, S> {
         type Error = SpawnError;
     }
 
-    impl<'a, N, W, S> Spawner<'a> for ISRExecutor<'a, N, W, S>
+    impl<'a, const C: usize, N, W, S> Spawner<'a> for ISRExecutor<'a, C, N, W, S>
     where
         N: NotifyFactory,
     {
@@ -165,7 +167,7 @@ pub mod isr {
         }
     }
 
-    impl<'a, N, W> LocalSpawner<'a> for ISRExecutor<'a, N, W, Local>
+    impl<'a, const C: usize, N, W> LocalSpawner<'a> for ISRExecutor<'a, C, N, W, Local>
     where
         N: NotifyFactory,
     {
@@ -178,7 +180,7 @@ pub mod isr {
         }
     }
 
-    impl<'a, N, W, S> Executor for ISRExecutor<'a, N, W, S>
+    impl<'a, const C: usize, N, W, S> Executor for ISRExecutor<'a, C, N, W, S>
     where
         N: RunContextFactory,
     {
@@ -198,7 +200,7 @@ pub mod isr {
         }
 
         fn tick(&mut self, _context: &RunContext) -> bool {
-            if let Some(runnable) = self.queue.pop() {
+            if let Some(runnable) = self.queue.dequeue() {
                 runnable.run();
 
                 true
@@ -208,7 +210,7 @@ pub mod isr {
         }
     }
 
-    impl<'a, N, W, S> WaitableExecutor for ISRExecutor<'a, N, W, S>
+    impl<'a, const C: usize, N, W, S> WaitableExecutor for ISRExecutor<'a, C, N, W, S>
     where
         N: RunContextFactory,
         W: Wait,
@@ -219,25 +221,24 @@ pub mod isr {
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "heapless")]
 pub mod spawn {
     use core::future::Future;
 
-    extern crate alloc;
-    use alloc::vec::Vec;
-
     use crate::executor::asyncs::{LocalSpawner, Spawner};
 
-    pub struct TasksSpawner<'a, S, T>
+    use super::SpawnError;
+
+    pub struct TasksSpawner<'a, const C: usize, S, T>
     where
         S: Spawner<'a>,
         T: 'a,
     {
         spawner: S,
-        tasks: Vec<<S as Spawner<'a>>::Task<T>>,
+        tasks: heapless::Vec<<S as Spawner<'a>>::Task<T>, C>,
     }
 
-    impl<'a, S, T> TasksSpawner<'a, S, T>
+    impl<'a, const C: usize, S, T> TasksSpawner<'a, C, S, T>
     where
         S: Spawner<'a>,
         T: 'a,
@@ -245,40 +246,46 @@ pub mod spawn {
         pub fn new(spawner: S) -> Self {
             Self {
                 spawner,
-                tasks: Vec::new(),
+                tasks: heapless::Vec::<_, C>::new(),
             }
         }
 
-        pub fn release(self) -> (S, Vec<<S as Spawner<'a>>::Task<T>>) {
+        pub fn release(self) -> (S, heapless::Vec<<S as Spawner<'a>>::Task<T>, C>) {
             (self.spawner, self.tasks)
         }
     }
 
-    impl<'a, S, T> TasksSpawner<'a, S, T>
+    impl<'a, const C: usize, S, T> TasksSpawner<'a, C, S, T>
     where
         S: LocalSpawner<'a>,
         T: 'a,
     {
-        pub fn spawn_local<F>(mut self, fut: F) -> Result<Self, S::Error>
+        pub fn spawn_local<F>(mut self, fut: F) -> Result<Self, SpawnError>
         where
             F: Future<Output = T> + 'a,
         {
-            self.tasks.push(self.spawner.spawn_local(fut)?);
+            self.spawner
+                .spawn_local(fut)
+                .map_err(|_| SpawnError::QueueFull)
+                .and_then(|task| self.tasks.push(task).map_err(|_| SpawnError::QueueFull))?;
 
             Ok(self)
         }
     }
 
-    impl<'a, S, T> TasksSpawner<'a, S, T>
+    impl<'a, const C: usize, S, T> TasksSpawner<'a, C, S, T>
     where
         S: Spawner<'a>,
         T: 'a,
     {
-        pub fn spawn<F>(mut self, fut: F) -> Result<Self, S::Error>
+        pub fn spawn<F>(mut self, fut: F) -> Result<Self, SpawnError>
         where
             F: Future<Output = T> + Send + 'a,
         {
-            self.tasks.push(self.spawner.spawn(fut)?);
+            self.spawner
+                .spawn(fut)
+                .map_err(|_| SpawnError::QueueFull)
+                .and_then(|task| self.tasks.push(task).map_err(|_| SpawnError::QueueFull))?;
 
             Ok(self)
         }
