@@ -1,6 +1,6 @@
 # Rust APIs and abstractions for embedded services
 
-![CI](https://github.com/esp-rs/embedded-svc/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/esp-rs/embedded-svc/actions/workflows/ci.yml/badge.svg)](https://github.com/esp-rs/embedded-svc/actions/workflows/ci.yml)
 [![Documentation](https://docs.rs/embedded-svc/badge.svg)](https://docs.rs/embedded-svc)
 
 This crate ships traits for embedded features such as wifi, networking, httpd, logging.
