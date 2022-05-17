@@ -11,6 +11,9 @@ pub mod atomic_swap;
 #[cfg(feature = "experimental")]
 pub mod asyncs;
 
+#[cfg(all(feature = "experimental", target_has_atomic = "8"))]
+pub mod forever;
+
 #[cfg(all(feature = "experimental", feature = "alloc", feature = "use_serde"))]
 pub mod ghota;
 
