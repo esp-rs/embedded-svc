@@ -117,45 +117,65 @@ where
 
 #[cfg(target_has_atomic = "ptr")]
 mod atomic_signal {
+    use core::marker::PhantomData;
+    use core::mem;
+    use core::sync::atomic::{AtomicUsize, Ordering};
     use core::task::{Context, Poll};
 
     use futures::task::AtomicWaker;
 
     use crate::signal::asyncs::Signal;
-    use crate::utils::atomic_swap::AtomicSwap;
 
-    pub struct AtomicSignal<S, T>
-    where
-        S: AtomicSwap<Data = Option<T>>,
-    {
+    pub struct AtomicSignal<T> {
         waker: AtomicWaker,
-        data: S,
+        data: AtomicUsize,
+        _type: PhantomData<Option<T>>,
     }
 
-    impl<S, T> AtomicSignal<S, T>
+    impl<T> AtomicSignal<T>
     where
-        S: AtomicSwap<Data = Option<T>>,
+        T: Copy,
     {
         pub fn new() -> Self {
-            Self {
-                data: S::new(None),
-                waker: AtomicWaker::new(),
+            if mem::size_of::<Option<T>>() > mem::size_of::<usize>() {
+                panic!("Cannot fit the value in usize");
             }
+
+            Self {
+                data: AtomicUsize::new(Self::to_usize(None)),
+                waker: AtomicWaker::new(),
+                _type: PhantomData,
+            }
+        }
+
+        fn to_usize(data: Option<T>) -> usize {
+            let src_arr: &[u8; mem::size_of::<usize>()] = unsafe { mem::transmute(&data) };
+            let mut dst_arr = [0_u8; mem::size_of::<usize>()];
+
+            dst_arr[0..mem::size_of::<Option<T>>()]
+                .copy_from_slice(&src_arr[0..mem::size_of::<Option<T>>()]);
+            usize::from_ne_bytes(dst_arr)
+        }
+
+        fn from_usize(value: usize) -> Option<T> {
+            let src_arr = usize::to_ne_bytes(value);
+            let data: &Option<T> = unsafe { mem::transmute(&src_arr) };
+
+            *data
         }
     }
 
-    impl<S, T> Default for AtomicSignal<S, T>
+    impl<T> Default for AtomicSignal<T>
     where
-        S: AtomicSwap<Data = Option<T>>,
+        T: Copy,
     {
         fn default() -> Self {
             Self::new()
         }
     }
 
-    impl<S, T> Signal for AtomicSignal<S, T>
+    impl<T> Signal for AtomicSignal<T>
     where
-        S: AtomicSwap<Data = Option<T>>,
         T: Copy,
     {
         type Data = T;
@@ -165,19 +185,22 @@ mod atomic_signal {
         }
 
         fn reset(&self) {
-            self.data.swap(None);
+            self.data.store(Self::to_usize(None), Ordering::SeqCst);
             self.waker.take();
         }
 
         fn signal(&self, data: T) {
-            self.data.swap(Some(data));
+            self.data
+                .store(Self::to_usize(Some(data)), Ordering::SeqCst);
             self.waker.wake();
         }
 
         fn poll_wait(&self, cx: &mut Context<'_>) -> Poll<T> {
             self.waker.register(cx.waker());
 
-            if let Some(data) = self.data.swap(None) {
+            if let Some(data) =
+                Self::from_usize(self.data.swap(Self::to_usize(None), Ordering::SeqCst))
+            {
                 Poll::Ready(data)
             } else {
                 Poll::Pending
@@ -185,11 +208,11 @@ mod atomic_signal {
         }
 
         fn is_set(&self) -> bool {
-            self.data.load().is_some()
+            Self::from_usize(self.data.load(Ordering::SeqCst)).is_some()
         }
 
         fn try_get(&self) -> Option<Self::Data> {
-            let data = self.data.swap(None);
+            let data = Self::from_usize(self.data.swap(Self::to_usize(None), Ordering::SeqCst));
             self.waker.take();
 
             data

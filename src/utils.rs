@@ -6,9 +6,6 @@
 pub mod asyncify;
 
 #[cfg(feature = "experimental")]
-pub mod atomic_swap;
-
-#[cfg(feature = "experimental")]
 pub mod asyncs;
 
 #[cfg(all(feature = "experimental", target_has_atomic = "8"))]
