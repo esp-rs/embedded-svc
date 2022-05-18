@@ -215,11 +215,11 @@ pub mod adapt {
 
     pub struct SignalChannel<'a, S, T>(&'a S)
     where
-        S: Signal<Data = T>;
+        S: Signal<Data = T> + 'a;
 
     impl<'a, S, T> SignalChannel<'a, S, T>
     where
-        S: Signal<Data = T>,
+        S: Signal<Data = T> + 'a,
     {
         pub fn new(signal: &'a S) -> Self {
             Self(signal)
@@ -228,14 +228,14 @@ pub mod adapt {
 
     impl<'a, S, T> Errors for SignalChannel<'a, S, T>
     where
-        S: Signal<Data = T>,
+        S: Signal<Data = T> + 'a,
     {
         type Error = Infallible;
     }
 
     impl<'s, S, T> Sender for SignalChannel<'s, S, T>
     where
-        S: Signal<Data = T> + Send + Sync,
+        S: Signal<Data = T> + Send + Sync + 's,
         T: Send,
     {
         type Data = T;
@@ -261,7 +261,7 @@ pub mod adapt {
 
     impl<'s, S, T> Receiver for SignalChannel<'s, S, T>
     where
-        S: Signal<Data = T> + Send + Sync,
+        S: Signal<Data = T> + Send + Sync + 's,
         T: Send,
     {
         type Data = T;
