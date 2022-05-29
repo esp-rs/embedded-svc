@@ -118,21 +118,20 @@ pub struct WithSessionAuthMiddleware<'l> {
     pub min_role: Role,
 }
 
-impl<'l, R> Middleware<R> for WithSessionAuthMiddleware<'l>
+impl<'l, C> Middleware<C> for WithSessionAuthMiddleware<'l>
 where
-    R: Registry,
+    C: Context,
 {
-    type Error = R::Error;
+    type Error = C::Error;
 
     fn handle<'a, H, E>(
         &self,
-        mut req: R::Request,
-        resp: R::Response,
+        mut req: C::Request,
+        resp: C::Response,
         handler: H,
     ) -> Result<Completion, EitherError<Self::Error, E>>
     where
-        R: Registry,
-        H: FnOnce(R::Request, R::Response) -> Result<Completion, E>,
+        H: FnOnce(C::Request, C::Response) -> Result<Completion, E>,
         E: Debug,
     {
         if let Some(role) = get_role(&mut req, None).map_err(EitherError::First)? {
@@ -210,7 +209,7 @@ where
     Ok(())
 }
 
-pub fn login(
+fn login(
     mut req: impl Request,
     resp: impl Response,
     authenticator: &impl Authenticator,
@@ -220,9 +219,7 @@ pub fn login(
     } else {
         let mut buf = [0_u8; 1000];
 
-        let size = read_max(req.reader(), &mut buf).map_err(EitherError4::Second)?;
-
-        let buf = &buf[..size];
+        let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError4::Second)?;
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
         struct Credentials<'a> {
@@ -252,7 +249,7 @@ pub fn login(
     }
 }
 
-pub fn logout(req: impl Request, resp: impl Response) -> Result<Completion, impl Debug> {
+fn logout(req: impl Request, resp: impl Response) -> Result<Completion, impl Debug> {
     req.session().invalidate().map_err(EitherError::First)?;
 
     resp.submit(req).map_err(EitherError::Second)

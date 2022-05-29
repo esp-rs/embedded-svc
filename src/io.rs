@@ -53,7 +53,7 @@ where
     }
 }
 
-pub fn read_max<R: Read>(mut read: R, buf: &mut [u8]) -> Result<usize, R::Error> {
+pub fn read_max<R: Read>(mut read: R, buf: &mut [u8]) -> Result<(&[u8], usize), R::Error> {
     let mut offset = 0;
     let mut size = 0;
 
@@ -68,7 +68,7 @@ pub fn read_max<R: Read>(mut read: R, buf: &mut [u8]) -> Result<usize, R::Error>
         size += r;
     }
 
-    Ok(size)
+    Ok((&buf[..size], size))
 }
 
 pub fn copy<const N: usize, R, W>(read: R, write: W) -> Result<u64, EitherError<R::Error, W::Error>>

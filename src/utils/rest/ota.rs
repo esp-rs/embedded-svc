@@ -1,33 +1,58 @@
-extern crate alloc;
-use alloc::vec::Vec;
-use alloc::{string::String, sync::Arc};
+use core::fmt::Debug;
 
-use crate::errors::{EitherError, EitherError3, EitherError4};
+use crate::errors::{EitherError, EitherError7, Error, ErrorKind};
 use crate::http::server::registry::*;
 use crate::http::server::*;
-use crate::io;
+use crate::io::read_max;
 use crate::mutex::*;
 use crate::ota::{self, OtaRead, OtaSlot, OtaUpdate};
 
 use crate::utils::role::*;
 
+#[derive(Debug)]
+pub struct MissingUpdateError;
+
+impl core::fmt::Display for MissingUpdateError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "MissingUpdateError")
+    }
+}
+
+impl Error for MissingUpdateError {
+    fn kind(&self) -> ErrorKind {
+        ErrorKind::Other
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for MissingUpdateError {
+    // TODO
+    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    //     match self {
+    //         CopyError::ReadError(r) => Some(r),
+    //         CopyError::WriteError(w) => Some(w),
+    //     }
+    // }
+}
+
 pub fn register<R, MO, MS, MP, O, S>(
     registry: &mut R,
     pref: impl AsRef<str>,
-    ota: Arc<MO>,
-    ota_server: Arc<MS>,
-    progress: Arc<MP>,
+    ota: MO,
+    ota_server: MS,
+    progress: MP,
     default_role: Option<Role>,
 ) -> Result<(), R::Error>
 where
     R: Registry,
-    MO: Mutex<Data = O> + 'static,
-    MS: Mutex<Data = S> + 'static,
-    MP: Mutex<Data = Option<f32>> + 'static,
+    MO: Mutex<Data = O> + Send + Sync + Clone + 'static,
+    MS: Mutex<Data = S> + Send + Sync + Clone + 'static,
+    MP: Mutex<Data = Option<usize>> + Send + Sync + Clone + 'static,
     O: ota::Ota,
     S: ota::OtaServer,
 {
-    let prefix = |s| [pref.as_ref(), s].concat();
+    //let prefix = |s| [pref.as_ref(), s].concat();
+    let prefix = |s| s;
 
     let otas_get_updates = ota_server.clone();
     let otas_get_latest_update = ota_server.clone();
@@ -42,135 +67,124 @@ where
             default_role,
         })
         .at(prefix(""))
-        .get(move |req| get_status(req, &*ota_get_status))?
+        .inline()
+        .get(move |req, resp| get_status(req, resp, &ota_get_status))?
         .at(prefix("/updates"))
-        .get(move |req| get_updates(req, &*otas_get_updates))?
+        .inline()
+        .get(move |req, resp| get_updates(req, resp, &otas_get_updates))?
         .at(prefix("/updates/latest"))
-        .get(move |req| get_latest_update(req, &*otas_get_latest_update))?
+        .inline()
+        .get(move |req, resp| get_latest_update(req, resp, &otas_get_latest_update))?
         .at(prefix("/reset"))
-        .post(move |req| factory_reset(req, &*ota_factory_reset))?
+        .inline()
+        .post(move |req, resp| factory_reset(req, resp, &ota_factory_reset))?
         .at(prefix("/update"))
-        .post(move |req| update(req, &*ota, &*otas_update, &*progress_update))?
+        .inline()
+        .post(move |req, resp| update(req, resp, &ota, &otas_update, &progress_update))?
         .at(prefix("/update/progress"))
-        .get(move |req| get_update_progress(req, &*progress))?;
+        .inline()
+        .get(move |req, resp| get_update_progress(req, resp, &progress))?;
 
     Ok(())
 }
 
-fn get_status<M, O, R>(_req: &mut R, ota: &M) -> Result<ResponseData, EitherError<serde_json::Error, O::Error>>
-where
-    M: Mutex<Data = O>,
-    O: ota::Ota,
-    R: Request,
-{
-    let info = ota
-        .lock()
-        .get_running_slot()
-        .map_err(|e| EitherError::Second)
-        .and_then(|slot| slot.get_firmware_info().map_err(EitherError::Second))?;
+fn get_status(
+    req: impl Request,
+    resp: impl Response,
+    ota: &impl Mutex<Data = impl ota::Ota>,
+) -> Result<Completion, impl Debug> {
+    let ota = ota.lock();
 
-    ResponseData::from_json(&info)
-        .map_err(EitherError::First)?
-        .into()
+    let slot = ota.get_running_slot().map_err(EitherError::Second)?;
+
+    let info = slot.get_firmware_info().map_err(EitherError::Second)?;
+
+    resp.send_json(req, &info).map_err(EitherError::First)
 }
 
-fn get_updates<'a, M, O, R>(_req: &mut R, ota_server: &M) -> Result<ResponseData, EitherError<serde_json::Error, O::Error>>
-where
-    M: Mutex<Data = O>,
-    O: ota::OtaServer,
-    R: Request<'a>,
-{
+fn get_updates(
+    req: impl Request,
+    resp: impl Response,
+    ota_server: &impl Mutex<Data = impl ota::OtaServer>,
+) -> Result<Completion, impl Debug> {
+    let ota_server = ota_server.lock();
+
     let updates = ota_server
-        .lock()
         .get_releases()
         .map(|releases| releases.collect::<Vec<_>>())
-        .map_err(|e| anyhow::anyhow!(e))?;
+        .map_err(EitherError::Second)?;
 
-    ResponseData::from_json(&updates)
-        .map_err(EitherError::First)?
-        .into()
+    resp.send_json(req, &updates).map_err(EitherError::First)
 }
 
-fn get_latest_update<'a, M, O, R>(_req: &mut R, ota_server: &M) -> Result<ResponseData, EitherError<serde_json::Error, O::Error>>
-where
-    M: Mutex<Data = O>,
-    O: ota::OtaServer,
-    R: Request<'a>,
-{
+fn get_latest_update(
+    req: impl Request,
+    resp: impl Response,
+    ota_server: &impl Mutex<Data = impl ota::OtaServer>,
+) -> Result<Completion, impl Debug> {
+    let ota_server = ota_server.lock();
+
     let update = ota_server
-        .lock()
         .get_latest_release()
         .map_err(EitherError::Second)?;
 
-    ResponseData::from_json(&update)
-        .map_err(EitherError::First)?
-        .into()
+    resp.send_json(req, &update).map_err(EitherError::First)
 }
 
-fn factory_reset<'a, M, O, R>(_req: &mut R, ota: &M) -> Result<ResponseData, O::Error>
-where
-    M: Mutex<Data = O>,
-    O: ota::Ota,
-    R: Request<'a>,
-{
-    ota.lock().factory_reset().map_err(EitherError::First)?;
+fn factory_reset(
+    req: impl Request,
+    resp: impl Response,
+    ota: &impl Mutex<Data = impl ota::Ota>,
+) -> Result<Completion, impl Debug> {
+    ota.lock().factory_reset().map_err(EitherError::Second)?;
 
-    Ok(ResponseData::ok())
+    resp.submit(req).map_err(EitherError::First)
 }
 
-fn update<'a, MO, MS, MP, O, S, R>(
-    req: &mut R,
-    ota: &MO,
-    ota_server: &MS,
-    progress: &MP,
-) -> Result<ResponseData, EitherError4<serde_json::Error, O::Error, S::Error, R::Error>>
-where
-    MO: Mutex<Data = O>,
-    MS: Mutex<Data = S>,
-    MP: Mutex<Data = Option<f32>>,
-    O: ota::Ota,
-    S: ota::OtaServer,
-    R: Request<'a>,
-{
-    let bytes: Result<Vec<_>, _> = io::Bytes::<_, 64>::new(req.reader()).take(3000).collect();
+fn update(
+    req: impl Request,
+    resp: impl Response,
+    ota: &impl Mutex<Data = impl ota::Ota>,
+    ota_server: &impl Mutex<Data = impl ota::OtaServer>,
+    progress: &impl Mutex<Data = Option<usize>>,
+) -> Result<Completion, impl Debug> {
+    let mut buf = [0_u8; 1000];
 
-    let bytes = bytes.map_err(EitherError4::Fourth)?;
+    let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError7::First)?;
 
-    let download_id: Option<&'a str> =
-        serde_json::from_slice(&bytes).map_err(EitherError4::First)?;
+    let download_id: Option<&str> = serde_json::from_slice(buf).map_err(EitherError7::Second)?;
 
-    let mut ota_server = ota_server.lock();
+    let ota_server = ota_server.lock();
 
     let download_id = match download_id {
         None => ota_server
             .get_latest_release()
-            .map_err(EitherError4::Third)?
+            .map_err(EitherError7::Third)?
             .and_then(|release| release.download_id),
         some => some,
     };
 
-    let download_id = download_id.ok_or_else(|| anyhow!("No update"))?;
+    let download_id = download_id.ok_or_else(|| EitherError7::Fourth(MissingUpdateError))?;
 
-    let mut ota_update = ota_server
-        .open(download_id)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let mut ota_update = ota_server.open(download_id).map_err(EitherError7::Third)?;
+
     let size = ota_update.size();
 
     ota.lock()
         .initiate_update()
-        .map_err(|e| anyhow::anyhow!(e))?
+        .map_err(EitherError7::Seventh)?
         .update(&mut ota_update, |_, copied| {
-            *progress.lock() = size.map(|size| copied as f32 / size as f32)
+            *progress.lock() = size.map(|size| copied as usize * 100 / size as usize)
         }) // TODO: Take the progress mutex more rarely
-        .map_err(EitherError4::Second)?;
+        .map_err(EitherError7::Fifth)?;
 
-    Ok(().into())
+    resp.submit(req).map_err(EitherError7::Sixth)
 }
 
-fn get_update_progress<'a, M, R>(_req: &mut R, progress: &M) -> Result<ResponseData, serde_json::Error>
-where
-    M: Mutex<Data = Option<f32>>,
-    R: Request<'a>,
-{
-    ResponseData::from_json(&*progress.lock()).into()
+fn get_update_progress(
+    req: impl Request,
+    resp: impl Response,
+    progress: &impl Mutex<Data = Option<usize>>,
+) -> Result<Completion, impl Debug> {
+    resp.send_json(req, &*progress.lock())
 }

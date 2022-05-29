@@ -105,10 +105,10 @@ fn set_configuration(
 ) -> Result<Completion, impl Debug> {
     let mut buf = [0_u8; 1000];
 
-    let size = read_max(req.reader(), &mut buf).map_err(EitherError4::First)?;
+    let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError4::First)?;
 
     let conf: wifi::Configuration<&str> =
-        serde_json::from_slice(&buf[..size]).map_err(EitherError4::Second)?;
+        serde_json::from_slice(buf).map_err(EitherError4::Second)?;
 
     wifi.lock()
         .set_configuration(&conf)

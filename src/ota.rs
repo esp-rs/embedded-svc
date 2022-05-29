@@ -120,9 +120,9 @@ pub trait OtaServer: Errors {
     where
         Self: 'a;
 
-    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo<'_>>, Self::Error>;
+    fn get_latest_release(&self) -> Result<Option<FirmwareInfo<'_>>, Self::Error>;
 
-    fn get_releases(&mut self) -> Result<Self::Iterator<'_>, Self::Error>;
+    fn get_releases(&self) -> Result<Self::Iterator<'_>, Self::Error>;
 
-    fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error>;
+    fn open(&self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error>;
 }

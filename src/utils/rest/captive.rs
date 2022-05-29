@@ -14,7 +14,7 @@ pub fn register<R, M>(
     registry: &mut R,
     pref: impl AsRef<str>,
     portal_uri: &'static str,
-    captive: Arc<M>,
+    captive: M,
 ) -> Result<(), R::Error>
 where
     R: Registry,
@@ -28,20 +28,17 @@ where
     registry
         .at(prefix(""))
         .inline()
-        .get(move |req, resp| get_status(req, resp, portal_uri, &*captive))?;
+        .get(move |req, resp| get_status(req, resp, portal_uri, &captive))?;
 
     Ok(())
 }
 
-fn get_status<M>(
+fn get_status(
     req: impl Request,
     resp: impl Response,
     portal_uri: impl AsRef<str>,
-    captive: &M,
-) -> Result<Completion, impl Debug>
-where
-    M: Mutex<Data = bool>,
-{
+    captive: &impl Mutex<Data = bool>,
+) -> Result<Completion, impl Debug> {
     let data = format!(
         r#"
         {{
