@@ -1,7 +1,3 @@
-extern crate alloc;
-use alloc::borrow::Cow;
-use alloc::string::ToString;
-
 pub mod client;
 
 #[cfg(target_has_atomic = "ptr")] // TODO: Lift in future
@@ -56,62 +52,61 @@ pub enum Method {
 }
 
 pub trait Headers {
-    fn header(&self, name: impl AsRef<str>) -> Option<Cow<'_, str>>;
+    fn header(&self, name: &str) -> Option<&'_ str>;
 
-    fn content_type(&self) -> Option<Cow<'_, str>> {
+    fn content_type(&self) -> Option<&'_ str> {
         self.header("content-type")
     }
 
     fn content_len(&self) -> Option<usize> {
         self.header("content-length")
-            .and_then(|v| v.as_ref().parse::<usize>().ok())
+            .and_then(|v| v.parse::<usize>().ok())
     }
 
-    fn content_encoding(&self) -> Option<Cow<'_, str>> {
+    fn content_encoding(&self) -> Option<&'_ str> {
         self.header("content-encoding")
     }
 }
 
-pub trait SendHeaders<'a> {
-    fn set_header<H, V>(&mut self, name: H, value: V) -> &mut Self
-    where
-        H: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, str>>;
+pub trait SendHeaders {
+    fn set_header(&mut self, name: &str, value: &str) -> &mut Self;
 
-    fn set_content_type<V>(&mut self, ctype: V) -> &mut Self
-    where
-        V: Into<Cow<'a, str>>,
-    {
+    fn set_content_type(&mut self, ctype: &str) -> &mut Self {
         self.set_header("content-type", ctype)
     }
 
     fn set_content_len(&mut self, len: usize) -> &mut Self {
-        self.set_header("content-length", len.to_string())
+        // TODO
+        // let mut buf = [0_u8; 32];
+        // let mut formatter = core::fmt::Formatter::new(&mut buf);
+
+        // // Bypass format_args!() to avoid write_str with zero-length strs
+        // core::fmt::Display::fmt(&len, &mut formatter).unwrap();
+        // self.set_header("content-length", core::str::from_utf8_unchecked(&buf))
+
+        self
     }
 
-    fn set_content_encoding<V>(&mut self, encoding: V) -> &mut Self
-    where
-        V: Into<Cow<'a, str>>,
-    {
+    fn set_content_encoding(&mut self, encoding: &str) -> &mut Self {
         self.set_header("content-encoding", encoding)
     }
 
     fn header<H, V>(mut self, name: H, value: V) -> Self
     where
-        H: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, str>>,
+        H: AsRef<str>,
+        V: AsRef<str>,
         Self: Sized,
     {
-        self.set_header(name, value);
+        self.set_header(name.as_ref(), value.as_ref());
         self
     }
 
     fn content_type<V>(mut self, ctype: V) -> Self
     where
-        V: Into<Cow<'a, str>>,
+        V: AsRef<str>,
         Self: Sized,
     {
-        self.set_content_type(ctype);
+        self.set_content_type(ctype.as_ref());
         self
     }
 
@@ -125,28 +120,28 @@ pub trait SendHeaders<'a> {
 
     fn content_encoding<V>(mut self, encoding: V) -> Self
     where
-        V: Into<Cow<'a, str>>,
+        V: AsRef<str>,
         Self: Sized,
     {
-        self.set_content_encoding(encoding);
+        self.set_content_encoding(encoding.as_ref());
         self
     }
 }
 
 pub trait Status {
     fn status(&self) -> u16;
-    fn status_message(&self) -> Option<Cow<'_, str>>;
+
+    fn status_message(&self) -> Option<&'_ str>;
 }
 
-pub trait SendStatus<'a> {
+pub trait SendStatus {
     fn set_ok(&mut self) -> &mut Self {
         self.set_status(200)
     }
 
     fn set_status(&mut self, status: u16) -> &mut Self;
-    fn set_status_message<M>(&mut self, message: M) -> &mut Self
-    where
-        M: Into<Cow<'a, str>>;
+
+    fn set_status_message(&mut self, message: &str) -> &mut Self;
 
     fn status(mut self, status: u16) -> Self
     where
@@ -158,62 +153,67 @@ pub trait SendStatus<'a> {
 
     fn status_message<M>(mut self, message: M) -> Self
     where
-        M: Into<Cow<'a, str>>,
+        M: AsRef<str>,
         Self: Sized,
     {
-        self.set_status_message(message);
+        self.set_status_message(message.as_ref());
         self
     }
 }
 
 pub mod cookies {
-    use core::iter::{FromIterator, Iterator};
+    use core::iter::{self, Iterator};
     use core::str::Split;
 
-    extern crate alloc;
-    use alloc::borrow::Cow;
-    use alloc::string::String;
-
-    pub struct Cookies<'a>(Cow<'a, str>);
+    pub struct Cookies<'a>(&'a str);
 
     impl<'a> Cookies<'a> {
-        pub fn new(cookies_str: impl Into<Cow<'a, str>>) -> Self {
-            Self(cookies_str.into())
+        pub fn new(cookies_str: &'a str) -> Self {
+            Self(cookies_str)
         }
 
-        pub fn get(&self, name: impl AsRef<str>) -> Option<&'_ str> {
-            let name = name.as_ref();
-
+        pub fn get(&self, name: &str) -> Option<&'_ str> {
             self.into_iter()
                 .find(|(key, _)| *key == name)
                 .map(|(_, value)| value)
         }
 
-        pub fn insert(&self, name: impl AsRef<str>, value: impl AsRef<str>) -> Cookies<'static> {
-            let name = name.as_ref();
-
-            self.into_iter()
+        pub fn insert<'b, I>(
+            iter: I,
+            name: &'b str,
+            value: &'b str,
+        ) -> impl Iterator<Item = (&'b str, &'b str)>
+        where
+            I: Iterator<Item = (&'b str, &'b str)> + 'b,
+        {
+            iter.filter(move |(key, _)| *key != name)
                 .chain(core::iter::once((name, value.as_ref())))
-                .filter(|(key, _)| *key != name)
-                .collect()
         }
 
-        pub fn remove(&self, name: impl AsRef<str>) -> Cookies<'static> {
-            let name = name.as_ref();
+        pub fn remove<'b, I>(iter: I, name: &'b str) -> impl Iterator<Item = (&'b str, &'b str)>
+        where
+            I: Iterator<Item = (&'b str, &'b str)> + 'b,
+        {
+            iter.filter(move |(key, _)| *key != name)
+        }
 
-            self.into_iter().filter(|(key, _)| *key != name).collect()
+        pub fn serialize<'b, I>(iter: I) -> impl Iterator<Item = &'b str>
+        where
+            I: Iterator<Item = (&'b str, &'b str)> + 'b,
+        {
+            iter.flat_map(|(k, v)| {
+                iter::once(";")
+                    .chain(iter::once(k))
+                    .chain(iter::once("="))
+                    .chain(iter::once(v))
+            })
+            .skip(1)
         }
     }
 
     impl<'a> AsRef<str> for Cookies<'a> {
         fn as_ref(&self) -> &str {
-            self.0.as_ref()
-        }
-    }
-
-    impl<'a> From<Cookies<'a>> for Cow<'a, str> {
-        fn from(cookies: Cookies<'a>) -> Self {
-            cookies.0
+            self.0
         }
     }
 
@@ -227,23 +227,6 @@ pub mod cookies {
 
         fn into_iter(self) -> Self::IntoIter {
             CookieIterator::new(self.0.as_ref())
-        }
-    }
-
-    impl<'a> FromIterator<(&'a str, &'a str)> for Cookies<'static> {
-        fn from_iter<T: IntoIterator<Item = (&'a str, &'a str)>>(iter: T) -> Self {
-            let mut result = String::new();
-            for (key, value) in iter {
-                if !result.is_empty() {
-                    result.push(';');
-                }
-
-                result.push_str(key);
-                result.push('=');
-                result.push_str(value);
-            }
-
-            Self(Cow::Owned(result))
         }
     }
 

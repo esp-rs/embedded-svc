@@ -15,26 +15,23 @@ pub mod errors;
 pub mod eth;
 pub mod event_bus;
 pub mod executor;
-#[cfg(all(feature = "experimental", feature = "alloc"))]
+#[cfg(feature = "experimental")]
 pub mod http;
-#[cfg(feature = "std")] // TODO: Lower requirements to "alloc"
+#[cfg(feature = "std")] // TODO: Retire
 pub mod httpd;
 pub mod io;
 pub mod ipv4;
-#[cfg(feature = "alloc")]
 pub mod mqtt;
 pub mod mutex;
-#[cfg(all(feature = "experimental", feature = "alloc"))]
+#[cfg(feature = "experimental")]
 pub mod ota;
 pub mod ping;
 pub mod signal;
-#[cfg(feature = "alloc")]
 pub mod storage;
 pub mod sys_time;
 pub mod timer;
 pub mod unblocker;
 pub mod utils;
-#[cfg(feature = "alloc")]
 pub mod wifi;
 #[cfg(feature = "experimental")]
 pub mod ws;

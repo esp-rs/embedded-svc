@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::errors::{Error, ErrorKind};
+
 #[derive(Debug)]
 pub enum SpawnError {
     QueueFull,
@@ -8,6 +10,12 @@ pub enum SpawnError {
 impl fmt::Display for SpawnError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Queue Full Error")
+    }
+}
+
+impl Error for SpawnError {
+    fn kind(&self) -> ErrorKind {
+        ErrorKind::Other
     }
 }
 

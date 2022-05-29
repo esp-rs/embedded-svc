@@ -1,15 +1,12 @@
+use core::convert::TryFrom;
+use core::fmt::Display;
+use core::str::FromStr;
+
 #[cfg(feature = "std")]
 pub use std::net::Ipv4Addr;
 
 #[cfg(not(feature = "std"))]
 pub use no_std_net::Ipv4Addr;
-
-use core::{convert::TryFrom, str::FromStr};
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
-#[cfg(feature = "alloc")]
-use alloc::string::ToString;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
@@ -35,10 +32,9 @@ impl FromStr for Mask {
     }
 }
 
-#[cfg(feature = "alloc")]
-impl ToString for Mask {
-    fn to_string(&self) -> alloc::string::String {
-        self.0.to_string()
+impl Display for Mask {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -83,14 +79,9 @@ pub struct Subnet {
     pub mask: Mask,
 }
 
-#[cfg(feature = "alloc")]
-impl ToString for Subnet {
-    fn to_string(&self) -> alloc::string::String {
-        let mut s = self.gateway.to_string();
-        s.push('/');
-        s.push_str(self.mask.0.to_string().as_str());
-
-        s
+impl Display for Subnet {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}/{}", self.gateway, self.mask)
     }
 }
 
@@ -138,24 +129,28 @@ impl Default for ClientSettings {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct DHCPClientSettings {
-    #[cfg(feature = "alloc")]
-    pub hostname: Option<alloc::string::String>,
+pub struct DHCPClientSettings<S> {
+    pub hostname: Option<S>,
+}
 
-    #[cfg(not(feature = "alloc"))]
-    pub hostname: Option<&'static str>,
+impl<S> Default for DHCPClientSettings<S> {
+    fn default() -> Self {
+        Self {
+            hostname: Default::default(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ClientConfiguration {
-    DHCP(DHCPClientSettings),
+pub enum ClientConfiguration<S> {
+    DHCP(DHCPClientSettings<S>),
     Fixed(ClientSettings),
 }
 
-impl ClientConfiguration {
+impl<S> ClientConfiguration<S> {
     pub fn as_fixed_settings_ref(&self) -> Option<&ClientSettings> {
         match self {
             Self::Fixed(client_settings) => Some(client_settings),
@@ -174,8 +169,8 @@ impl ClientConfiguration {
     }
 }
 
-impl Default for ClientConfiguration {
-    fn default() -> ClientConfiguration {
+impl<S> Default for ClientConfiguration<S> {
+    fn default() -> ClientConfiguration<S> {
         ClientConfiguration::DHCP(Default::default())
     }
 }

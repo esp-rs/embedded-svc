@@ -137,10 +137,10 @@ impl Default for SecondaryChannel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy /*TODO: Not ideal*/, Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct AccessPointInfo {
-    pub ssid: alloc::string::String,
+pub struct AccessPointInfo<'a> {
+    pub ssid: &'a str,
     pub bssid: [u8; 6],
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
@@ -151,19 +151,19 @@ pub struct AccessPointInfo {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct AccessPointConfiguration {
-    pub ssid: alloc::string::String,
+pub struct AccessPointConfiguration<S> {
+    pub ssid: S,
     pub ssid_hidden: bool,
     pub channel: u8,
     pub secondary_channel: Option<u8>,
     pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
-    pub password: alloc::string::String,
+    pub password: S,
     pub max_connections: u16,
     pub ip_conf: Option<ipv4::RouterConfiguration>,
 }
 
-impl AccessPointConfiguration {
+impl<S> AccessPointConfiguration<S> {
     pub fn as_ip_conf_ref(&self) -> Option<&ipv4::RouterConfiguration> {
         self.ip_conf.as_ref()
     }
@@ -184,7 +184,7 @@ impl AccessPointConfiguration {
     }
 }
 
-impl Default for AccessPointConfiguration {
+impl<S: for<'a> From<&'a str>> Default for AccessPointConfiguration<S> {
     fn default() -> Self {
         Self {
             ssid: "iot-device".into(),
@@ -202,28 +202,28 @@ impl Default for AccessPointConfiguration {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct ClientConfiguration {
-    pub ssid: alloc::string::String,
+pub struct ClientConfiguration<S> {
+    pub ssid: S,
     pub bssid: Option<[u8; 6]>,
     //pub protocol: Protocol,
     pub auth_method: AuthMethod,
-    pub password: alloc::string::String,
+    pub password: S,
     pub channel: Option<u8>,
-    pub ip_conf: Option<ipv4::ClientConfiguration>,
+    pub ip_conf: Option<ipv4::ClientConfiguration<S>>,
 }
 
-impl ClientConfiguration {
-    pub fn as_ip_conf_ref(&self) -> Option<&ipv4::ClientConfiguration> {
+impl<S> ClientConfiguration<S> {
+    pub fn as_ip_conf_ref(&self) -> Option<&ipv4::ClientConfiguration<S>> {
         self.ip_conf.as_ref()
     }
 
-    pub fn as_ip_conf_mut(&mut self) -> &mut ipv4::ClientConfiguration {
+    pub fn as_ip_conf_mut(&mut self) -> &mut ipv4::ClientConfiguration<S> {
         Self::to_ip_conf(&mut self.ip_conf)
     }
 
     fn to_ip_conf(
-        ip_conf: &mut Option<ipv4::ClientConfiguration>,
-    ) -> &mut ipv4::ClientConfiguration {
+        ip_conf: &mut Option<ipv4::ClientConfiguration<S>>,
+    ) -> &mut ipv4::ClientConfiguration<S> {
         if let Some(ip_conf) = ip_conf {
             return ip_conf;
         }
@@ -233,7 +233,7 @@ impl ClientConfiguration {
     }
 }
 
-impl Default for ClientConfiguration {
+impl<S: for<'a> From<&'a str>> Default for ClientConfiguration<S> {
     fn default() -> Self {
         ClientConfiguration {
             ssid: "".into(),
@@ -271,29 +271,32 @@ pub enum Capability {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum Configuration {
+pub enum Configuration<S> {
     None,
-    Client(ClientConfiguration),
-    AccessPoint(AccessPointConfiguration),
-    Mixed(ClientConfiguration, AccessPointConfiguration),
+    Client(ClientConfiguration<S>),
+    AccessPoint(AccessPointConfiguration<S>),
+    Mixed(ClientConfiguration<S>, AccessPointConfiguration<S>),
 }
 
-impl Configuration {
-    pub fn as_client_conf_ref(&self) -> Option<&ClientConfiguration> {
+impl<S> Configuration<S> {
+    pub fn as_client_conf_ref(&self) -> Option<&ClientConfiguration<S>> {
         match self {
             Self::Client(client_conf) | Self::Mixed(client_conf, _) => Some(client_conf),
             _ => None,
         }
     }
 
-    pub fn as_ap_conf_ref(&self) -> Option<&AccessPointConfiguration> {
+    pub fn as_ap_conf_ref(&self) -> Option<&AccessPointConfiguration<S>> {
         match self {
             Self::AccessPoint(ap_conf) | Self::Mixed(_, ap_conf) => Some(ap_conf),
             _ => None,
         }
     }
 
-    pub fn as_client_conf_mut(&mut self) -> &mut ClientConfiguration {
+    pub fn as_client_conf_mut(&mut self) -> &mut ClientConfiguration<S>
+    where
+        S: for<'a> From<&'a str>,
+    {
         match self {
             Self::Client(client_conf) => client_conf,
             Self::Mixed(_, _) => {
@@ -313,7 +316,10 @@ impl Configuration {
         }
     }
 
-    pub fn as_ap_conf_mut(&mut self) -> &mut AccessPointConfiguration {
+    pub fn as_ap_conf_mut(&mut self) -> &mut AccessPointConfiguration<S>
+    where
+        S: for<'a> From<&'a str>,
+    {
         match self {
             Self::AccessPoint(ap_conf) => ap_conf,
             Self::Mixed(_, _) => {
@@ -335,7 +341,13 @@ impl Configuration {
 
     pub fn as_mixed_conf_mut(
         &mut self,
-    ) -> (&mut ClientConfiguration, &mut AccessPointConfiguration) {
+    ) -> (
+        &mut ClientConfiguration<S>,
+        &mut AccessPointConfiguration<S>,
+    )
+    where
+        S: for<'a> From<&'a str>,
+    {
         match self {
             Self::Mixed(client_conf, ref mut ap_conf) => (client_conf, ap_conf),
             Self::AccessPoint(_) => {
@@ -366,7 +378,7 @@ impl Configuration {
     }
 }
 
-impl Default for Configuration {
+impl<S> Default for Configuration<S> {
     fn default() -> Self {
         Configuration::None
     }
@@ -545,22 +557,28 @@ pub trait Wifi: Errors {
     //fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize), Self::Error>;
 
     #[cfg(not(feature = "alloc"))]
-    fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error>;
+    fn scan_fill<'a>(
+        &'a mut self,
+        access_points: &'a mut [AccessPointInfo<'a>],
+    ) -> Result<(&'a [AccessPointInfo<'b>], usize), Self::Error>;
 
     #[cfg(feature = "alloc")]
-    fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error> {
+    fn scan_fill<'a>(
+        &'a mut self,
+        access_points: &'a mut [AccessPointInfo<'a>],
+    ) -> Result<(&'a [AccessPointInfo<'a>], usize), Self::Error> {
         let result = self.scan()?;
 
         let len = usize::min(access_points.len(), result.len());
 
         access_points[0..len].clone_from_slice(&result[0..len]);
 
-        Ok(result.len())
+        Ok((&access_points[0..len], result.len()))
     }
 
     #[cfg(feature = "alloc")]
-    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
+    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo<'_>>, Self::Error>;
 
-    fn get_configuration(&self) -> Result<Configuration, Self::Error>;
-    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
+    fn get_configuration<'a>(&'a self) -> Result<Configuration<&'a str>, Self::Error>;
+    fn set_configuration(&mut self, conf: &Configuration<&'_ str>) -> Result<(), Self::Error>;
 }

@@ -1,156 +1,8 @@
-use core::fmt;
-use core::result::Result;
+pub use embedded_io::adapters;
+pub use embedded_io::blocking::*;
+pub use embedded_io::*;
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
-
-#[cfg(feature = "alloc")]
-use alloc::boxed::Box;
-
-#[cfg(feature = "std")]
-pub use stdio::*;
-
-use crate::errors::Errors;
-
-const BUF_SIZE: usize = 64;
-
-#[cfg(feature = "std")]
-pub type IODynError = std::io::Error;
-
-#[cfg(not(feature = "std"))]
-#[derive(Debug)]
-pub struct IODynError(i32);
-
-#[cfg(not(feature = "std"))]
-impl fmt::Display for IODynError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "IO Error {}", self.0)
-    }
-}
-
-pub trait Read: Errors {
-    fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error>;
-
-    #[cfg(feature = "alloc")]
-    fn into_dyn_read(self) -> Box<dyn Read<Error = IODynError>>
-    where
-        Self: Sized + 'static,
-        Self::Error: Into<IODynError>,
-    {
-        Box::new(DynIO(self))
-    }
-}
-
-pub trait Write: Errors {
-    fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error>;
-
-    fn do_write_all(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
-        let mut size = 0;
-
-        while size < buf.len() {
-            size += self.do_write(&buf[size..])?;
-        }
-
-        Ok(())
-    }
-
-    fn do_flush(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    #[cfg(feature = "alloc")]
-    fn into_dyn_write(self) -> Box<dyn Write<Error = IODynError>>
-    where
-        Self: Sized + 'static,
-        Self::Error: Into<IODynError>,
-    {
-        Box::new(DynIO(self))
-    }
-}
-
-impl<'a, R> Read for &'a mut R
-where
-    R: Read,
-{
-    fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        (*self).do_read(buf)
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl Errors for Box<dyn Read<Error = IODynError>> {
-    type Error = IODynError;
-}
-
-#[cfg(feature = "alloc")]
-impl Read for Box<dyn Read<Error = IODynError>> {
-    fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.as_mut().do_read(buf)
-    }
-}
-
-impl<'a, W> Write for &'a mut W
-where
-    W: Write,
-{
-    fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        (*self).do_write(buf)
-    }
-
-    fn do_flush(&mut self) -> Result<(), Self::Error> {
-        (*self).do_flush()
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl Errors for Box<dyn Write<Error = IODynError>> {
-    type Error = IODynError;
-}
-
-#[cfg(feature = "alloc")]
-impl Write for Box<dyn Write<Error = IODynError>> {
-    fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        self.as_mut().do_write(buf)
-    }
-
-    fn do_flush(&mut self) -> Result<(), Self::Error> {
-        self.as_mut().do_flush()
-    }
-}
-
-struct DynIO<S>(S);
-
-impl<S> Errors for DynIO<S>
-where
-    S: Errors,
-    S::Error: Into<IODynError>,
-{
-    type Error = IODynError;
-}
-
-impl<R> Read for DynIO<R>
-where
-    R: Read,
-    R::Error: Into<IODynError>,
-{
-    fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.0.do_read(buf).map_err(Into::into)
-    }
-}
-
-impl<W> Write for DynIO<W>
-where
-    W: Write,
-    W::Error: Into<IODynError>,
-{
-    fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        self.0.do_write(buf).map_err(Into::into)
-    }
-
-    fn do_flush(&mut self) -> Result<(), Self::Error> {
-        self.0.do_flush().map_err(Into::into)
-    }
-}
+use crate::errors::EitherError;
 
 pub struct Bytes<R, const N: usize> {
     reader: R,
@@ -181,7 +33,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index == self.read && self.read > 0 {
-            match self.reader.do_read(&mut self.buf) {
+            match self.reader.read(&mut self.buf) {
                 Err(e) => return Some(Err(e)),
                 Ok(read) => {
                     self.read = read;
@@ -201,89 +53,70 @@ where
     }
 }
 
-#[derive(Debug)]
-pub enum CopyError<R, W>
-where
-    R: fmt::Display + fmt::Debug,
-    W: fmt::Display + fmt::Debug,
-{
-    ReadError(R),
-    WriteError(W),
-}
+pub fn read_max<R: Read>(mut read: R, buf: &mut [u8]) -> Result<usize, R::Error> {
+    let mut offset = 0;
+    let mut size = 0;
 
-impl<R, W> fmt::Display for CopyError<R, W>
-where
-    R: fmt::Display + fmt::Debug,
-    W: fmt::Display + fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CopyError::ReadError(r) => write!(f, "Read Error {}", r),
-            CopyError::WriteError(w) => write!(f, "Write Error {}", w),
+    loop {
+        let r = read.read(&mut buf[offset..])?;
+
+        if size == 0 {
+            break;
         }
+
+        offset += r;
+        size += r;
     }
+
+    Ok(size)
 }
 
-#[cfg(feature = "std")]
-impl<R, W> std::error::Error for CopyError<R, W>
-where
-    R: fmt::Display + fmt::Debug,
-    W: fmt::Display + fmt::Debug,
-    // TODO
-    // where
-    //     R: std::error::Error + 'static,
-    //     W: std::error::Error + 'static,
-{
-    // TODO
-    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    //     match self {
-    //         CopyError::ReadError(r) => Some(r),
-    //         CopyError::WriteError(w) => Some(w),
-    //     }
-    // }
-}
-
-pub fn copy<R, W>(read: R, write: W) -> Result<u64, CopyError<R::Error, W::Error>>
+pub fn copy<const N: usize, R, W>(read: R, write: W) -> Result<u64, EitherError<R::Error, W::Error>>
 where
     R: Read,
     W: Write,
 {
-    copy_len(read, write, u64::MAX)
+    copy_len::<N, _, _>(read, write, u64::MAX)
 }
 
-pub fn copy_len<R, W>(read: R, write: W, len: u64) -> Result<u64, CopyError<R::Error, W::Error>>
+pub fn copy_len<const N: usize, R, W>(
+    read: R,
+    write: W,
+    len: u64,
+) -> Result<u64, EitherError<R::Error, W::Error>>
 where
     R: Read,
     W: Write,
 {
-    copy_len_with_progress(read, write, len, |_, _| {})
+    copy_len_with_progress::<N, _, _, _>(read, write, len, |_, _| {})
 }
 
-pub fn copy_len_with_progress<R, W>(
+pub fn copy_len_with_progress<const N: usize, R, W, P>(
     mut read: R,
     mut write: W,
     mut len: u64,
-    progress: impl Fn(u64, u64),
-) -> Result<u64, CopyError<R::Error, W::Error>>
+    progress: P,
+) -> Result<u64, EitherError<R::Error, W::Error>>
 where
     R: Read,
     W: Write,
+    P: Fn(u64, u64),
 {
-    let mut buf = [0_u8; BUF_SIZE];
+    let mut buf = [0_u8; N];
 
     let mut copied = 0;
 
     while len > 0 {
         progress(copied, len);
 
-        let size_read = read.do_read(&mut buf).map_err(CopyError::ReadError)?;
+        let size_read = read.read(&mut buf).map_err(EitherError::First)?;
         if size_read == 0 {
             break;
         }
 
         write
-            .do_write_all(&buf[0..size_read])
-            .map_err(CopyError::WriteError)?;
+            .write_all(&buf[0..size_read])
+            .map_err(EitherError::Second)?;
 
         copied += size_read as u64;
         len -= size_read as u64;
@@ -294,73 +127,70 @@ where
     Ok(copied)
 }
 
-#[cfg(feature = "std")]
-mod stdio {
-    pub struct StdRead<T>(pub T);
+pub mod asyncs {
+    pub use embedded_io::*;
+    //pub use embedded_io::asynch::adapters;
+    pub use embedded_io::asynch::*;
 
-    impl<R> crate::errors::Errors for StdRead<R>
+    use crate::errors::EitherError;
+
+    pub async fn copy<const N: usize, R, W>(
+        read: R,
+        write: W,
+    ) -> Result<u64, EitherError<R::Error, W::Error>>
     where
-        R: std::io::Read,
+        R: Read,
+        W: Write,
     {
-        type Error = std::io::Error;
+        copy_len::<N, _, _>(read, write, u64::MAX).await
     }
 
-    impl<R> super::Read for StdRead<R>
+    pub async fn copy_len<const N: usize, R, W>(
+        read: R,
+        write: W,
+        len: u64,
+    ) -> Result<u64, EitherError<R::Error, W::Error>>
     where
-        R: std::io::Read,
+        R: Read,
+        W: Write,
     {
-        fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-            self.0.read(buf)
-        }
+        copy_len_with_progress::<N, _, _, _>(read, write, len, |_, _| {}).await
     }
 
-    impl<R> std::io::Read for StdRead<R>
+    pub async fn copy_len_with_progress<const N: usize, R, W, P>(
+        mut read: R,
+        mut write: W,
+        mut len: u64,
+        progress: P,
+    ) -> Result<u64, EitherError<R::Error, W::Error>>
     where
-        R: super::Read,
+        R: Read,
+        W: Write,
+        P: Fn(u64, u64),
     {
-        fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-            self.0
-                .do_read(buf)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-        }
-    }
+        let mut buf = [0_u8; N];
 
-    pub struct StdWrite<T>(pub T);
+        let mut copied = 0;
 
-    impl<W> crate::errors::Errors for StdWrite<W>
-    where
-        W: std::io::Write,
-    {
-        type Error = std::io::Error;
-    }
+        while len > 0 {
+            progress(copied, len);
 
-    impl<W> super::Write for StdWrite<W>
-    where
-        W: std::io::Write,
-    {
-        fn do_write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-            self.0.write(buf)
+            let size_read = read.read(&mut buf).await.map_err(EitherError::First)?;
+            if size_read == 0 {
+                break;
+            }
+
+            write
+                .write_all(&buf[0..size_read])
+                .await
+                .map_err(EitherError::Second)?;
+
+            copied += size_read as u64;
+            len -= size_read as u64;
         }
 
-        fn do_flush(&mut self) -> Result<(), Self::Error> {
-            self.0.flush()
-        }
-    }
+        progress(copied, len);
 
-    impl<W> std::io::Write for StdWrite<W>
-    where
-        W: super::Write,
-    {
-        fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-            self.0
-                .do_write(buf)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-        }
-
-        fn flush(&mut self) -> Result<(), std::io::Error> {
-            self.0
-                .do_flush()
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-        }
+        Ok(copied)
     }
 }

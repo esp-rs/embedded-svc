@@ -34,11 +34,12 @@ impl<U, S> asyncs::Sender for AsyncSender<U, S>
 where
     U: Unblocker,
     S: Sender + SessionProvider + Send + Clone + 'static,
+    S::Error: Send + Sync + 'static,
 {
     type SendFuture<'a>
     where
         Self: 'a,
-    = U::UnblockFuture<Result<(), Self::Error>>;
+    = U::UnblockFuture<Result<(), S::Error>>;
 
     fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>) -> Self::SendFuture<'_> {
         info!(
@@ -263,6 +264,7 @@ where
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
     S: Sender + SessionProvider + Errors + Send + Clone + 'static,
+    S::Error: Send + Sync + 'static,
 {
     type Sender = AsyncSender<U, S>;
 

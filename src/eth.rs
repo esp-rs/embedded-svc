@@ -29,10 +29,10 @@ pub enum Capability {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum Configuration {
+pub enum Configuration<S> {
     None,
     NOIP,
-    Client(ipv4::ClientConfiguration),
+    Client(ipv4::ClientConfiguration<S>),
     Router(ipv4::RouterConfiguration),
 }
 
@@ -135,6 +135,6 @@ pub trait Eth: Errors {
 
     fn get_status(&self) -> Status;
 
-    fn get_configuration(&self) -> Result<Configuration, Self::Error>;
-    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
+    fn get_configuration(&self) -> Result<Configuration<&'_ str>, Self::Error>;
+    fn set_configuration(&mut self, conf: &Configuration<&'_ str>) -> Result<(), Self::Error>;
 }

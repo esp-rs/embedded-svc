@@ -21,14 +21,14 @@ use crate::{
 // To conserve memory, unly the utilized fields are mapped
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Release {
-    pub tag_name: String,
-    pub body: Option<String>,
+pub struct Release<'a> {
+    pub tag_name: &'a str,
+    pub body: Option<&'a str>,
     pub draft: bool,
     pub prerelease: bool,
     // pub created_at: Option<DateTime<Utc>>,
     // pub published_at: Option<DateTime<Utc>>,
-    pub assets: Vec<Asset>,
+    pub assets: Vec<Asset<'a>>,
 }
 
 // Copied from here:
@@ -36,19 +36,19 @@ pub struct Release {
 // To conserve memory, unly the utilized fields are mapped
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Asset {
-    pub browser_download_url: String,
-    pub name: String,
-    pub label: Option<String>,
+pub struct Asset<'a> {
+    pub browser_download_url: &'a str,
+    pub name: &'a str,
+    pub label: Option<&'a str>,
     // pub state: String,
     // pub content_type: String,
     // pub size: i64,
-    pub updated_at: String,
+    pub updated_at: &'a str,
     // pub created_at: DateTime<Utc>,
 }
 
-impl From<(Release, Asset)> for FirmwareInfo {
-    fn from((release, asset): (Release, Asset)) -> Self {
+impl<'a> From<(Release<'a>, Asset<'a>)> for FirmwareInfo<'a> {
+    fn from((release, asset): (Release, Asset<'a>)) -> Self {
         Self {
             version: release.tag_name,
             released: asset.updated_at,
@@ -107,7 +107,7 @@ where
 
         // TODO: Need to implement our own error type
         #[cfg(feature = "std")]
-        let releases = serde_json::from_reader::<_, Vec<Release>>(io::StdRead(&mut read)).unwrap();
+        let releases = serde_json::from_reader::<_, Vec<Release>>(io::adapters::ToStd::new(&mut read)).unwrap();
 
         #[cfg(not(feature = "std"))]
         let releases = {
@@ -132,7 +132,7 @@ where
         // TODO: Need to implement our own error type
         #[cfg(feature = "std")]
         let release =
-            serde_json::from_reader::<_, Option<Release>>(io::StdRead(&mut read)).unwrap();
+            serde_json::from_reader::<_, Option<Release>>(io::adapters::ToStd::new(&mut read)).unwrap();
 
         #[cfg(not(feature = "std"))]
         let release = {
@@ -148,8 +148,8 @@ where
 
     fn get_gh_assets(
         &self,
-        releases: impl Iterator<Item = Release>,
-    ) -> impl Iterator<Item = (Release, Asset)> {
+        releases: impl Iterator<Item = Release<'a>>,
+    ) -> impl Iterator<Item = (Release<'a>, Asset<'a>)> {
         let label = self.label.as_ref().to_owned();
 
         releases
@@ -206,8 +206,8 @@ impl<R> io::Read for GitHubOtaRead<R>
 where
     R: Response,
 {
-    fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.response.reader().do_read(buf)
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.response.reader().read(buf)
     }
 }
 

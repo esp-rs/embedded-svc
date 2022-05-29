@@ -6,7 +6,6 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 
 use log::*;
-use serde::de::DeserializeOwned;
 
 use crate::mutex::*;
 
@@ -164,7 +163,7 @@ where
         }
     }
 
-    fn deserialize<T: DeserializeOwned>(
+    fn deserialize<T: serde::de::DeserializeOwned>(
         slice: Option<impl AsRef<[u8]>>,
     ) -> Result<Option<T>, SessionError> {
         if let Some(value) = slice {
@@ -218,11 +217,11 @@ where
         Ok(self)
     }
 
-    fn get<T: DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError> {
+    fn get<T: serde::de::DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError> {
         self.with_session(|attributes| Self::deserialize(attributes.get(name.as_ref())))
     }
 
-    fn set_and_get<I: Serialize, T: DeserializeOwned>(
+    fn set_and_get<I: serde::Serialize, T: serde::de::DeserializeOwned>(
         &mut self,
         name: impl AsRef<str>,
         value: &I,
@@ -235,14 +234,14 @@ where
         })
     }
 
-    fn remove_and_get<T: DeserializeOwned>(
+    fn remove_and_get<T: serde::de::DeserializeOwned>(
         &mut self,
         name: impl AsRef<str>,
     ) -> Result<Option<T>, SessionError> {
         self.with_session(|attributes| Self::deserialize(attributes.remove(name.as_ref())))
     }
 
-    fn set<I: Serialize>(
+    fn set<I: serde::Serialize>(
         &mut self,
         name: impl AsRef<str>,
         value: &I,
@@ -321,11 +320,11 @@ where
         Ok(self)
     }
 
-    fn get<T: DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError> {
+    fn get<T: serde::de::DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError> {
         self.0.borrow().get(name)
     }
 
-    fn set_and_get<I: Serialize, T: DeserializeOwned>(
+    fn set_and_get<I: serde::Serialize, T: serde::de::DeserializeOwned>(
         &mut self,
         name: impl AsRef<str>,
         value: &I,
@@ -333,14 +332,14 @@ where
         self.0.borrow_mut().set_and_get(name, value)
     }
 
-    fn remove_and_get<T: DeserializeOwned>(
+    fn remove_and_get<T: serde::de::DeserializeOwned>(
         &mut self,
         name: impl AsRef<str>,
     ) -> Result<Option<T>, SessionError> {
         self.0.borrow_mut().remove_and_get(name)
     }
 
-    fn set<I: Serialize>(
+    fn set<I: serde::Serialize>(
         &mut self,
         name: impl AsRef<str>,
         value: &I,

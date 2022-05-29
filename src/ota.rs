@@ -1,30 +1,24 @@
-use core::fmt;
-
-extern crate alloc;
-use alloc::borrow::Cow;
-use alloc::string::String;
-
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::errors::Errors;
+use crate::errors::{EitherError, Errors};
 use crate::io;
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct FirmwareInfo {
-    pub version: String,
-    pub released: String,
-    pub description: String,
-    pub signature: Option<alloc::vec::Vec<u8>>,
-    pub download_id: Option<String>,
+pub struct FirmwareInfo<'a> {
+    pub version: &'a str,
+    pub released: &'a str,
+    pub description: &'a str,
+    pub signature: Option<&'a [u8]>,
+    pub download_id: Option<&'a str>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct UpdateProgress {
+pub struct UpdateProgress<'a> {
     pub progress: f32,
-    pub operation: String,
+    pub operation: &'a str,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -40,7 +34,7 @@ pub trait FirmwareInfoLoader: Errors {
 
     fn is_loaded(&self) -> bool;
 
-    fn get_info(&self) -> Result<FirmwareInfo, Self::Error>;
+    fn get_info(&self) -> Result<FirmwareInfo<'_>, Self::Error>;
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -53,17 +47,18 @@ pub enum SlotState {
 }
 
 pub trait OtaSlot: Errors {
-    fn get_label(&self) -> Result<Cow<'_, str>, Self::Error>;
+    fn get_label(&self) -> Result<&'_ str, Self::Error>;
     fn get_state(&self) -> Result<SlotState, Self::Error>;
 
-    fn get_firmware_info(&self) -> Result<Option<FirmwareInfo>, Self::Error>;
+    fn get_firmware_info(&self) -> Result<Option<FirmwareInfo<'_>>, Self::Error>;
 }
 
 pub trait Ota: Errors {
-    type Slot<'a>: OtaSlot
+    type Slot<'a>: OtaSlot<Error = Self::Error>
     where
         Self: 'a;
-    type Update<'a>: OtaUpdate
+
+    type Update<'a>: OtaUpdate<Error = Self::Error>
     where
         Self: 'a;
 
@@ -83,48 +78,6 @@ pub trait Ota: Errors {
     fn mark_running_slot_invalid_and_reboot(&mut self) -> Self::Error;
 }
 
-#[derive(Debug)]
-pub enum OtaUpdateError<O, R>
-where
-    O: fmt::Display + fmt::Debug,
-    R: fmt::Display + fmt::Debug,
-{
-    UpdateError(O),
-    ReadError(R),
-}
-
-impl<O, R> fmt::Display for OtaUpdateError<O, R>
-where
-    O: fmt::Display + fmt::Debug,
-    R: fmt::Display + fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OtaUpdateError::UpdateError(o) => write!(f, "Update Error {}", o),
-            OtaUpdateError::ReadError(r) => write!(f, "Read Error {}", r),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl<O, R> std::error::Error for OtaUpdateError<O, R>
-where
-    O: fmt::Display + fmt::Debug,
-    R: fmt::Display + fmt::Debug,
-    // TODO
-    // where
-    //     S: std::error::Error + 'static,
-    //     W: std::error::Error + 'static,
-{
-    // TODO
-    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    //     match self {
-    //         SendError::SendError(s) => Some(s),
-    //         SendError::WriteError(w) => Some(w),
-    //     }
-    // }
-}
-
 pub trait OtaUpdate: io::Write {
     fn complete(self) -> Result<(), Self::Error>;
     fn abort(self) -> Result<(), Self::Error>;
@@ -133,19 +86,19 @@ pub trait OtaUpdate: io::Write {
         mut self,
         read: R,
         progress: impl Fn(u64, u64),
-    ) -> Result<(), OtaUpdateError<Self::Error, R::Error>>
+    ) -> Result<(), EitherError<Self::Error, R::Error>>
     where
         R: io::Read,
         Self: Sized,
     {
-        match io::copy_len_with_progress(read, &mut self, u64::MAX, progress) {
-            Ok(_) => self.complete().map_err(OtaUpdateError::UpdateError),
+        match io::copy_len_with_progress::<64, _, _, _>(read, &mut self, u64::MAX, progress) {
+            Ok(_) => self.complete().map_err(EitherError::First),
             Err(e) => {
-                self.abort().map_err(OtaUpdateError::UpdateError)?;
+                self.abort().map_err(EitherError::First)?;
 
                 let e = match e {
-                    io::CopyError::ReadError(e) => OtaUpdateError::ReadError(e),
-                    io::CopyError::WriteError(e) => OtaUpdateError::UpdateError(e),
+                    EitherError::First(e) => EitherError::Second(e),
+                    EitherError::Second(e) => EitherError::First(e),
                 };
 
                 Err(e)
@@ -162,11 +115,14 @@ pub trait OtaServer: Errors {
     type OtaRead<'a>: OtaRead<Error = Self::Error>
     where
         Self: 'a;
-    type Iterator: Iterator<Item = FirmwareInfo>;
 
-    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error>;
+    type Iterator<'a>: Iterator<Item = FirmwareInfo<'a>>
+    where
+        Self: 'a;
 
-    fn get_releases(&mut self) -> Result<Self::Iterator, Self::Error>;
+    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo<'_>>, Self::Error>;
+
+    fn get_releases(&mut self) -> Result<Self::Iterator<'_>, Self::Error>;
 
     fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error>;
 }

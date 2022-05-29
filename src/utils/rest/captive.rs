@@ -1,47 +1,44 @@
-use core::fmt;
+use core::fmt::{self, Debug};
 
 extern crate alloc;
 use alloc::borrow::ToOwned;
 use alloc::sync::Arc;
 
-use anyhow::Result;
-
-use crate::{
-    http::server::*,
-    http::{
-        server::{middleware::Middleware, registry::*},
-        Headers, SendHeaders, SendStatus,
-    },
-    mutex::*,
-};
+use crate::errors::EitherError;
+use crate::http::server::Request;
+use crate::http::server::{middleware::Middleware, registry::*, Completion, Context, Response};
+use crate::http::{Headers, SendHeaders, SendStatus};
+use crate::mutex::*;
 
 pub fn register<R, M>(
     registry: &mut R,
     pref: impl AsRef<str>,
-    portal_uri: impl AsRef<str> + 'static,
+    portal_uri: &'static str,
     captive: Arc<M>,
-) -> Result<()>
+) -> Result<(), R::Error>
 where
     R: Registry,
-    M: Mutex<Data = bool> + 'static,
+    M: Mutex<Data = bool> + Send + Sync + 'static,
 {
     let pref = pref.as_ref();
 
-    let prefix = |s| [pref, s].concat();
+    // let prefix = |s| [pref, s].concat();
+    let prefix = |s| s;
 
     registry
         .at(prefix(""))
-        .get(move |req| get_status(req, portal_uri.as_ref(), &*captive))
-        .map_err(|e| anyhow::anyhow!(e))?;
+        .inline()
+        .get(move |req, resp| get_status(req, resp, portal_uri, &*captive))?;
 
     Ok(())
 }
 
-fn get_status<'a, M>(
-    _req: &mut impl Request<'a>,
+fn get_status<M>(
+    req: impl Request,
+    resp: impl Response,
     portal_uri: impl AsRef<str>,
     captive: &M,
-) -> Result<ResponseData>
+) -> Result<Completion, impl Debug>
 where
     M: Mutex<Data = bool>,
 {
@@ -55,10 +52,8 @@ where
         portal_uri.as_ref(),
     );
 
-    ResponseData::ok()
-        .content_type("application/captive+json")
-        .body(data.into())
-        .into()
+    resp.content_type("application/captive+json")
+        .send_str(req, &data)
 }
 
 #[derive(Clone)]
@@ -68,24 +63,23 @@ pub struct WithCaptivePortalMiddleware<M, F: Clone> {
     pub allowed_hosts: Option<F>,
 }
 
-impl<M, F, R> Middleware<R> for WithCaptivePortalMiddleware<M, F>
+impl<M, F, C> Middleware<C> for WithCaptivePortalMiddleware<M, F>
 where
-    M: Mutex<Data = bool>,
-    F: Fn(&str) -> bool + Clone,
-    R: Registry,
+    M: Mutex<Data = bool> + Send + Sync,
+    F: Fn(&str) -> bool + Clone + Send,
+    C: Context,
 {
-    type Error = anyhow::Error;
+    type Error = C::Error;
 
     fn handle<'a, H, E>(
         &self,
-        req: R::Request<'a>,
-        resp: R::Response<'a>,
+        req: C::Request,
+        resp: C::Response,
         handler: H,
-    ) -> Result<Completion, Self::Error>
+    ) -> Result<Completion, EitherError<Self::Error, E>>
     where
-        R: Registry,
-        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
-        E: fmt::Display + fmt::Debug,
+        H: Fn(C::Request, C::Response) -> Result<Completion, E> + Send + Sync,
+        E: fmt::Debug,
     {
         let captive = *self.captive.lock();
 
@@ -99,13 +93,13 @@ where
                 .unwrap_or(true);
 
         if allow {
-            handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e))
+            handler(req, resp).map_err(EitherError::Second)
         } else {
             let completion = resp
                 .status(307)
                 .header("Location", self.portal_uri.to_owned())
                 .submit(req)
-                .map_err(|e| anyhow::anyhow!(e))?;
+                .map_err(EitherError::First)?;
 
             Ok(completion)
         }
