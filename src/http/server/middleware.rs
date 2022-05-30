@@ -129,17 +129,17 @@ where
     R: Registry,
     M: Middleware<R> + Clone + Send + Sync + 'static,
 {
-    type Root = R;
+    type Context = R;
 
-    type MiddlewareRegistry<'q, M2>
+    type MiddlewareRegistry<'a, M2>
     where
-        Self: 'q,
-        M2: Middleware<Self::Root> + Clone + 'q + Send + Sync + 'static,
-    = MiddlewareRegistry<'q, Self::Root, CompositeMiddleware<M, M2>>;
+        Self: 'a,
+        M2: Middleware<Self::Context> + Clone + Send + Sync + 'a + 'static,
+    = MiddlewareRegistry<'a, Self::Context, CompositeMiddleware<M, M2>>;
 
     fn with_middleware<M2>(&mut self, middleware: M2) -> Self::MiddlewareRegistry<'_, M2>
     where
-        M2: middleware::Middleware<Self::Root> + Clone + Send + Sync + 'static,
+        M2: middleware::Middleware<Self::Context> + Clone + Send + Sync + 'static,
         Self: Sized,
     {
         middleware::MiddlewareRegistry::new(

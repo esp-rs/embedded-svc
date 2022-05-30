@@ -4,7 +4,7 @@ use super::{middleware, *};
 use crate::errors::{EitherError3, ErrorKind};
 
 pub trait Registry: Context {
-    type Root: Registry<Request = Self::Request, Response = Self::Response, Error = Self::Error>;
+    type Context: Context<Request = Self::Request, Response = Self::Response, Error = Self::Error>;
 
     type MiddlewareRegistry<'q, M>: Registry<
         Request = Self::Request,
@@ -13,11 +13,11 @@ pub trait Registry: Context {
     >
     where
         Self: 'q,
-        M: middleware::Middleware<Self::Root> + Clone + Send + Sync + 'static + 'q;
+        M: middleware::Middleware<Self::Context> + Clone + Send + Sync + 'static + 'q;
 
     fn with_middleware<M>(&mut self, middleware: M) -> Self::MiddlewareRegistry<'_, M>
     where
-        M: middleware::Middleware<Self::Root> + Clone + Send + Sync + 'static,
+        M: middleware::Middleware<Self::Context> + Clone + Send + Sync + 'static,
         Self: Sized;
 
     fn at<'a>(&'a mut self, uri: &'a str) -> HandlerRegistrationBuilder<'a, Self>

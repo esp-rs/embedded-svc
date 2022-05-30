@@ -116,13 +116,30 @@ pub trait OtaServer: Errors {
     where
         Self: 'a;
 
-    type Iterator<'a>: Iterator<Item = FirmwareInfo<'a>>
-    where
-        Self: 'a;
-
     fn get_latest_release(&self) -> Result<Option<FirmwareInfo<'_>>, Self::Error>;
 
-    fn get_releases(&self) -> Result<Self::Iterator<'_>, Self::Error>;
+    #[cfg(not(feature = "alloc"))]
+    fn fill_releases<'a>(
+        &'a self,
+        infos: &'a mut [FirmwareInfo<'a>],
+    ) -> Result<(&'a [FirmwareInfo<'a>], usize), Self::Error>;
 
-    fn open(&self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error>;
+    #[cfg(feature = "alloc")]
+    fn fill_releases<'a>(
+        &'a self,
+        infos: &'a mut [FirmwareInfo<'a>],
+    ) -> Result<(&'a [FirmwareInfo<'a>], usize), Self::Error> {
+        let result = self.get_releases()?;
+
+        let len = usize::min(infos.len(), result.len());
+
+        infos[0..len].clone_from_slice(&result[0..len]);
+
+        Ok((&infos[0..len], result.len()))
+    }
+
+    #[cfg(feature = "alloc")]
+    fn get_releases(&self) -> Result<alloc::vec::Vec<FirmwareInfo<'_>>, Self::Error>;
+
+    fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error>;
 }

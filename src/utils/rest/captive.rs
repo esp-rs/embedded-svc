@@ -1,9 +1,5 @@
 use core::fmt::{self, Debug};
 
-extern crate alloc;
-use alloc::borrow::ToOwned;
-use alloc::sync::Arc;
-
 use crate::errors::EitherError;
 use crate::http::server::Request;
 use crate::http::server::{middleware::Middleware, registry::*, Completion, Context, Response};
@@ -56,7 +52,7 @@ fn get_status(
 #[derive(Clone)]
 pub struct WithCaptivePortalMiddleware<M, F: Clone> {
     pub portal_uri: &'static str,
-    pub captive: Arc<M>,
+    pub captive: M,
     pub allowed_hosts: Option<F>,
 }
 

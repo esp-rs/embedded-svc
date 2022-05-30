@@ -1,11 +1,5 @@
 use core::mem;
 
-extern crate alloc;
-use alloc::borrow::{Cow, ToOwned};
-use alloc::boxed::Box;
-use alloc::string::String;
-use alloc::vec::Vec;
-
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
@@ -60,8 +54,8 @@ impl<'a> From<(Release<'a>, Asset<'a>)> for FirmwareInfo<'a> {
 }
 
 pub struct GitHubOtaService<'a, C> {
-    base_url: Cow<'a, str>,
-    label: Cow<'a, str>,
+    base_url: &'a str,
+    label: &'a str,
     client: C,
 }
 
@@ -69,24 +63,15 @@ impl<'a, C> GitHubOtaService<'a, C>
 where
     C: Client,
 {
-    pub fn new(
-        base_url: impl Into<Cow<'a, str>>,
-        label: impl Into<Cow<'a, str>>,
-        client: C,
-    ) -> Self {
+    pub fn new(base_url: &'a str, label: &'a str, client: C) -> Self {
         Self {
-            base_url: base_url.into(),
-            label: label.into(),
+            base_url,
+            label,
             client,
         }
     }
 
-    pub fn new_with_repo(
-        repo: impl AsRef<str>,
-        project: impl AsRef<str>,
-        label: impl Into<Cow<'a, str>>,
-        client: C,
-    ) -> Self {
+    pub fn new_with_repo(repo: &str, project: &str, label: &'a str, client: C) -> Self {
         Self::new(
             join(join("https://api.github.com/repos", repo), project),
             label,

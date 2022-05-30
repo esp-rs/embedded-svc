@@ -1,3 +1,4 @@
+use core::cmp::min;
 use core::fmt::Debug;
 
 use crate::errors::{EitherError, EitherError7, Error, ErrorKind};
@@ -109,10 +110,7 @@ fn get_updates(
 ) -> Result<Completion, impl Debug> {
     let ota_server = ota_server.lock();
 
-    let updates = ota_server
-        .get_releases()
-        .map(|releases| releases.collect::<Vec<_>>())
-        .map_err(EitherError::Second)?;
+    let updates = ota_server.get_releases().map_err(EitherError::Second)?;
 
     resp.send_json(req, &updates).map_err(EitherError::First)
 }
@@ -154,7 +152,7 @@ fn update(
 
     let download_id: Option<&str> = serde_json::from_slice(buf).map_err(EitherError7::Second)?;
 
-    let ota_server = ota_server.lock();
+    let mut ota_server = ota_server.lock();
 
     let download_id = match download_id {
         None => ota_server
@@ -166,7 +164,14 @@ fn update(
 
     let download_id = download_id.ok_or_else(|| EitherError7::Fourth(MissingUpdateError))?;
 
-    let mut ota_update = ota_server.open(download_id).map_err(EitherError7::Third)?;
+    let mut download_id_arr = [0_u8; 64];
+
+    let did = &mut download_id_arr[..min(64, download_id.len())];
+    did.copy_from_slice(&download_id.as_bytes()[..download_id.len()]);
+
+    let mut ota_update = ota_server
+        .open(core::str::from_utf8(did).unwrap())
+        .map_err(EitherError7::Third)?;
 
     let size = ota_update.size();
 
