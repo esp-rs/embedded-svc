@@ -36,7 +36,7 @@ impl std::error::Error for MissingUpdateError {
     // }
 }
 
-pub fn register<R, MO, MS, MP, O, S>(
+pub fn register<'a, R, MO, MS, MP, O, S>(
     registry: &mut R,
     ota: MO,
     ota_server: MS,
@@ -99,24 +99,24 @@ fn get_status(
     resp.send_json(req, &info).map_err(EitherError::First)
 }
 
-fn get_updates(
+fn get_updates<'a>(
     req: impl Request,
     resp: impl Response,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
 ) -> Result<Completion, impl Debug> {
-    let ota_server = ota_server.lock();
+    let mut ota_server = ota_server.lock();
 
     let updates = ota_server.get_releases().map_err(EitherError::Second)?;
 
     resp.send_json(req, &updates).map_err(EitherError::First)
 }
 
-fn get_latest_update(
+fn get_latest_update<'a>(
     req: impl Request,
     resp: impl Response,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
 ) -> Result<Completion, impl Debug> {
-    let ota_server = ota_server.lock();
+    let mut ota_server = ota_server.lock();
 
     let update = ota_server
         .get_latest_release()
@@ -135,7 +135,7 @@ fn factory_reset(
     resp.submit(req).map_err(EitherError::First)
 }
 
-fn update(
+fn update<'a>(
     req: impl Request,
     resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,

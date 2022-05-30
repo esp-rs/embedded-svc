@@ -1,28 +1,25 @@
-use core::mem;
+use core::cmp::max;
 
-#[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::errors::Errors;
-use crate::{
-    http::{client::*, Headers},
-    io,
-    ota::*,
-};
+use crate::http::{client::*, Headers};
+use crate::io;
+use crate::ota::*;
 
 // Copied from here:
 // https://github.com/XAMPPRocky/octocrab/blob/master/src/models/repos.rs
 // To conserve memory, unly the utilized fields are mapped
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Release<'a> {
+pub struct Release<'a, const N: usize = 32> {
     pub tag_name: &'a str,
     pub body: Option<&'a str>,
     pub draft: bool,
     pub prerelease: bool,
     // pub created_at: Option<DateTime<Utc>>,
     // pub published_at: Option<DateTime<Utc>>,
-    pub assets: Vec<Asset<'a>>,
+    pub assets: heapless::Vec<Asset<'a>, N>,
 }
 
 // Copied from here:
@@ -41,8 +38,8 @@ pub struct Asset<'a> {
     // pub created_at: DateTime<Utc>,
 }
 
-impl<'a> From<(Release<'a>, Asset<'a>)> for FirmwareInfo<'a> {
-    fn from((release, asset): (Release, Asset<'a>)) -> Self {
+impl<'a> From<(&Release<'a>, &Asset<'a>)> for FirmwareInfo<'a> {
+    fn from((release, asset): (&Release<'a>, &Asset<'a>)) -> Self {
         Self {
             version: release.tag_name,
             released: asset.updated_at,
@@ -57,112 +54,104 @@ pub struct GitHubOtaService<'a, C> {
     base_url: &'a str,
     label: &'a str,
     client: C,
+    buf: &'a mut [u8],
 }
 
 impl<'a, C> GitHubOtaService<'a, C>
 where
     C: Client,
 {
-    pub fn new(base_url: &'a str, label: &'a str, client: C) -> Self {
+    pub fn new(base_url: &'a str, label: &'a str, client: C, buf: &'a mut [u8]) -> Self {
         Self {
             base_url,
             label,
             client,
+            buf,
         }
     }
 
-    pub fn new_with_repo(repo: &str, project: &str, label: &'a str, client: C) -> Self {
-        Self::new(
-            join(join("https://api.github.com/repos", repo), project),
-            label,
-            client,
-        )
-    }
+    // pub fn new_with_repo(repo: &str, project: &str, label: &'a str, client: C) -> Self {
+    //     Self::new(
+    //         join(join("https://api.github.com/repos", repo), project),
+    //         label,
+    //         client,
+    //     )
+    // }
 
-    fn get_gh_releases(&mut self) -> Result<impl Iterator<Item = Release>, C::Error> {
+    fn get_gh_releases<const N: usize>(
+        &mut self,
+    ) -> Result<heapless::Vec<Release<'_>, N>, C::Error> {
         let response = self
             .client
-            .get(join(self.base_url.as_ref(), "releases"))?
+            .get(join::<256>(self.base_url, "releases"))?
             .submit()?;
 
         let mut read = response.reader();
 
-        // TODO: Deserialization code below is not efficient
-        // See this for a common workaround: https://github.com/serde-rs/json/issues/404#issuecomment-892957228
+        let (buf, _) = io::read_max(&mut read, self.buf)?;
 
-        // TODO: Need to implement our own error type
-        #[cfg(feature = "std")]
-        let releases = serde_json::from_reader::<_, Vec<Release>>(io::adapters::ToStd::new(&mut read)).unwrap();
+        let releases = serde_json::from_slice::<heapless::Vec<Release<'_>, N>>(buf).unwrap();
 
-        #[cfg(not(feature = "std"))]
-        let releases = {
-            let body: Result<Vec<u8>, _> = io::Bytes::<_, 64>::new(&mut read).collect();
-
-            let bytes = body?;
-
-            serde_json::from_slice::<Vec<Release>>(&bytes).unwrap()
-        };
-
-        Ok(releases.into_iter())
+        Ok(releases)
     }
 
-    fn get_gh_latest_release(&mut self) -> Result<Option<Release>, C::Error> {
+    fn fill_gh_releases<const N: usize>(
+        &'a mut self,
+        releases: &'a mut [Release<'a>],
+    ) -> Result<(&'a [Release<'a>], usize), C::Error>
+    where
+        Self: 'a,
+    {
         let response = self
             .client
-            .get(join(join(self.base_url.as_ref(), "release"), "latest"))?
+            .get(&join::<128>(self.base_url, "releases"))?
             .submit()?;
 
         let mut read = response.reader();
 
-        // TODO: Need to implement our own error type
-        #[cfg(feature = "std")]
-        let release =
-            serde_json::from_reader::<_, Option<Release>>(io::adapters::ToStd::new(&mut read)).unwrap();
+        let (buf, _) = io::read_max(&mut read, self.buf)?;
 
-        #[cfg(not(feature = "std"))]
-        let release = {
-            let body: Result<Vec<u8>, _> = io::Bytes::<_, 64>::new(&mut read).collect();
+        let releases_vec = serde_json::from_slice::<heapless::Vec<Release<'a>, N>>(buf).unwrap();
 
-            let bytes = body?;
+        let cnt = max(releases.len(), releases_vec.len());
+        releases[..cnt].clone_from_slice(&releases_vec[..cnt]);
 
-            serde_json::from_slice::<Option<Release>>(&bytes).unwrap()
-        };
+        Ok((&releases[..cnt], cnt))
+    }
+
+    fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, C::Error> {
+        let response = self
+            .client
+            .get(&join::<128>(
+                &join::<128>(self.base_url, "release"),
+                "latest",
+            ))?
+            .submit()?;
+
+        let mut read = response.reader();
+
+        let (buf, _) = io::read_max(&mut read, self.buf)?;
+
+        let release = serde_json::from_slice::<Option<Release<'_>>>(buf).unwrap();
 
         Ok(release)
     }
 
-    fn get_gh_assets(
-        &self,
-        releases: impl Iterator<Item = Release<'a>>,
-    ) -> impl Iterator<Item = (Release<'a>, Asset<'a>)> {
-        let label = self.label.as_ref().to_owned();
-
-        releases
-            .flat_map(|mut release| {
-                let mut assets = Vec::new();
-                mem::swap(&mut release.assets, &mut assets);
-
-                assets
-                    .into_iter()
-                    .map(move |asset| (release.clone(), asset))
-            })
-            .filter(move |(_release, asset)| {
-                asset
-                    .label
-                    .as_ref()
-                    .map(|l| l == label.as_str())
-                    .unwrap_or(false)
-            })
-    }
-}
-
-pub struct OtaServerIterator(Box<dyn Iterator<Item = FirmwareInfo>>);
-
-impl Iterator for OtaServerIterator {
-    type Item = FirmwareInfo;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+    fn get_firmware<'b, const N: usize, I>(
+        label: &'b str,
+        releases: I,
+    ) -> impl Iterator<Item = FirmwareInfo<'b>> + 'b
+    where
+        I: Iterator<Item = Release<'b>> + 'b,
+    {
+        releases.flat_map(move |release| {
+            release
+                .assets
+                .iter()
+                .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
+                .map(|asset| FirmwareInfo::from((&release, asset)))
+                .collect::<heapless::Vec<_, N>>()
+        })
     }
 }
 
@@ -214,19 +203,33 @@ where
         <<<C as Client>::Request<'b> as Request<'b>>::Write<'b> as RequestWrite<'b>>::Response,
     >;
 
-    type Iterator = OtaServerIterator;
+    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo<'_>>, Self::Error> {
+        let label = self.label;
 
-    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
-        // TODO: Need to implement our own error type
-        let releases = self.get_gh_latest_release().unwrap().into_iter();
-        Ok(self.get_gh_assets(releases).map(Into::into).next())
+        let release = self.get_gh_latest_release().unwrap().unwrap();
+        let releases = core::iter::once(release);
+
+        let firmware: Option<FirmwareInfo<'_>> =
+            Self::get_firmware::<32, _>(label, releases).next();
+
+        Ok(firmware)
     }
 
-    fn get_releases(&mut self) -> Result<Self::Iterator, Self::Error> {
-        let releases = self.get_gh_releases()?;
-        let assets = self.get_gh_assets(releases).map(Into::into);
+    #[cfg(not(feature = "alloc"))]
+    fn fill_releases(
+        &mut self,
+        infos: &mut [FirmwareInfo<'_>],
+    ) -> Result<(&[FirmwareInfo<'_>], usize), Self::Error> {
+    }
 
-        Ok(OtaServerIterator(Box::new(assets)))
+    #[cfg(feature = "alloc")]
+    fn get_releases(&mut self) -> Result<alloc::vec::Vec<FirmwareInfo<'_>>, Self::Error> {
+        let label = self.label;
+
+        let assets =
+            Self::get_firmware::<32, _>(label, self.get_gh_releases::<64>()?.into_iter()).collect();
+
+        Ok(assets)
     }
 
     fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error> {
@@ -239,15 +242,12 @@ where
     }
 }
 
-fn join<'a>(uri: impl Into<Cow<'a, str>>, path: impl AsRef<str>) -> Cow<'a, str> {
-    let uri = uri.into();
-    let path = path.as_ref();
-
+fn join<const N: usize>(uri: &str, path: &str) -> heapless::String<N> {
     let uri_slash = uri.ends_with('/');
     let path_slash = path.starts_with('/');
 
     if path.is_empty() || path.len() == 1 && uri_slash && path_slash {
-        uri
+        uri.into()
     } else {
         let path = if uri_slash && path_slash {
             &path[1..]
@@ -255,14 +255,14 @@ fn join<'a>(uri: impl Into<Cow<'a, str>>, path: impl AsRef<str>) -> Cow<'a, str>
             path
         };
 
-        let mut result = uri.into_owned();
+        let mut result = heapless::String::from(uri);
 
         if !uri_slash && !path_slash {
-            result.push('/');
+            result.push('/').unwrap();
         }
 
-        result.push_str(path);
+        result.push_str(path).unwrap();
 
-        Cow::Owned(result)
+        result
     }
 }

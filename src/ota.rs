@@ -116,17 +116,17 @@ pub trait OtaServer: Errors {
     where
         Self: 'a;
 
-    fn get_latest_release(&self) -> Result<Option<FirmwareInfo<'_>>, Self::Error>;
+    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo<'_>>, Self::Error>;
 
     #[cfg(not(feature = "alloc"))]
-    fn fill_releases<'a>(
-        &'a self,
-        infos: &'a mut [FirmwareInfo<'a>],
-    ) -> Result<(&'a [FirmwareInfo<'a>], usize), Self::Error>;
+    fn fill_releases(
+        &mut self,
+        infos: &mut [FirmwareInfo<'_>],
+    ) -> Result<(&[FirmwareInfo<'_>], usize), Self::Error>;
 
     #[cfg(feature = "alloc")]
     fn fill_releases<'a>(
-        &'a self,
+        &'a mut self,
         infos: &'a mut [FirmwareInfo<'a>],
     ) -> Result<(&'a [FirmwareInfo<'a>], usize), Self::Error> {
         let result = self.get_releases()?;
@@ -139,7 +139,7 @@ pub trait OtaServer: Errors {
     }
 
     #[cfg(feature = "alloc")]
-    fn get_releases(&self) -> Result<alloc::vec::Vec<FirmwareInfo<'_>>, Self::Error>;
+    fn get_releases(&mut self) -> Result<alloc::vec::Vec<FirmwareInfo<'_>>, Self::Error>;
 
     fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error>;
 }

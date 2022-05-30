@@ -53,7 +53,10 @@ where
     }
 }
 
-pub fn read_max<R: Read>(mut read: R, buf: &mut [u8]) -> Result<(&[u8], usize), R::Error> {
+pub fn read_max<'a, R: Read>(
+    mut read: R,
+    buf: &'a mut [u8],
+) -> Result<(&'a [u8], usize), R::Error> {
     let mut offset = 0;
     let mut size = 0;
 

@@ -17,7 +17,7 @@ default = ["std", "use_serde", "use_strum", "use_numenum", "experimental"]
 # Uncomment once 0.6.2 which has no_std support is released
 #experimental = ["futures", "domain"]
 #experimental = ["futures", "embedded-io/futures"]
-experimental = ["futures"]
+experimental = ["futures", "heapless"]
 
 std = ["alloc", "embedded-io/std", "anyhow/std", "serde/std", "serde_json/std", "strum/std", "num_enum/std", "http-auth-basic"]
 alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "serde_json/alloc"]
@@ -40,6 +40,6 @@ serde_json = { version = "1", default-features = false, optional = true }
 http-auth-basic = { version = "0.1", optional = true }
 futures = { version = "0.3", default-features = false, optional = true }
 async-task = { version = "4", default-features = false, optional = true }
-heapless = { version = "0.7", default-features = false, optional = true }
+heapless = { version = "0.7", default-features = false, optional = true, features = ["serde"] }
 # Uncomment once 0.6.2 which has no_std support is released
 #domain = { version = "0.6", optional = true, default-features = false }

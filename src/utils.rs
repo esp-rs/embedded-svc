@@ -11,14 +11,10 @@ pub mod asyncs;
 #[cfg(all(feature = "experimental", target_has_atomic = "8"))]
 pub mod forever;
 
-// #[cfg(all(feature = "experimental", feature = "use_serde"))]
-// pub mod ghota;
+#[cfg(all(feature = "experimental", feature = "use_serde"))]
+pub mod ghota;
 
-#[cfg(all(
-    feature = "experimental",
-    target_has_atomic = "ptr",
-    feature = "use_serde"
-))]
+#[cfg(all(feature = "experimental", feature = "use_serde"))]
 pub mod rest;
 
 pub mod role;

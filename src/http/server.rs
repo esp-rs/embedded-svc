@@ -101,7 +101,7 @@ pub trait ResponseWrite: Write {
         Self: Sized;
 }
 
-pub trait Response: SendStatus + SendHeaders + Errors {
+pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Errors {
     type Write: ResponseWrite<Error = Self::Error>;
 
     fn send_bytes<R>(self, request: R, bytes: &[u8]) -> Result<Completion, Self::Error>
@@ -154,9 +154,9 @@ pub trait Response: SendStatus + SendHeaders + Errors {
         let mut write = self.into_writer().map_err(EitherError::First)?;
 
         if let Some(size) = size {
-            copy_len::<64, _, _>(read, &mut write, size as u64)
+            copy_len::<B, _, _>(read, &mut write, size as u64)
         } else {
-            copy::<64, _, _>(read, &mut write)
+            copy::<B, _, _>(read, &mut write)
         }
         .map_err(|e| match e {
             EitherError::First(e) => EitherError::Second(e),
