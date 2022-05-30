@@ -8,7 +8,6 @@ use crate::mutex::*;
 
 pub fn register<R, M>(
     registry: &mut R,
-    pref: impl AsRef<str>,
     portal_uri: &'static str,
     captive: M,
 ) -> Result<(), R::Error>
@@ -16,13 +15,8 @@ where
     R: Registry,
     M: Mutex<Data = bool> + Send + Sync + 'static,
 {
-    let pref = pref.as_ref();
-
-    // let prefix = |s| [pref, s].concat();
-    let prefix = |s| s;
-
     registry
-        .at(prefix(""))
+        .at("")
         .inline()
         .get(move |req, resp| get_status(req, resp, portal_uri, &captive))?;
 

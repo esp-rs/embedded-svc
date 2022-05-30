@@ -186,23 +186,16 @@ pub fn set_session_role(req: &mut impl Request, role: Option<Role>) -> Result<()
     Ok(())
 }
 
-pub fn register<R, A>(
-    registry: &mut R,
-    pref: impl AsRef<str>,
-    authenticator: A,
-) -> Result<(), R::Error>
+pub fn register<R, A>(registry: &mut R, authenticator: A) -> Result<(), R::Error>
 where
     R: Registry,
     A: Authenticator + Send + Sync + 'static,
 {
-    //let prefix = |s| [pref.as_ref(), s].concat();
-    let prefix = |s| s;
-
     registry
-        .at(prefix("login"))
+        .at("/login")
         .inline()
         .post(move |req, resp| login(req, resp, &authenticator))?
-        .at(prefix("/logout"))
+        .at("/logout")
         .inline()
         .post(move |req, resp| logout(req, resp))?;
 

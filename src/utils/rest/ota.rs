@@ -38,7 +38,6 @@ impl std::error::Error for MissingUpdateError {
 
 pub fn register<R, MO, MS, MP, O, S>(
     registry: &mut R,
-    pref: impl AsRef<str>,
     ota: MO,
     ota_server: MS,
     progress: MP,
@@ -52,9 +51,6 @@ where
     O: ota::Ota,
     S: ota::OtaServer,
 {
-    //let prefix = |s| [pref.as_ref(), s].concat();
-    let prefix = |s| s;
-
     let otas_get_updates = ota_server.clone();
     let otas_get_latest_update = ota_server.clone();
     let otas_update = ota_server;
@@ -67,24 +63,24 @@ where
             role: Role::Admin,
             default_role,
         })
-        .at(prefix(""))
-        .inline()
-        .get(move |req, resp| get_status(req, resp, &ota_get_status))?
-        .at(prefix("/updates"))
-        .inline()
-        .get(move |req, resp| get_updates(req, resp, &otas_get_updates))?
-        .at(prefix("/updates/latest"))
-        .inline()
-        .get(move |req, resp| get_latest_update(req, resp, &otas_get_latest_update))?
-        .at(prefix("/reset"))
+        .at("/reset")
         .inline()
         .post(move |req, resp| factory_reset(req, resp, &ota_factory_reset))?
-        .at(prefix("/update"))
+        .at("/updates/latest")
+        .inline()
+        .get(move |req, resp| get_latest_update(req, resp, &otas_get_latest_update))?
+        .at("/update/progress")
+        .inline()
+        .get(move |req, resp| get_update_progress(req, resp, &progress))?
+        .at("/updates")
+        .inline()
+        .get(move |req, resp| get_updates(req, resp, &otas_get_updates))?
+        .at("/update")
         .inline()
         .post(move |req, resp| update(req, resp, &ota, &otas_update, &progress_update))?
-        .at(prefix("/update/progress"))
+        .at("")
         .inline()
-        .get(move |req, resp| get_update_progress(req, resp, &progress))?;
+        .get(move |req, resp| get_status(req, resp, &ota_get_status))?;
 
     Ok(())
 }

@@ -10,7 +10,6 @@ use crate::utils::role::*;
 
 pub fn register<R, W, T>(
     registry: &mut R,
-    pref: impl AsRef<str>,
     wifi: W,
     default_role: Option<Role>,
 ) -> Result<(), R::Error>
@@ -19,9 +18,6 @@ where
     W: Mutex<Data = T> + Send + Sync + Clone + 'static,
     T: wifi::Wifi,
 {
-    //let prefix = |s| [pref.as_ref(), s].concat();
-    let prefix = |s| s;
-
     let wifi_get_status = wifi.clone();
     let wifi_scan = wifi.clone();
     let wifi_get_capabilities = wifi.clone();
@@ -33,21 +29,21 @@ where
             role: Role::Admin,
             default_role,
         })
-        .at(prefix(""))
-        .inline()
-        .get(move |req, resp| get_status(req, resp, &wifi_get_status))?
-        .at(prefix("/scan"))
+        .at("/scan")
         .inline()
         .post(move |req, resp| scan(req, resp, &wifi_scan))?
-        .at(prefix("/caps"))
+        .at("/caps")
         .inline()
         .get(move |req, resp| get_capabilities(req, resp, &wifi_get_capabilities))?
-        .at(prefix("/conf"))
+        .at("/conf")
         .inline()
         .get(move |req, resp| get_configuration(req, resp, &wifi_get_configuration))?
-        .at(prefix("/conf"))
+        .at("/conf")
         .inline()
-        .put(move |req, resp| set_configuration(req, resp, &wifi_set_configuration))?;
+        .put(move |req, resp| set_configuration(req, resp, &wifi_set_configuration))?
+        .at("")
+        .inline()
+        .get(move |req, resp| get_status(req, resp, &wifi_get_status))?;
 
     Ok(())
 }

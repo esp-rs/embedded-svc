@@ -3,6 +3,12 @@ use core::fmt::Debug;
 use super::{middleware, *};
 use crate::errors::{EitherError3, ErrorKind};
 
+pub trait PrefixedRegistry: Registry {
+    fn prefix<'a>(&'a mut self, prefix: &'a str) -> Self
+    where
+        Self: Sized;
+}
+
 pub trait Registry: Context {
     type Context: Context<Request = Self::Request, Response = Self::Response, Error = Self::Error>;
 
