@@ -79,17 +79,14 @@ where
     T: crate::timer::OnceTimer + 'static,
     S: Signal<Data = ()>,
 {
-    type Output = Result<(), T::Error>;
+    type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if let Some(duration) = mem::replace(&mut self.1, None) {
-            match self.0.timer.after(duration) {
-                Ok(_) => (),
-                Err(error) => return Poll::Ready(Err(error)),
-            }
+            self.0.timer.after(duration).unwrap();
         }
 
-        self.0.signal.poll_wait(cx).map(Ok)
+        self.0.signal.poll_wait(cx)
     }
 }
 

@@ -2,22 +2,20 @@
 pub mod asyncs {
     use core::future::Future;
 
-    use crate::errors::Errors;
-
-    pub trait Sender: Errors {
+    pub trait Sender {
         type Data: Send;
 
-        type SendFuture<'a>: Future<Output = Result<(), Self::Error>> + Send
+        type SendFuture<'a>: Future + Send
         where
             Self: 'a;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_>;
     }
 
-    pub trait Receiver: Errors {
+    pub trait Receiver {
         type Data: Send;
 
-        type RecvFuture<'a>: Future<Output = Result<Self::Data, Self::Error>> + Send
+        type RecvFuture<'a>: Future<Output = Self::Data> + Send
         where
             Self: 'a;
 

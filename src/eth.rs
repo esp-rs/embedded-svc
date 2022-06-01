@@ -1,3 +1,4 @@
+use core::convert::TryFrom;
 use core::fmt::Debug;
 
 use enumset::*;
@@ -11,7 +12,7 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::errors::Errors;
+use crate::errors::{EitherError, Errors};
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
@@ -135,6 +136,10 @@ pub trait Eth: Errors {
 
     fn get_status(&self) -> Status;
 
-    fn get_configuration(&self) -> Result<Configuration<&'_ str>, Self::Error>;
+    fn get_configuration<S>(
+        &self,
+    ) -> Result<Configuration<S>, EitherError<Self::Error, <S as TryFrom<&str>>::Error>>
+    where
+        S: for<'a> TryFrom<&'a str> + 'static;
     fn set_configuration(&mut self, conf: &Configuration<&'_ str>) -> Result<(), Self::Error>;
 }

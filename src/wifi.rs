@@ -1,3 +1,4 @@
+use core::convert::TryFrom;
 use core::fmt::Debug;
 use core::mem;
 
@@ -15,8 +16,9 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::errors::Errors;
+use crate::errors::{EitherError, Errors};
 use crate::ipv4;
+use crate::strconv::StrConvError;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -139,14 +141,34 @@ impl Default for SecondaryChannel {
 
 #[derive(Copy /*TODO: Not ideal*/, Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct AccessPointInfo<'a> {
-    pub ssid: &'a str,
+pub struct AccessPointInfo<S> {
+    pub ssid: S,
     pub bssid: [u8; 6],
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
     pub signal_strength: u8,
     pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
+}
+
+impl<I> AccessPointInfo<I>
+where
+    I: AsRef<str>,
+{
+    pub fn try_convert_strings<S>(&self) -> Result<AccessPointInfo<S>, StrConvError>
+    where
+        S: for<'a> TryFrom<&'a str> + Sized + 'static,
+    {
+        Ok(AccessPointInfo {
+            ssid: S::try_from(self.ssid.as_ref()).map_err(|_| StrConvError)?,
+            bssid: self.bssid.clone(),
+            channel: self.channel,
+            secondary_channel: self.secondary_channel.clone(),
+            signal_strength: self.signal_strength,
+            protocols: self.protocols.clone(),
+            auth_method: self.auth_method.clone(),
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -200,6 +222,28 @@ impl<S: for<'a> From<&'a str>> Default for AccessPointConfiguration<S> {
     }
 }
 
+impl<I> AccessPointConfiguration<I>
+where
+    I: AsRef<str>,
+{
+    pub fn try_convert_strings<S>(&self) -> Result<AccessPointConfiguration<S>, StrConvError>
+    where
+        S: for<'b> TryFrom<&'b str>,
+    {
+        Ok(AccessPointConfiguration {
+            ssid: S::try_from(self.ssid.as_ref()).map_err(|_| StrConvError)?,
+            ssid_hidden: self.ssid_hidden,
+            channel: self.channel,
+            secondary_channel: self.secondary_channel,
+            protocols: self.protocols,
+            auth_method: self.auth_method,
+            password: S::try_from(self.password.as_ref()).map_err(|_| StrConvError)?,
+            max_connections: self.max_connections,
+            ip_conf: self.ip_conf.clone(),
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration<S> {
@@ -243,6 +287,29 @@ impl<S: for<'a> From<&'a str>> Default for ClientConfiguration<S> {
             channel: None,
             ip_conf: Some(Default::default()),
         }
+    }
+}
+
+impl<I> ClientConfiguration<I>
+where
+    I: AsRef<str>,
+{
+    pub fn try_convert_strings<S>(&self) -> Result<ClientConfiguration<S>, StrConvError>
+    where
+        S: for<'b> TryFrom<&'b str>,
+    {
+        Ok(ClientConfiguration {
+            ssid: S::try_from(self.ssid.as_ref()).map_err(|_| StrConvError)?,
+            bssid: self.bssid,
+            auth_method: self.auth_method,
+            password: S::try_from(self.password.as_ref()).map_err(|_| StrConvError)?,
+            channel: self.channel,
+            ip_conf: if let Some(ip_conf) = &self.ip_conf {
+                Some(ip_conf.try_convert_strings()?)
+            } else {
+                None
+            },
+        })
     }
 }
 
@@ -381,6 +448,26 @@ impl<S> Configuration<S> {
 impl<S> Default for Configuration<S> {
     fn default() -> Self {
         Configuration::None
+    }
+}
+
+impl<I> Configuration<I>
+where
+    I: AsRef<str>,
+{
+    pub fn try_convert_strings<S>(&self) -> Result<Configuration<S>, StrConvError>
+    where
+        S: for<'b> TryFrom<&'b str>,
+    {
+        Ok(match self {
+            Self::None => Configuration::None,
+            Self::Client(conf) => Configuration::Client(conf.try_convert_strings()?),
+            Self::AccessPoint(conf) => Configuration::AccessPoint(conf.try_convert_strings()?),
+            Self::Mixed(sta_conf, ap_conf) => Configuration::Mixed(
+                sta_conf.try_convert_strings()?,
+                ap_conf.try_convert_strings()?,
+            ),
+        })
     }
 }
 
@@ -554,31 +641,51 @@ pub trait Wifi: Errors {
 
     fn get_status(&self) -> Status;
 
-    //fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize), Self::Error>;
-
     #[cfg(not(feature = "alloc"))]
-    fn scan_fill<'a>(
+    fn scan_fill<'a, S>(
         &'a mut self,
-        access_points: &'a mut [AccessPointInfo<'a>],
-    ) -> Result<(&'a [AccessPointInfo<'b>], usize), Self::Error>;
+        access_points: &'a mut [mem::MaybeUninit<AccessPointInfo<S>>],
+    ) -> Result<(&'a [AccessPointInfo<S>], usize), EitherError<Self::Error, StrConvError>>
+    where
+        S: for<'b> TryFrom<&'b str> + 'static;
 
     #[cfg(feature = "alloc")]
-    fn scan_fill<'a>(
+    fn scan_fill<'a, S>(
         &'a mut self,
-        access_points: &'a mut [AccessPointInfo<'a>],
-    ) -> Result<(&'a [AccessPointInfo<'a>], usize), Self::Error> {
-        let result = self.scan()?;
+        access_points: &'a mut [mem::MaybeUninit<AccessPointInfo<S>>],
+    ) -> Result<(&'a [AccessPointInfo<S>], usize), EitherError<Self::Error, StrConvError>>
+    where
+        S: for<'b> TryFrom<&'b str> + 'static,
+    {
+        let result = self.scan().map_err(EitherError::First)?;
 
         let len = usize::min(access_points.len(), result.len());
 
-        access_points[0..len].clone_from_slice(&result[0..len]);
+        for i in 0..len {
+            access_points[i].write(
+                result[i]
+                    .try_convert_strings()
+                    .map_err(EitherError::Second)?,
+            );
+        }
 
-        Ok((&access_points[0..len], result.len()))
+        Ok((
+            unsafe { mem::transmute(&access_points[0..len]) },
+            result.len(),
+        ))
     }
 
     #[cfg(feature = "alloc")]
-    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo<'_>>, Self::Error>;
+    fn scan(
+        &mut self,
+    ) -> Result<alloc::vec::Vec<AccessPointInfo<alloc::string::String>>, Self::Error>;
 
-    fn get_configuration<'a>(&'a self) -> Result<Configuration<&'a str>, Self::Error>;
-    fn set_configuration(&mut self, conf: &Configuration<&'_ str>) -> Result<(), Self::Error>;
+    fn get_configuration<S>(
+        &self,
+    ) -> Result<Configuration<S>, EitherError<Self::Error, <S as TryFrom<&str>>::Error>>
+    where
+        S: for<'a> TryFrom<&'a str> + 'static;
+    fn set_configuration<S>(&mut self, conf: &Configuration<S>) -> Result<(), Self::Error>
+    where
+        S: AsRef<str>;
 }

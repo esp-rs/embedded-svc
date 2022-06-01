@@ -1,4 +1,5 @@
 use core::fmt::Debug;
+use core::mem::MaybeUninit;
 
 use crate::errors::{EitherError, EitherError4};
 use crate::io::read_max;
@@ -73,7 +74,8 @@ fn scan(
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
 ) -> Result<Completion, impl Debug> {
-    let mut aps: [AccessPointInfo; 20] = [Default::default(); 20];
+    let mut aps: [MaybeUninit<AccessPointInfo<heapless::String<64>>>; 20] =
+        unsafe { MaybeUninit::uninit().assume_init() };
 
     let mut wifi = wifi.lock();
 
@@ -89,7 +91,9 @@ fn get_configuration(
 ) -> Result<Completion, impl Debug> {
     let wifi = wifi.lock();
 
-    let conf = wifi.get_configuration().map_err(EitherError::First)?;
+    let conf = wifi
+        .get_configuration::<heapless::String<64>>()
+        .map_err(EitherError::First)?;
 
     resp.send_json(req, &conf).map_err(EitherError::Second)
 }

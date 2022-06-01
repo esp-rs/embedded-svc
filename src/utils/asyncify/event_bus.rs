@@ -8,7 +8,7 @@ extern crate alloc;
 use alloc::sync::Arc;
 
 use crate::channel::asyncs::{Receiver, Sender};
-use crate::errors::{self, Errors};
+use crate::errors::Errors;
 use crate::event_bus::asyncs::{EventBus, PostboxProvider};
 use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asyncs::Unblocker;
@@ -43,33 +43,25 @@ where
     }
 }
 
-impl<U, P, PB> Errors for AsyncPostbox<U, P, PB>
-where
-    PB: Errors,
-{
-    type Error = PB::Error;
-}
-
 impl<U, P, PB> Sender for AsyncPostbox<U, P, PB>
 where
     U: Unblocker,
     P: Clone + Send + 'static,
     PB: crate::event_bus::Postbox<P> + Clone + Send + 'static,
-    Self::Error: Send + Sync + 'static,
 {
     type Data = P;
 
     type SendFuture<'a>
     where
         Self: 'a,
-    = U::UnblockFuture<Result<(), Self::Error>>;
+    = U::UnblockFuture<()>;
 
     fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
         let value = value;
         let mut blocking_postbox = self.blocking_postbox.clone();
 
         self.unblocker
-            .unblock(move || blocking_postbox.post(&value, None).map(|_| ()))
+            .unblock(move || blocking_postbox.post(&value, None).map(|_| ()).unwrap())
     }
 }
 
@@ -77,17 +69,21 @@ impl<P, PB> Sender for AsyncPostbox<(), P, PB>
 where
     P: Clone + Send + 'static,
     PB: crate::event_bus::Postbox<P> + Clone + Send + 'static,
-    Self::Error: Send + Sync + 'static,
 {
     type Data = P;
 
     type SendFuture<'a>
     where
         Self: 'a,
-    = impl Future<Output = Result<(), Self::Error>>;
+    = impl Future<Output = ()>;
 
     fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
-        async move { self.blocking_postbox.post(&value, None).map(|_| ()) }
+        async move {
+            self.blocking_postbox
+                .post(&value, None)
+                .map(|_| ())
+                .unwrap()
+        }
     }
 }
 
@@ -110,53 +106,39 @@ pub struct SubscriptionState<P, S> {
 }
 
 #[allow(clippy::type_complexity)]
-pub struct AsyncSubscription<CV, P, S, E>(
-    Arc<(CV::Mutex<SubscriptionState<P, S>>, CV)>,
-    PhantomData<fn() -> E>,
-)
+pub struct AsyncSubscription<CV, P, S>(Arc<(CV::Mutex<SubscriptionState<P, S>>, CV)>)
 where
     CV: Condvar,
     P: Send,
     S: Send;
 
-impl<CV, P, S, E> Errors for AsyncSubscription<CV, P, S, E>
-where
-    CV: Condvar,
-    P: Send,
-    S: Send,
-    E: errors::Error,
-{
-    type Error = E;
-}
-
-impl<CV, P, S, E> Receiver for AsyncSubscription<CV, P, S, E>
+impl<CV, P, S> Receiver for AsyncSubscription<CV, P, S>
 where
     CV: Condvar + Send + Sync,
     <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     S: Send,
     P: Clone + Send,
-    E: errors::Error,
 {
     type Data = P;
 
     type RecvFuture<'a>
     where
         Self: 'a,
-    = NextFuture<'a, CV, P, S, E>;
+    = NextFuture<'a, CV, P, S>;
 
     fn recv(&mut self) -> Self::RecvFuture<'_> {
         NextFuture(self)
     }
 }
 
-pub struct NextFuture<'a, CV, P, S, E>(&'a AsyncSubscription<CV, P, S, E>)
+pub struct NextFuture<'a, CV, P, S>(&'a AsyncSubscription<CV, P, S>)
 where
     CV: Condvar + Send + Sync,
     <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     P: Clone + Send,
     S: Send;
 
-impl<'a, CV, P, S, E> Drop for NextFuture<'a, CV, P, S, E>
+impl<'a, CV, P, S> Drop for NextFuture<'a, CV, P, S>
 where
     CV: Condvar + Send + Sync,
     <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
@@ -169,14 +151,14 @@ where
     }
 }
 
-impl<'a, CV, P, S, E> Future for NextFuture<'a, CV, P, S, E>
+impl<'a, CV, P, S> Future for NextFuture<'a, CV, P, S>
 where
     CV: Condvar + Send + Sync,
     <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
     P: Clone + Send,
     S: Send,
 {
-    type Output = Result<P, E>;
+    type Output = P;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.0 .0 .0.lock();
@@ -186,7 +168,7 @@ where
         if let Some(value) = value {
             self.0 .0 .1.notify_all();
 
-            Poll::Ready(Ok(value))
+            Poll::Ready(value)
         } else {
             state.waker = Some(cx.waker().clone());
 
@@ -254,7 +236,7 @@ where
     E: crate::event_bus::EventBus<P>,
     E::Subscription: Send,
 {
-    type Subscription = AsyncSubscription<CV, P, E::Subscription, E::Error>;
+    type Subscription = AsyncSubscription<CV, P, E::Subscription>;
 
     fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error> {
         let state = Arc::new((
@@ -292,7 +274,7 @@ where
 
         state.0.lock().subscription = Some(subscription);
 
-        Ok(AsyncSubscription(state, PhantomData))
+        Ok(AsyncSubscription(state))
     }
 }
 

@@ -91,13 +91,13 @@ pub mod asyncs {
     pub use super::Spin;
 
     pub trait EventBus<P>: Errors {
-        type Subscription: Receiver<Data = P, Error = Self::Error>;
+        type Subscription: Receiver<Data = P>;
 
         fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error>;
     }
 
     pub trait PostboxProvider<P>: Errors {
-        type Postbox: Sender<Data = P, Error = Self::Error>;
+        type Postbox: Sender<Data = P>;
 
         fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
     }

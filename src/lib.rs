@@ -28,6 +28,7 @@ pub mod ota;
 pub mod ping;
 pub mod signal;
 pub mod storage;
+pub mod strconv;
 pub mod sys_time;
 pub mod timer;
 pub mod unblocker;

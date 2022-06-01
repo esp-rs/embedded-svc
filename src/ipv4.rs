@@ -1,4 +1,4 @@
-use core::convert::TryFrom;
+use core::convert::{TryFrom, TryInto};
 use core::fmt::Display;
 use core::str::FromStr;
 
@@ -10,6 +10,8 @@ pub use no_std_net::Ipv4Addr;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
+
+use crate::strconv::StrConvError;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "std", derive(Hash))]
@@ -143,6 +145,24 @@ impl<S> Default for DHCPClientSettings<S> {
     }
 }
 
+impl<I> DHCPClientSettings<I>
+where
+    I: AsRef<str>,
+{
+    pub fn try_convert_strings<S>(&self) -> Result<DHCPClientSettings<S>, StrConvError>
+    where
+        S: for<'b> TryFrom<&'b str>,
+    {
+        Ok(DHCPClientSettings {
+            hostname: if let Some(hostname) = &self.hostname {
+                Some(S::try_from(hostname.as_ref()).map_err(|_| StrConvError)?)
+            } else {
+                None
+            },
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientConfiguration<S> {
@@ -172,6 +192,21 @@ impl<S> ClientConfiguration<S> {
 impl<S> Default for ClientConfiguration<S> {
     fn default() -> ClientConfiguration<S> {
         ClientConfiguration::DHCP(Default::default())
+    }
+}
+
+impl<I> ClientConfiguration<I>
+where
+    I: AsRef<str>,
+{
+    pub fn try_convert_strings<S>(&self) -> Result<ClientConfiguration<S>, StrConvError>
+    where
+        S: for<'b> TryFrom<&'b str>,
+    {
+        Ok(match self {
+            Self::DHCP(settings) => ClientConfiguration::DHCP(settings.try_convert_strings()?),
+            Self::Fixed(settings) => ClientConfiguration::Fixed(settings.clone()),
+        })
     }
 }
 
