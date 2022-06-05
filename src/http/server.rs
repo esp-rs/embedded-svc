@@ -135,9 +135,9 @@ pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Errors {
         T: serde::Serialize + ?Sized,
         Self: Sized,
     {
-        let s = serde_json::to_string(o).map_err(EitherError::Second)?;
+        let s = serde_json::to_string(o).map_err(EitherError::E2)?;
 
-        self.send_str(request, &s).map_err(EitherError::First)
+        self.send_str(request, &s).map_err(EitherError::E1)
     }
 
     fn send_reader<R, I>(
@@ -151,7 +151,7 @@ pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Errors {
         I: Read,
         Self: Sized,
     {
-        let mut write = self.into_writer().map_err(EitherError::First)?;
+        let mut write = self.into_writer().map_err(EitherError::E1)?;
 
         if let Some(size) = size {
             copy_len::<B, _, _>(read, &mut write, size as u64)
@@ -159,11 +159,11 @@ pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Errors {
             copy::<B, _, _>(read, &mut write)
         }
         .map_err(|e| match e {
-            EitherError::First(e) => EitherError::Second(e),
-            EitherError::Second(e) => EitherError::First(e),
+            EitherError::E1(e) => EitherError::E2(e),
+            EitherError::E2(e) => EitherError::E1(e),
         })?;
 
-        write.complete(request).map_err(EitherError::First)
+        write.complete(request).map_err(EitherError::E1)
     }
 
     fn into_writer(self) -> Result<Self::Write, Self::Error>

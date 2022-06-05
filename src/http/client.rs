@@ -76,9 +76,9 @@ pub trait Request<'a>: SendHeaders + Errors {
     where
         Self: Sized,
     {
-        let s = serde_json::to_string(o.as_ref()).map_err(EitherError::Second)?;
+        let s = serde_json::to_string(o.as_ref()).map_err(EitherError::E2)?;
 
-        self.send_str(s).map_err(EitherError::First)
+        self.send_str(s).map_err(EitherError::E1)
     }
 
     #[allow(clippy::type_complexity)]
@@ -90,14 +90,14 @@ pub trait Request<'a>: SendHeaders + Errors {
     where
         Self: Sized,
     {
-        let mut write = self.into_writer(size).map_err(EitherError::First)?;
+        let mut write = self.into_writer(size).map_err(EitherError::E1)?;
 
         io::copy_len::<64, _, _>(read, &mut write, size as u64).map_err(|e| match e {
-            EitherError::First(e) => EitherError::Second(e),
-            EitherError::Second(e) => EitherError::First(e),
+            EitherError::E1(e) => EitherError::E2(e),
+            EitherError::E2(e) => EitherError::E1(e),
         })?;
 
-        write.into_response().map_err(EitherError::First)
+        write.into_response().map_err(EitherError::E1)
     }
 
     fn into_writer(self, size: usize) -> Result<Self::Write<'a>, Self::Error>;

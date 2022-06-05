@@ -126,13 +126,13 @@ pub trait OtaUpdate: io::Write {
         Self: Sized,
     {
         match io::copy_len_with_progress::<64, _, _, _>(read, &mut self, u64::MAX, progress) {
-            Ok(_) => self.complete().map_err(EitherError::First),
+            Ok(_) => self.complete().map_err(EitherError::E1),
             Err(e) => {
-                self.abort().map_err(EitherError::First)?;
+                self.abort().map_err(EitherError::E1)?;
 
                 let e = match e {
-                    EitherError::First(e) => EitherError::Second(e),
-                    EitherError::Second(e) => EitherError::First(e),
+                    EitherError::E1(e) => EitherError::E2(e),
+                    EitherError::E2(e) => EitherError::E1(e),
                 };
 
                 Err(e)

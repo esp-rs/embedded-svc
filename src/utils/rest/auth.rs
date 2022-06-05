@@ -38,15 +38,15 @@ where
         H: FnOnce(C::Request, C::Response) -> Result<Completion, E> + Send,
         E: Debug,
     {
-        let current_role = get_role(&mut req, self.default_role).map_err(EitherError::First)?;
+        let current_role = get_role(&mut req, self.default_role).map_err(EitherError::E1)?;
 
         if let Some(current_role) = current_role {
             if current_role >= self.role {
-                return handler(req, resp).map_err(EitherError::Second);
+                return handler(req, resp).map_err(EitherError::E2);
             }
         }
 
-        let completion = resp.status(400).submit(req).map_err(EitherError::First)?;
+        let completion = resp.status(400).submit(req).map_err(EitherError::E1)?;
 
         Ok(completion)
     }
@@ -77,9 +77,9 @@ where
         H: FnOnce(C::Request, C::Response) -> Result<Completion, E>,
         E: Debug,
     {
-        if let Some(role) = get_role(&mut req, None).map_err(EitherError::First)? {
+        if let Some(role) = get_role(&mut req, None).map_err(EitherError::E1)? {
             if role >= self.min_role {
-                return handler(req, resp).map_err(EitherError::Second);
+                return handler(req, resp).map_err(EitherError::E2);
             }
         }
 
@@ -93,10 +93,9 @@ where
                     .authenticate(credentials.user_id, credentials.password)
                 {
                     if role >= self.min_role {
-                        set_request_role(&mut req, Some(Role::Admin))
-                            .map_err(EitherError::First)?;
+                        set_request_role(&mut req, Some(Role::Admin)).map_err(EitherError::E1)?;
 
-                        return handler(req, resp).map_err(EitherError::Second);
+                        return handler(req, resp).map_err(EitherError::E2);
                     }
                 }
             }
@@ -106,7 +105,7 @@ where
             .status(401)
             .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
             .submit(req)
-            .map_err(EitherError::First)?;
+            .map_err(EitherError::E1)?;
 
         Ok(completion)
     }
@@ -134,15 +133,15 @@ where
         H: FnOnce(C::Request, C::Response) -> Result<Completion, E>,
         E: Debug,
     {
-        if let Some(role) = get_role(&mut req, None).map_err(EitherError::First)? {
+        if let Some(role) = get_role(&mut req, None).map_err(EitherError::E1)? {
             if role >= self.min_role {
-                return handler(req, resp).map_err(EitherError::Second);
+                return handler(req, resp).map_err(EitherError::E2);
             }
         }
 
         let completion = resp
             .redirect(req, self.login.as_ref())
-            .map_err(EitherError::First)?;
+            .map_err(EitherError::E1)?;
 
         Ok(completion)
     }
@@ -208,11 +207,11 @@ fn login(
     authenticator: &impl Authenticator,
 ) -> Result<Completion, impl Debug> {
     if req.session().is_valid() {
-        resp.submit(req).map_err(EitherError4::First)
+        resp.submit(req).map_err(EitherError4::E1)
     } else {
         let mut buf = [0_u8; 1000];
 
-        let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError4::Second)?;
+        let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError4::E2)?;
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
         struct Credentials<'a> {
@@ -220,30 +219,30 @@ fn login(
             password: &'a str,
         }
 
-        let credentials: Credentials = serde_json::from_slice(&buf).map_err(EitherError4::Third)?;
+        let credentials: Credentials = serde_json::from_slice(&buf).map_err(EitherError4::E3)?;
 
         if let Some(role) = authenticator.authenticate(credentials.username, credentials.password) {
             {
                 let mut session = req.session();
 
-                session.invalidate().map_err(EitherError4::Fourth)?;
+                session.invalidate().map_err(EitherError4::E4)?;
 
-                session.create_if_invalid().map_err(EitherError4::Fourth)?;
+                session.create_if_invalid().map_err(EitherError4::E4)?;
             }
 
-            set_session_role(&mut req, Some(role)).map_err(EitherError4::Fourth)?;
+            set_session_role(&mut req, Some(role)).map_err(EitherError4::E4)?;
 
-            resp.submit(req).map_err(EitherError4::First)
+            resp.submit(req).map_err(EitherError4::E1)
         } else {
             resp.status(401)
                 .send_str(req, "Invalid username or password")
-                .map_err(EitherError4::First)
+                .map_err(EitherError4::E1)
         }
     }
 }
 
 fn logout(req: impl Request, resp: impl Response) -> Result<Completion, impl Debug> {
-    req.session().invalidate().map_err(EitherError::First)?;
+    req.session().invalidate().map_err(EitherError::E1)?;
 
-    resp.submit(req).map_err(EitherError::Second)
+    resp.submit(req).map_err(EitherError::E2)
 }

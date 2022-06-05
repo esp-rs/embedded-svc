@@ -79,11 +79,9 @@ where
                 middleware2.handle(req, resp, &handler)
             })
             .map_err(|e| match e {
-                EitherError::First(e) => EitherError::First(EitherError::First(e)),
-                EitherError::Second(EitherError::First(e)) => {
-                    EitherError::First(EitherError::Second(e))
-                }
-                EitherError::Second(EitherError::Second(e)) => EitherError::Second(e),
+                EitherError::E1(e) => EitherError::E1(EitherError::E1(e)),
+                EitherError::E2(EitherError::E1(e)) => EitherError::E1(EitherError::E2(e)),
+                EitherError::E2(EitherError::E2(e)) => EitherError::E2(e),
             })
     }
 }

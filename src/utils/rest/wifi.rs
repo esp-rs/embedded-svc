@@ -54,9 +54,9 @@ fn get_capabilities(
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
 ) -> Result<Completion, impl Debug> {
-    let caps = wifi.lock().get_capabilities().map_err(EitherError::First)?;
+    let caps = wifi.lock().get_capabilities().map_err(EitherError::E1)?;
 
-    resp.send_json(req, &caps).map_err(EitherError::Second)
+    resp.send_json(req, &caps).map_err(EitherError::E2)
 }
 
 fn get_status(
@@ -79,9 +79,9 @@ fn scan(
 
     let mut wifi = wifi.lock();
 
-    let (aps, _) = wifi.scan_fill(&mut aps).map_err(EitherError::First)?;
+    let (aps, _) = wifi.scan_fill(&mut aps).map_err(EitherError::E1)?;
 
-    resp.send_json(req, aps).map_err(EitherError::Second)
+    resp.send_json(req, aps).map_err(EitherError::E2)
 }
 
 fn get_configuration(
@@ -93,9 +93,9 @@ fn get_configuration(
 
     let conf = wifi
         .get_configuration::<heapless::String<64>>()
-        .map_err(EitherError::First)?;
+        .map_err(EitherError::E1)?;
 
-    resp.send_json(req, &conf).map_err(EitherError::Second)
+    resp.send_json(req, &conf).map_err(EitherError::E2)
 }
 
 fn set_configuration(
@@ -105,14 +105,13 @@ fn set_configuration(
 ) -> Result<Completion, impl Debug> {
     let mut buf = [0_u8; 1000];
 
-    let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError4::First)?;
+    let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError4::E1)?;
 
-    let conf: wifi::Configuration<&str> =
-        serde_json::from_slice(buf).map_err(EitherError4::Second)?;
+    let conf: wifi::Configuration<&str> = serde_json::from_slice(buf).map_err(EitherError4::E2)?;
 
     wifi.lock()
         .set_configuration(&conf)
-        .map_err(EitherError4::Third)?;
+        .map_err(EitherError4::E3)?;
 
-    resp.submit(req).map_err(EitherError4::Fourth)
+    resp.submit(req).map_err(EitherError4::E4)
 }

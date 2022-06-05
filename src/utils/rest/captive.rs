@@ -80,13 +80,13 @@ where
                 .unwrap_or(true);
 
         if allow {
-            handler(req, resp).map_err(EitherError::Second)
+            handler(req, resp).map_err(EitherError::E2)
         } else {
             let completion = resp
                 .status(307)
                 .header("Location", self.portal_uri.to_owned())
                 .submit(req)
-                .map_err(EitherError::First)?;
+                .map_err(EitherError::E1)?;
 
             Ok(completion)
         }

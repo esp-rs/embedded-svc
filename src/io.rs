@@ -112,14 +112,14 @@ where
     while len > 0 {
         progress(copied, len);
 
-        let size_read = read.read(&mut buf).map_err(EitherError::First)?;
+        let size_read = read.read(&mut buf).map_err(EitherError::E1)?;
         if size_read == 0 {
             break;
         }
 
         write
             .write_all(&buf[0..size_read])
-            .map_err(EitherError::Second)?;
+            .map_err(EitherError::E2)?;
 
         copied += size_read as u64;
         len -= size_read as u64;
@@ -178,7 +178,7 @@ pub mod asyncs {
         while len > 0 {
             progress(copied, len);
 
-            let size_read = read.read(&mut buf).await.map_err(EitherError::First)?;
+            let size_read = read.read(&mut buf).await.map_err(EitherError::E1)?;
             if size_read == 0 {
                 break;
             }
@@ -186,7 +186,7 @@ pub mod asyncs {
             write
                 .write_all(&buf[0..size_read])
                 .await
-                .map_err(EitherError::Second)?;
+                .map_err(EitherError::E2)?;
 
             copied += size_read as u64;
             len -= size_read as u64;

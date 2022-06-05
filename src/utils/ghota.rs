@@ -91,14 +91,14 @@ where
     ) -> Result<(heapless::Vec<Release<'_>, N>, &str), EitherError<C::Error, StrConvError>> {
         let response = self
             .client
-            .get(join::<U>(self.base_url, "releases").map_err(EitherError::Second)?)
-            .map_err(EitherError::First)?
+            .get(join::<U>(self.base_url, "releases").map_err(EitherError::E2)?)
+            .map_err(EitherError::E1)?
             .submit()
-            .map_err(EitherError::First)?;
+            .map_err(EitherError::E1)?;
 
         let mut read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, self.buf).map_err(EitherError::First)?;
+        let (buf, _) = io::read_max(&mut read, self.buf).map_err(EitherError::E1)?;
 
         let releases = serde_json::from_slice::<heapless::Vec<Release<'_>, N>>(buf).unwrap(); // TODO
 
@@ -136,18 +136,18 @@ where
             .client
             .get(
                 &join::<U>(
-                    &join::<U>(self.base_url, "release").map_err(EitherError::Second)?,
+                    &join::<U>(self.base_url, "release").map_err(EitherError::E2)?,
                     "latest",
                 )
-                .map_err(EitherError::Second)?,
+                .map_err(EitherError::E2)?,
             )
-            .map_err(EitherError::First)?
+            .map_err(EitherError::E1)?
             .submit()
-            .map_err(EitherError::First)?;
+            .map_err(EitherError::E1)?;
 
         let mut read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, self.buf).map_err(EitherError::First)?;
+        let (buf, _) = io::read_max(&mut read, self.buf).map_err(EitherError::E1)?;
 
         let release = serde_json::from_slice::<Option<Release<'_>>>(buf).unwrap(); // TODO
 
@@ -217,7 +217,7 @@ where
             for asset in &release.assets {
                 if asset.label == Some(label) {
                     return Ok(Some(
-                        FirmwareInfo::try_from((release, asset)).map_err(EitherError::Second)?,
+                        FirmwareInfo::try_from((release, asset)).map_err(EitherError::E2)?,
                     ));
                 }
             }
@@ -246,7 +246,7 @@ where
         let mut len = 0_usize;
         let mut max_len = 0_usize;
         for (index, info) in iter.enumerate() {
-            let info = info.map_err(EitherError::Second)?;
+            let info = info.map_err(EitherError::E2)?;
 
             max_len = index + 1;
 
@@ -264,8 +264,8 @@ where
         &mut self,
     ) -> Result<alloc::vec::Vec<FirmwareInfo<alloc::string::String>>, Self::Error> {
         let (releases, label) = self.get_gh_releases().map_err(|e| match e {
-            EitherError::First(e) => e,
-            EitherError::Second(_) => unreachable!(),
+            EitherError::E1(e) => e,
+            EitherError::E2(_) => unreachable!(),
         })?;
 
         Ok(releases
@@ -300,7 +300,7 @@ where
                     .map(move |asset| FirmwareInfo::try_from((release, asset)))
             })
             .collect::<Result<heapless::Vec<_, N>, _>>()
-            .map_err(EitherError::Second)?)
+            .map_err(EitherError::E2)?)
     }
 
     fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error> {

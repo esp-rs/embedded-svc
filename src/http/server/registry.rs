@@ -186,7 +186,7 @@ where
     H: for<'a> Fn(&'a mut R::Request) -> Result<ResponseData, E> + Send + Sync,
     E: Debug,
 {
-    let resp = handler(&mut req).map_err(EitherError3::First)?;
+    let resp = handler(&mut req).map_err(EitherError3::E1)?;
 
     inline_resp.set_status(resp.status);
 
@@ -199,16 +199,16 @@ where
     }
 
     match resp.body {
-        Body::Empty => inline_resp.submit(req).map_err(EitherError3::Second),
+        Body::Empty => inline_resp.submit(req).map_err(EitherError3::E2),
         Body::Bytes(bytes) => inline_resp
             .send_bytes(req, &bytes)
-            .map_err(EitherError3::Second),
+            .map_err(EitherError3::E2),
         Body::Read(size, reader) => {
             inline_resp
                 .send_reader(req, size, reader)
                 .map_err(|e| match e {
-                    EitherError::First(e) => EitherError3::Second(e),
-                    EitherError::Second(e) => EitherError3::Third(e),
+                    EitherError::E1(e) => EitherError3::E2(e),
+                    EitherError::E2(e) => EitherError3::E3(e),
                 })
         }
     }
