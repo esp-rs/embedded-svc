@@ -1,3 +1,5 @@
+use crate::errors::{Error, ErrorKind};
+
 #[derive(Debug)]
 pub struct StrConvError;
 
@@ -9,3 +11,9 @@ impl core::fmt::Display for StrConvError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for StrConvError {}
+
+impl Error for StrConvError {
+    fn kind(&self) -> ErrorKind {
+        ErrorKind::Other
+    }
+}

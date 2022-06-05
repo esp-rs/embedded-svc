@@ -1,7 +1,7 @@
 use core::cmp::min;
 use core::fmt::Debug;
 
-use crate::errors::{EitherError, EitherError7, Error, ErrorKind};
+use crate::errors::{EitherError, EitherError8, Error, ErrorKind};
 use crate::http::server::registry::*;
 use crate::http::server::*;
 use crate::io::read_max;
@@ -94,7 +94,9 @@ fn get_status(
 
     let slot = ota.get_running_slot().map_err(EitherError::Second)?;
 
-    let info = slot.get_firmware_info().map_err(EitherError::Second)?;
+    let info = slot
+        .get_firmware_info::<&str>()
+        .map_err(EitherError::Second)?;
 
     resp.send_json(req, &info).map_err(EitherError::First)
 }
@@ -111,7 +113,7 @@ fn get_updates<'a>(
     resp.send_json(req, &updates).map_err(EitherError::First)
 }
 
-fn get_latest_update<'a>(
+fn get_latest_update(
     req: impl Request,
     resp: impl Response,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
@@ -119,7 +121,7 @@ fn get_latest_update<'a>(
     let mut ota_server = ota_server.lock();
 
     let update = ota_server
-        .get_latest_release()
+        .get_latest_release::<&str>()
         .map_err(EitherError::Second)?;
 
     resp.send_json(req, &update).map_err(EitherError::First)
@@ -144,21 +146,21 @@ fn update<'a>(
 ) -> Result<Completion, impl Debug> {
     let mut buf = [0_u8; 1000];
 
-    let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError7::First)?;
+    let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError8::First)?;
 
-    let download_id: Option<&str> = serde_json::from_slice(buf).map_err(EitherError7::Second)?;
+    let download_id: Option<&str> = serde_json::from_slice(buf).map_err(EitherError8::Second)?;
 
     let mut ota_server = ota_server.lock();
 
     let download_id = match download_id {
         None => ota_server
             .get_latest_release()
-            .map_err(EitherError7::Third)?
+            .map_err(EitherError8::Third)?
             .and_then(|release| release.download_id),
         some => some,
     };
 
-    let download_id = download_id.ok_or_else(|| EitherError7::Fourth(MissingUpdateError))?;
+    let download_id = download_id.ok_or_else(|| EitherError8::Fourth(MissingUpdateError))?;
 
     let mut download_id_arr = [0_u8; 64];
 
@@ -167,19 +169,19 @@ fn update<'a>(
 
     let mut ota_update = ota_server
         .open(core::str::from_utf8(did).unwrap())
-        .map_err(EitherError7::Third)?;
+        .map_err(EitherError8::Eigth)?;
 
     let size = ota_update.size();
 
     ota.lock()
         .initiate_update()
-        .map_err(EitherError7::Seventh)?
+        .map_err(EitherError8::Seventh)?
         .update(&mut ota_update, |_, copied| {
             *progress.lock() = size.map(|size| copied as usize * 100 / size as usize)
         }) // TODO: Take the progress mutex more rarely
-        .map_err(EitherError7::Fifth)?;
+        .map_err(EitherError8::Fifth)?;
 
-    resp.submit(req).map_err(EitherError7::Sixth)
+    resp.submit(req).map_err(EitherError8::Sixth)
 }
 
 fn get_update_progress(

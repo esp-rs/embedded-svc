@@ -14,6 +14,7 @@ use num_enum::TryFromPrimitive;
 
 use crate::errors::{EitherError, Errors};
 use crate::ipv4;
+use crate::strconv::StrConvError;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -136,10 +137,14 @@ pub trait Eth: Errors {
 
     fn get_status(&self) -> Status;
 
-    fn get_configuration<S>(
-        &self,
-    ) -> Result<Configuration<S>, EitherError<Self::Error, <S as TryFrom<&str>>::Error>>
+    fn get_configuration<'a, S>(&'a self) -> Result<Configuration<S>, Self::Error>
     where
-        S: for<'a> TryFrom<&'a str> + 'static;
-    fn set_configuration(&mut self, conf: &Configuration<&'_ str>) -> Result<(), Self::Error>;
+        S: TryFrom<&'a str> + 'static;
+
+    fn set_configuration<S>(
+        &mut self,
+        conf: &Configuration<S>,
+    ) -> Result<(), EitherError<Self::Error, StrConvError>>
+    where
+        S: AsRef<str>;
 }

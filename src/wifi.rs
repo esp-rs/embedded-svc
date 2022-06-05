@@ -641,51 +641,33 @@ pub trait Wifi: Errors {
 
     fn get_status(&self) -> Status;
 
-    #[cfg(not(feature = "alloc"))]
-    fn scan_fill<'a, S>(
+    fn scan_fill<'a, 'b, S>(
         &'a mut self,
-        access_points: &'a mut [mem::MaybeUninit<AccessPointInfo<S>>],
-    ) -> Result<(&'a [AccessPointInfo<S>], usize), EitherError<Self::Error, StrConvError>>
+        access_points: &'b mut [mem::MaybeUninit<AccessPointInfo<S>>],
+    ) -> Result<(&'b [AccessPointInfo<S>], usize), EitherError<Self::Error, StrConvError>>
     where
-        S: for<'b> TryFrom<&'b str> + 'static;
-
-    #[cfg(feature = "alloc")]
-    fn scan_fill<'a, S>(
-        &'a mut self,
-        access_points: &'a mut [mem::MaybeUninit<AccessPointInfo<S>>],
-    ) -> Result<(&'a [AccessPointInfo<S>], usize), EitherError<Self::Error, StrConvError>>
-    where
-        S: for<'b> TryFrom<&'b str> + 'static,
-    {
-        let result = self.scan().map_err(EitherError::First)?;
-
-        let len = usize::min(access_points.len(), result.len());
-
-        for i in 0..len {
-            access_points[i].write(
-                result[i]
-                    .try_convert_strings()
-                    .map_err(EitherError::Second)?,
-            );
-        }
-
-        Ok((
-            unsafe { mem::transmute(&access_points[0..len]) },
-            result.len(),
-        ))
-    }
+        S: TryFrom<&'a str> + 'static;
 
     #[cfg(feature = "alloc")]
     fn scan(
         &mut self,
     ) -> Result<alloc::vec::Vec<AccessPointInfo<alloc::string::String>>, Self::Error>;
 
-    fn get_configuration<S>(
-        &self,
-    ) -> Result<Configuration<S>, EitherError<Self::Error, <S as TryFrom<&str>>::Error>>
+    #[cfg(feature = "heapless")]
+    fn scan_heapless<'a, const N: usize, S>(
+        &'a mut self,
+    ) -> Result<(heapless::Vec<AccessPointInfo<S>, N>, usize), EitherError<Self::Error, StrConvError>>
     where
-        S: for<'a> TryFrom<&'a str> + 'static;
-    fn set_configuration<S>(&mut self, conf: &Configuration<S>) -> Result<(), Self::Error>
+        S: TryFrom<&'a str> + 'static;
+
+    fn get_configuration<'a, S>(&'a self) -> Result<Configuration<S>, Self::Error>
+    where
+        S: TryFrom<&'a str> + 'static;
+
+    fn set_configuration<S>(
+        &mut self,
+        conf: &Configuration<S>,
+    ) -> Result<(), EitherError<Self::Error, StrConvError>>
     where
         S: AsRef<str>;
 }

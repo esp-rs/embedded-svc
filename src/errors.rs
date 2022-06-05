@@ -398,6 +398,95 @@ where
     // }
 }
 
+#[derive(Debug)]
+pub enum EitherError8<E1, E2, E3, E4, E5, E6, E7, E8> {
+    First(E1),
+    Second(E2),
+    Third(E3),
+    Fourth(E4),
+    Fifth(E5),
+    Sixth(E6),
+    Seventh(E7),
+    Eigth(E8),
+}
+
+impl<E1, E2, E3, E4, E5, E6, E7, E8> core::fmt::Display
+    for EitherError8<E2, E1, E3, E4, E5, E6, E7, E8>
+where
+    E1: core::fmt::Display,
+    E2: core::fmt::Display,
+    E3: core::fmt::Display,
+    E4: core::fmt::Display,
+    E5: core::fmt::Display,
+    E6: core::fmt::Display,
+    E7: core::fmt::Display,
+    E8: core::fmt::Display,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::First(e1) => write!(f, "Error {}", e1),
+            Self::Second(e2) => write!(f, "Error {}", e2),
+            Self::Third(e3) => write!(f, "Error {}", e3),
+            Self::Fourth(e4) => write!(f, "Error {}", e4),
+            Self::Fifth(e5) => write!(f, "Error {}", e5),
+            Self::Sixth(e6) => write!(f, "Error {}", e6),
+            Self::Seventh(e7) => write!(f, "Error {}", e7),
+            Self::Eigth(e8) => write!(f, "Error {}", e8),
+        }
+    }
+}
+
+impl<E1, E2, E3, E4, E5, E6, E7, E8> Error for EitherError8<E1, E2, E3, E4, E5, E6, E7, E8>
+where
+    E1: Error,
+    E2: Error,
+    E3: Error,
+    E4: Error,
+    E5: Error,
+    E6: Error,
+    E7: Error,
+    E8: Error,
+{
+    fn kind(&self) -> ErrorKind {
+        match self {
+            Self::First(e1) => e1.kind(),
+            Self::Second(e2) => e2.kind(),
+            Self::Third(e3) => e3.kind(),
+            Self::Fourth(e4) => e4.kind(),
+            Self::Fifth(e5) => e5.kind(),
+            Self::Sixth(e6) => e6.kind(),
+            Self::Seventh(e7) => e7.kind(),
+            Self::Eigth(e8) => e8.kind(),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<E1, E2, E3, E4, E5, E6, E7, E8> std::error::Error
+    for EitherError8<E1, E2, E3, E4, E5, E6, E7, E8>
+where
+    E1: core::fmt::Debug + core::fmt::Display,
+    E2: core::fmt::Debug + core::fmt::Display,
+    E3: core::fmt::Debug + core::fmt::Display,
+    E4: core::fmt::Debug + core::fmt::Display,
+    E5: core::fmt::Debug + core::fmt::Display,
+    E6: core::fmt::Debug + core::fmt::Display,
+    E7: core::fmt::Debug + core::fmt::Display,
+    E8: core::fmt::Debug + core::fmt::Display,
+    // TODO
+    // where
+    //     R: std::error::Error + 'static,
+    //     W: std::error::Error + 'static,
+{
+    // TODO
+    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    //     match self {
+    //         CopyError::ReadError(r) => Some(r),
+    //         CopyError::WriteError(w) => Some(w),
+    //     }
+    // }
+}
+
 // pub trait Errors: Io where <Self as Io>::Error: Error {
 // }
 

@@ -1,18 +1,20 @@
-use core::cmp::max;
+use core::convert::TryFrom;
+use core::mem::{self, MaybeUninit};
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::Errors;
+use crate::errors::{EitherError, Errors};
 use crate::http::{client::*, Headers};
 use crate::io;
 use crate::ota::*;
+use crate::strconv::StrConvError;
 
 // Copied from here:
 // https://github.com/XAMPPRocky/octocrab/blob/master/src/models/repos.rs
 // To conserve memory, unly the utilized fields are mapped
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Release<'a, const N: usize = 32> {
+struct Release<'a, const N: usize = 32> {
     pub tag_name: &'a str,
     pub body: Option<&'a str>,
     pub draft: bool,
@@ -27,7 +29,7 @@ pub struct Release<'a, const N: usize = 32> {
 // To conserve memory, unly the utilized fields are mapped
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Asset<'a> {
+struct Asset<'a> {
     pub browser_download_url: &'a str,
     pub name: &'a str,
     pub label: Option<&'a str>,
@@ -38,26 +40,32 @@ pub struct Asset<'a> {
     // pub created_at: DateTime<Utc>,
 }
 
-impl<'a> From<(&Release<'a>, &Asset<'a>)> for FirmwareInfo<'a> {
-    fn from((release, asset): (&Release<'a>, &Asset<'a>)) -> Self {
-        Self {
-            version: release.tag_name,
-            released: asset.updated_at,
-            description: release.body.unwrap_or_else(|| "".into()),
+impl<'a, S> TryFrom<(&Release<'a>, &Asset<'a>)> for FirmwareInfo<S>
+where
+    S: TryFrom<&'a str>,
+{
+    type Error = StrConvError;
+
+    fn try_from((release, asset): (&Release<'a>, &Asset<'a>)) -> Result<Self, Self::Error> {
+        Ok(Self {
+            version: S::try_from(release.tag_name).map_err(|_| StrConvError)?,
+            released: S::try_from(asset.updated_at).map_err(|_| StrConvError)?,
+            description: S::try_from(release.body.unwrap_or_else(|| ""))
+                .map_err(|_| StrConvError)?,
             signature: None,
-            download_id: Some(asset.browser_download_url),
-        }
+            download_id: Some(S::try_from(asset.browser_download_url).map_err(|_| StrConvError)?),
+        })
     }
 }
 
-pub struct GitHubOtaService<'a, C> {
+pub struct GitHubOtaService<'a, C, const N: usize = 128, const U: usize = 256> {
     base_url: &'a str,
     label: &'a str,
     client: C,
     buf: &'a mut [u8],
 }
 
-impl<'a, C> GitHubOtaService<'a, C>
+impl<'a, C, const N: usize, const U: usize> GitHubOtaService<'a, C, N, U>
 where
     C: Client,
 {
@@ -78,12 +86,10 @@ where
     //     )
     // }
 
-    fn get_gh_releases<const N: usize>(
-        &mut self,
-    ) -> Result<heapless::Vec<Release<'_>, N>, C::Error> {
+    fn get_gh_releases(&mut self) -> Result<(heapless::Vec<Release<'_>, N>, &str), C::Error> {
         let response = self
             .client
-            .get(join::<256>(self.base_url, "releases"))?
+            .get(join::<U>(self.base_url, "releases"))?
             .submit()?;
 
         let mut read = response.reader();
@@ -92,40 +98,37 @@ where
 
         let releases = serde_json::from_slice::<heapless::Vec<Release<'_>, N>>(buf).unwrap();
 
-        Ok(releases)
+        Ok((releases, self.label))
     }
 
-    fn fill_gh_releases<const N: usize>(
-        &'a mut self,
-        releases: &'a mut [Release<'a>],
-    ) -> Result<(&'a [Release<'a>], usize), C::Error>
-    where
-        Self: 'a,
-    {
-        let response = self
-            .client
-            .get(&join::<128>(self.base_url, "releases"))?
-            .submit()?;
+    // fn fill_gh_releases<const N: usize>(
+    //     &'a mut self,
+    //     releases: &'a mut [Release<'a>],
+    // ) -> Result<(&'a [Release<'a>], usize), C::Error>
+    // where
+    //     Self: 'a,
+    // {
+    //     let response = self
+    //         .client
+    //         .get(&join::<128>(self.base_url, "releases"))?
+    //         .submit()?;
 
-        let mut read = response.reader();
+    //     let mut read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, self.buf)?;
+    //     let (buf, _) = io::read_max(&mut read, self.buf)?;
 
-        let releases_vec = serde_json::from_slice::<heapless::Vec<Release<'a>, N>>(buf).unwrap();
+    //     let releases_vec = serde_json::from_slice::<heapless::Vec<Release<'a>, N>>(buf).unwrap();
 
-        let cnt = max(releases.len(), releases_vec.len());
-        releases[..cnt].clone_from_slice(&releases_vec[..cnt]);
+    //     let cnt = max(releases.len(), releases_vec.len());
+    //     releases[..cnt].clone_from_slice(&releases_vec[..cnt]);
 
-        Ok((&releases[..cnt], cnt))
-    }
+    //     Ok((&releases[..cnt], cnt))
+    // }
 
     fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, C::Error> {
         let response = self
             .client
-            .get(&join::<128>(
-                &join::<128>(self.base_url, "release"),
-                "latest",
-            ))?
+            .get(&join::<U>(&join::<U>(self.base_url, "release"), "latest"))?
             .submit()?;
 
         let mut read = response.reader();
@@ -135,23 +138,6 @@ where
         let release = serde_json::from_slice::<Option<Release<'_>>>(buf).unwrap();
 
         Ok(release)
-    }
-
-    fn get_firmware<'b, const N: usize, I>(
-        label: &'b str,
-        releases: I,
-    ) -> impl Iterator<Item = FirmwareInfo<'b>> + 'b
-    where
-        I: Iterator<Item = Release<'b>> + 'b,
-    {
-        releases.flat_map(move |release| {
-            release
-                .assets
-                .iter()
-                .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
-                .map(|asset| FirmwareInfo::from((&release, asset)))
-                .collect::<heapless::Vec<_, N>>()
-        })
     }
 }
 
@@ -203,33 +189,101 @@ where
         <<<C as Client>::Request<'b> as Request<'b>>::Write<'b> as RequestWrite<'b>>::Response,
     >;
 
-    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo<'_>>, Self::Error> {
+    fn get_latest_release<'b, S>(
+        &'b mut self,
+    ) -> Result<Option<FirmwareInfo<S>>, EitherError<Self::Error, StrConvError>>
+    where
+        S: TryFrom<&'b str>,
+    {
         let label = self.label;
 
-        let release = self.get_gh_latest_release().unwrap().unwrap();
-        let releases = core::iter::once(release);
+        let release = self.get_gh_latest_release().map_err(EitherError::First)?;
 
-        let firmware: Option<FirmwareInfo<'_>> =
-            Self::get_firmware::<32, _>(label, releases).next();
+        if let Some(release) = release.as_ref() {
+            for asset in &release.assets {
+                if asset.label == Some(label) {
+                    return Ok(Some(
+                        FirmwareInfo::try_from((release, asset)).map_err(EitherError::Second)?,
+                    ));
+                }
+            }
+        }
 
-        Ok(firmware)
+        Ok(None)
     }
 
-    #[cfg(not(feature = "alloc"))]
-    fn fill_releases(
-        &mut self,
-        infos: &mut [FirmwareInfo<'_>],
-    ) -> Result<(&[FirmwareInfo<'_>], usize), Self::Error> {
+    fn fill_releases<'b, 'c, S>(
+        &'b mut self,
+        infos: &'c mut [MaybeUninit<FirmwareInfo<S>>],
+    ) -> Result<(&'c [FirmwareInfo<S>], usize), EitherError<Self::Error, StrConvError>>
+    where
+        S: TryFrom<&'b str>,
+    {
+        let (releases, label) = self.get_gh_releases().map_err(EitherError::First)?;
+
+        let iter = releases.iter().flat_map(|release| {
+            release
+                .assets
+                .iter()
+                .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
+                .map(move |asset| FirmwareInfo::try_from((release, asset)))
+        });
+
+        let mut len = 0_usize;
+        let mut max_len = 0_usize;
+        for (index, info) in iter.enumerate() {
+            let info = info.map_err(EitherError::Second)?;
+
+            max_len = index + 1;
+
+            if index < infos.len() {
+                len = index + 1;
+                infos[index].write(info);
+            }
+        }
+
+        Ok((unsafe { mem::transmute(&infos[0..len]) }, max_len))
     }
 
     #[cfg(feature = "alloc")]
-    fn get_releases(&mut self) -> Result<alloc::vec::Vec<FirmwareInfo<'_>>, Self::Error> {
-        let label = self.label;
+    fn get_releases(
+        &mut self,
+    ) -> Result<alloc::vec::Vec<FirmwareInfo<alloc::string::String>>, Self::Error> {
+        let (releases, label) = self.get_gh_releases()?;
 
-        let assets =
-            Self::get_firmware::<32, _>(label, self.get_gh_releases::<64>()?.into_iter()).collect();
+        Ok(releases
+            .iter()
+            .flat_map(|release| {
+                release
+                    .assets
+                    .iter()
+                    .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
+                    .map(move |asset| FirmwareInfo::try_from((release, asset)))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap())
+    }
 
-        Ok(assets)
+    #[cfg(feature = "heapless")]
+    fn get_releases_heapless<'b, S, const N: usize>(
+        &'b mut self,
+    ) -> Result<heapless::Vec<FirmwareInfo<S>, N>, EitherError<Self::Error, StrConvError>>
+    where
+        S: TryFrom<&'b str>,
+    {
+        let (releases, label) = self.get_gh_releases().map_err(EitherError::First)?;
+
+        Ok(releases
+            .iter()
+            .flat_map(|release| {
+                release
+                    .assets
+                    .iter()
+                    .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
+                    .map(move |asset| FirmwareInfo::try_from((release, asset)))
+            })
+            .collect::<Result<heapless::Vec<_, N>, _>>()
+            .map_err(EitherError::Second)?)
     }
 
     fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error> {
