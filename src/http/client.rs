@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::errors::{either::EitherError, Errors};
+use crate::errors::{wrap::EitherError, Errors};
 use crate::io::{self, Write};
 
 use super::{Headers, Method, SendHeaders, Status};

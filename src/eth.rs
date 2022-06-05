@@ -12,7 +12,7 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::errors::{conv::StrConvError, either::EitherError, Errors};
+use crate::errors::{conv::StrConvError, wrap::EitherError, Errors};
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]

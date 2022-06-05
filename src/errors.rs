@@ -26,10 +26,43 @@ pub mod conv {
     }
 }
 
-pub mod either {
+pub mod wrap {
     use core::fmt::{self, Debug, Display, Formatter};
 
     use super::{Error, ErrorKind};
+
+    #[derive(Debug)]
+    pub struct WrapError<E>(pub E);
+
+    impl<E> From<E> for WrapError<E>
+    where
+        E: Debug,
+    {
+        fn from(e: E) -> Self {
+            WrapError(e)
+        }
+    }
+
+    impl<E> Display for WrapError<E>
+    where
+        E: Display,
+    {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl<E> Error for WrapError<E>
+    where
+        E: Error,
+    {
+        fn kind(&self) -> ErrorKind {
+            self.0.kind()
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl<E> std::error::Error for WrapError<E> where E: Display + Debug {}
 
     #[derive(Debug)]
     pub enum EitherError<E1, E2> {

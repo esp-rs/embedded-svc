@@ -4,7 +4,7 @@ use core::mem::MaybeUninit;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{conv::StrConvError, either::EitherError, Errors};
+use crate::errors::{conv::StrConvError, wrap::EitherError, Errors};
 use crate::io;
 
 #[derive(Clone, Debug)]
@@ -81,7 +81,9 @@ pub trait OtaSlot: Errors {
     fn get_label(&self) -> Result<&'_ str, Self::Error>;
     fn get_state(&self) -> Result<SlotState, Self::Error>;
 
-    fn get_firmware_info<'a, S>(&'a self) -> Result<Option<FirmwareInfo<S>>, Self::Error>
+    fn get_firmware_info<'a, S>(
+        &'a self,
+    ) -> Result<Option<FirmwareInfo<S>>, EitherError<Self::Error, StrConvError>>
     where
         S: TryFrom<&'a str>;
 }

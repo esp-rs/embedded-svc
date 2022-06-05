@@ -1,10 +1,7 @@
 use core::cmp::min;
 use core::fmt::Debug;
 
-use crate::errors::{
-    either::{EitherError, EitherError8},
-    Error, ErrorKind,
-};
+use crate::errors::wrap::{EitherError, EitherError3, EitherError8, WrapError};
 use crate::http::server::registry::*;
 use crate::http::server::*;
 use crate::io::read_max;
@@ -12,32 +9,6 @@ use crate::mutex::*;
 use crate::ota::{self, OtaRead, OtaSlot, OtaUpdate};
 
 use crate::utils::role::*;
-
-#[derive(Debug)]
-pub struct MissingUpdateError;
-
-impl core::fmt::Display for MissingUpdateError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "MissingUpdateError")
-    }
-}
-
-impl Error for MissingUpdateError {
-    fn kind(&self) -> ErrorKind {
-        ErrorKind::Other
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for MissingUpdateError {
-    // TODO
-    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    //     match self {
-    //         CopyError::ReadError(r) => Some(r),
-    //         CopyError::WriteError(w) => Some(w),
-    //     }
-    // }
-}
 
 pub fn register<'a, R, MO, MS, MP, O, S>(
     registry: &mut R,
@@ -95,11 +66,11 @@ fn get_status(
 ) -> Result<Completion, impl Debug> {
     let ota = ota.lock();
 
-    let slot = ota.get_running_slot().map_err(EitherError::E2)?;
+    let slot = ota.get_running_slot().map_err(EitherError3::E1)?;
 
-    let info = slot.get_firmware_info::<&str>().map_err(EitherError::E2)?;
+    let info = slot.get_firmware_info::<&str>().map_err(EitherError3::E2)?;
 
-    resp.send_json(req, &info).map_err(EitherError::E1)
+    resp.send_json(req, &info).map_err(EitherError3::E3)
 }
 
 fn get_updates<'a>(
@@ -161,7 +132,7 @@ fn update<'a>(
         some => some,
     };
 
-    let download_id = download_id.ok_or_else(|| EitherError8::E4(MissingUpdateError))?;
+    let download_id = download_id.ok_or_else(|| EitherError8::E4(WrapError("Missing update")))?;
 
     let mut download_id_arr = [0_u8; 64];
 

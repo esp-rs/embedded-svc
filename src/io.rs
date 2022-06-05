@@ -2,7 +2,7 @@ pub use embedded_io::adapters;
 pub use embedded_io::blocking::*;
 pub use embedded_io::*;
 
-use crate::errors::either::EitherError;
+use crate::errors::wrap::EitherError;
 
 pub struct Bytes<R, const N: usize> {
     reader: R,
@@ -135,7 +135,7 @@ pub mod asyncs {
     //pub use embedded_io::asynch::adapters;
     pub use embedded_io::asynch::*;
 
-    use crate::errors::either::EitherError;
+    use crate::errors::wrap::EitherError;
 
     pub async fn copy<const N: usize, R, W>(
         read: R,

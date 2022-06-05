@@ -1,7 +1,7 @@
 use core::fmt::Debug;
 use core::mem::MaybeUninit;
 
-use crate::errors::either::{EitherError, EitherError4};
+use crate::errors::wrap::{EitherError, EitherError4};
 use crate::io::read_max;
 use crate::mutex::Mutex;
 use crate::wifi::{self, AccessPointInfo};

@@ -3,7 +3,7 @@ use core::mem::{self, MaybeUninit};
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{conv::StrConvError, either::EitherError, Errors};
+use crate::errors::{conv::StrConvError, wrap::EitherError, Errors};
 use crate::http::{client::*, Headers};
 use crate::io;
 use crate::ota::*;
