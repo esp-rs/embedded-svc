@@ -86,17 +86,21 @@ where
     //     )
     // }
 
-    fn get_gh_releases(&mut self) -> Result<(heapless::Vec<Release<'_>, N>, &str), C::Error> {
+    fn get_gh_releases(
+        &mut self,
+    ) -> Result<(heapless::Vec<Release<'_>, N>, &str), EitherError<C::Error, StrConvError>> {
         let response = self
             .client
-            .get(join::<U>(self.base_url, "releases"))?
-            .submit()?;
+            .get(join::<U>(self.base_url, "releases").map_err(EitherError::Second)?)
+            .map_err(EitherError::First)?
+            .submit()
+            .map_err(EitherError::First)?;
 
         let mut read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, self.buf)?;
+        let (buf, _) = io::read_max(&mut read, self.buf).map_err(EitherError::First)?;
 
-        let releases = serde_json::from_slice::<heapless::Vec<Release<'_>, N>>(buf).unwrap();
+        let releases = serde_json::from_slice::<heapless::Vec<Release<'_>, N>>(buf).unwrap(); // TODO
 
         Ok((releases, self.label))
     }
@@ -125,17 +129,27 @@ where
     //     Ok((&releases[..cnt], cnt))
     // }
 
-    fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, C::Error> {
+    fn get_gh_latest_release(
+        &mut self,
+    ) -> Result<Option<Release<'_>>, EitherError<C::Error, StrConvError>> {
         let response = self
             .client
-            .get(&join::<U>(&join::<U>(self.base_url, "release"), "latest"))?
-            .submit()?;
+            .get(
+                &join::<U>(
+                    &join::<U>(self.base_url, "release").map_err(EitherError::Second)?,
+                    "latest",
+                )
+                .map_err(EitherError::Second)?,
+            )
+            .map_err(EitherError::First)?
+            .submit()
+            .map_err(EitherError::First)?;
 
         let mut read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, self.buf)?;
+        let (buf, _) = io::read_max(&mut read, self.buf).map_err(EitherError::First)?;
 
-        let release = serde_json::from_slice::<Option<Release<'_>>>(buf).unwrap();
+        let release = serde_json::from_slice::<Option<Release<'_>>>(buf).unwrap(); // TODO
 
         Ok(release)
     }
@@ -197,7 +211,7 @@ where
     {
         let label = self.label;
 
-        let release = self.get_gh_latest_release().map_err(EitherError::First)?;
+        let release = self.get_gh_latest_release()?;
 
         if let Some(release) = release.as_ref() {
             for asset in &release.assets {
@@ -219,7 +233,7 @@ where
     where
         S: TryFrom<&'b str>,
     {
-        let (releases, label) = self.get_gh_releases().map_err(EitherError::First)?;
+        let (releases, label) = self.get_gh_releases()?;
 
         let iter = releases.iter().flat_map(|release| {
             release
@@ -249,7 +263,10 @@ where
     fn get_releases(
         &mut self,
     ) -> Result<alloc::vec::Vec<FirmwareInfo<alloc::string::String>>, Self::Error> {
-        let (releases, label) = self.get_gh_releases()?;
+        let (releases, label) = self.get_gh_releases().map_err(|e| match e {
+            EitherError::First(e) => e,
+            EitherError::Second(_) => unreachable!(),
+        })?;
 
         Ok(releases
             .iter()
@@ -271,7 +288,7 @@ where
     where
         S: TryFrom<&'b str>,
     {
-        let (releases, label) = self.get_gh_releases().map_err(EitherError::First)?;
+        let (releases, label) = self.get_gh_releases()?;
 
         Ok(releases
             .iter()
@@ -296,11 +313,11 @@ where
     }
 }
 
-fn join<const N: usize>(uri: &str, path: &str) -> heapless::String<N> {
+fn join<const N: usize>(uri: &str, path: &str) -> Result<heapless::String<N>, StrConvError> {
     let uri_slash = uri.ends_with('/');
     let path_slash = path.starts_with('/');
 
-    if path.is_empty() || path.len() == 1 && uri_slash && path_slash {
+    let uri = if path.is_empty() || path.len() == 1 && uri_slash && path_slash {
         uri.into()
     } else {
         let path = if uri_slash && path_slash {
@@ -312,11 +329,13 @@ fn join<const N: usize>(uri: &str, path: &str) -> heapless::String<N> {
         let mut result = heapless::String::from(uri);
 
         if !uri_slash && !path_slash {
-            result.push('/').unwrap();
+            result.push('/').map_err(|_| StrConvError)?;
         }
 
-        result.push_str(path).unwrap();
+        result.push_str(path).map_err(|_| StrConvError)?;
 
         result
-    }
+    };
+
+    Ok(uri)
 }
