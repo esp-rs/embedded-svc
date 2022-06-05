@@ -12,9 +12,8 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::errors::{EitherError, Errors};
+use crate::errors::{conv::StrConvError, either::EitherError, Errors};
 use crate::ipv4;
-use crate::strconv::StrConvError;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -137,14 +136,13 @@ pub trait Eth: Errors {
 
     fn get_status(&self) -> Status;
 
-    fn get_configuration<'a, S>(&'a self) -> Result<Configuration<S>, Self::Error>
+    fn get_configuration<'a, S>(
+        &'a self,
+    ) -> Result<Configuration<S>, EitherError<Self::Error, StrConvError>>
     where
         S: TryFrom<&'a str> + 'static;
 
-    fn set_configuration<S>(
-        &mut self,
-        conf: &Configuration<S>,
-    ) -> Result<(), EitherError<Self::Error, StrConvError>>
+    fn set_configuration<S>(&mut self, conf: &Configuration<S>) -> Result<(), Self::Error>
     where
         S: AsRef<str>;
 }

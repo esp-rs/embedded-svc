@@ -2,7 +2,7 @@ use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{EitherError, EitherError4};
+use crate::errors::either::{EitherError, EitherError4};
 use crate::http::server::middleware::Middleware;
 use crate::http::server::registry::*;
 use crate::http::server::*;

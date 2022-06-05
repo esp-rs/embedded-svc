@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::errors::{EitherError, Errors};
+use crate::errors::{either::EitherError, Errors};
 use crate::io::{copy, copy_len, Read, Write};
 use crate::storage::{DynStorage, Storage};
 

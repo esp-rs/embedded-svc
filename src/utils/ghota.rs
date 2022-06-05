@@ -3,11 +3,10 @@ use core::mem::{self, MaybeUninit};
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{EitherError, Errors};
+use crate::errors::{conv::StrConvError, either::EitherError, Errors};
 use crate::http::{client::*, Headers};
 use crate::io;
 use crate::ota::*;
-use crate::strconv::StrConvError;
 
 // Copied from here:
 // https://github.com/XAMPPRocky/octocrab/blob/master/src/models/repos.rs

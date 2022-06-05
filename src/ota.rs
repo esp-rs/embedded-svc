@@ -4,9 +4,8 @@ use core::mem::MaybeUninit;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{EitherError, Errors};
+use crate::errors::{conv::StrConvError, either::EitherError, Errors};
 use crate::io;
-use crate::strconv::StrConvError;
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -22,7 +21,7 @@ impl<I> FirmwareInfo<I>
 where
     I: AsRef<str>,
 {
-    fn try_convert_strings<'a, S>(&'a self) -> Result<FirmwareInfo<S>, StrConvError>
+    pub fn try_convert_strings<'a, S>(&'a self) -> Result<FirmwareInfo<S>, StrConvError>
     where
         S: TryFrom<&'a str>,
     {

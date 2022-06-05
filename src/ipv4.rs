@@ -1,4 +1,4 @@
-use core::convert::{TryFrom, TryInto};
+use core::convert::TryFrom;
 use core::fmt::Display;
 use core::str::FromStr;
 
@@ -11,7 +11,7 @@ pub use no_std_net::Ipv4Addr;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::strconv::StrConvError;
+use crate::errors::conv::StrConvError;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "std", derive(Hash))]

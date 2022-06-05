@@ -1,7 +1,10 @@
 use core::cmp::min;
 use core::fmt::Debug;
 
-use crate::errors::{EitherError, EitherError8, Error, ErrorKind};
+use crate::errors::{
+    either::{EitherError, EitherError8},
+    Error, ErrorKind,
+};
 use crate::http::server::registry::*;
 use crate::http::server::*;
 use crate::io::read_max;

@@ -1,6 +1,6 @@
 use core::fmt::{self, Debug};
 
-use crate::errors::EitherError;
+use crate::errors::either::EitherError;
 use crate::http::server::Request;
 use crate::http::server::{middleware::Middleware, registry::*, Completion, Context, Response};
 use crate::http::{Headers, SendHeaders, SendStatus};
