@@ -9,7 +9,9 @@ use super::{Headers, Method, SendHeaders, SendStatus};
 pub mod attr;
 pub mod middleware;
 pub mod registry;
-//pub mod session;
+
+#[cfg(feature = "alloc")]
+pub mod session;
 
 #[cfg(feature = "alloc")]
 pub use response_data::*;
@@ -36,26 +38,18 @@ impl fmt::Display for SessionError {
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for SessionError {
-    // TODO
-    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    //     match self {
-    //         SendError::SendError(s) => Some(s),
-    //         SendError::WriteError(w) => Some(w),
-    //     }
-    // }
-}
+impl std::error::Error for SessionError {}
 
 pub trait Session: Storage<Error = SessionError> {
-    fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError>;
-
-    fn get_error(&self) -> Option<SessionError>;
+    fn id(&self) -> Option<heapless::String<64>>;
 
     fn is_valid(&self) -> bool {
         self.get_error().is_none()
     }
 
-    fn id(&self) -> Option<&'_ str>;
+    fn get_error(&self) -> Option<SessionError>;
+
+    fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError>;
 
     fn invalidate(&mut self) -> Result<bool, SessionError>;
 }
@@ -79,7 +73,7 @@ pub trait Request: Headers + Io {
 
     fn session(&self) -> Self::Session<'_>;
 
-    fn reader(&self) -> Self::Read<'_>;
+    fn reader(&mut self) -> Self::Read<'_>;
 }
 
 struct PrivateData;

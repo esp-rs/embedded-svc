@@ -93,7 +93,7 @@ fn get_configuration(
 }
 
 fn set_configuration(
-    req: impl Request,
+    mut req: impl Request,
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
 ) -> Result<Completion, impl Debug> {

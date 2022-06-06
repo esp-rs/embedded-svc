@@ -9,9 +9,9 @@ pub trait StorageBase {
 }
 
 pub trait Storage: StorageBase {
-    fn get<'a, T>(&'a self, name: &str) -> Result<Option<T>, Self::Error>
+    fn get<T>(&self, name: &str) -> Result<Option<T>, Self::Error>
     where
-        T: serde::Deserialize<'a>;
+        T: serde::de::DeserializeOwned;
 
     fn set<T>(&mut self, name: &str, value: &T) -> Result<bool, Self::Error>
     where

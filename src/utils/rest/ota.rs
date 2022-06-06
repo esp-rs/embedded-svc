@@ -108,7 +108,7 @@ fn factory_reset(
 }
 
 fn update<'a>(
-    req: impl Request,
+    mut req: impl Request,
     resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,

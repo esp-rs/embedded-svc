@@ -8,6 +8,7 @@ use alloc::sync::Arc;
 use log::*;
 
 use crate::mutex::*;
+use crate::storage::StorageBase;
 
 use super::*;
 
@@ -163,20 +164,20 @@ where
         }
     }
 
-    fn deserialize<T: serde::de::DeserializeOwned>(
-        slice: Option<impl AsRef<[u8]>>,
-    ) -> Result<Option<T>, SessionError> {
-        if let Some(value) = slice {
-            let value = value.as_ref();
+    // fn deserialize<T: serde::de::DeserializeOwned>(
+    //     slice: Option<impl AsRef<[u8]>>,
+    // ) -> Result<Option<T>, SessionError> {
+    //     if let Some(value) = slice {
+    //         let value = value.as_ref();
 
-            let result =
-                serde_json::from_slice::<T>(value).map_err(|_| SessionError::SerdeError)?;
+    //         let result =
+    //             serde_json::from_slice::<T>(value).map_err(|_| SessionError::SerdeError)?;
 
-            Ok(Some(result))
-        } else {
-            Ok(None)
-        }
-    }
+    //         Ok(Some(result))
+    //     } else {
+    //         Ok(None)
+    //     }
+    // }
 }
 
 impl<M, S> Drop for RequestScopedSession<M, S>
@@ -191,20 +192,63 @@ where
     }
 }
 
-impl<'a, M, S> Session<'a> for RequestScopedSession<M, S>
+impl<M, S> StorageBase for RequestScopedSession<M, S>
 where
     M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
     S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
+    type Error = SessionError;
+
+    fn contains(&self, name: &str) -> Result<bool, Self::Error> {
+        self.with_session(|attributes| Ok(attributes.get(name).is_some()))
+    }
+
+    fn remove(&mut self, name: &str) -> Result<bool, SessionError> {
+        self.with_session(|attributes| Ok(attributes.remove(name).is_some()))
+    }
+}
+
+impl<M, S> Storage for RequestScopedSession<M, S>
+where
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
+{
+    fn get<T: serde::de::DeserializeOwned>(&self, name: &str) -> Result<Option<T>, SessionError> {
+        self.with_session(|attributes| {
+            if let Some(data) = attributes.get(name) {
+                Ok(Some(
+                    serde_json::from_slice::<T>(data).map_err(|_| SessionError::SerdeError)?,
+                ))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
+    fn set<I: serde::Serialize>(&mut self, name: &str, value: &I) -> Result<bool, SessionError> {
+        self.with_session(|attributes| {
+            Ok(attributes
+                .insert(
+                    name.to_owned(),
+                    serde_json::to_vec(value).map_err(|_| SessionError::SerdeError)?,
+                )
+                .is_some())
+        })
+    }
+}
+
+impl<M, S> Session for RequestScopedSession<M, S>
+where
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
+{
+    fn id(&self) -> Option<heapless::String<64>> {
+        self.session_id.as_deref().map(|s| s.into())
+    }
+
     fn get_error(&self) -> Option<SessionError> {
         self.with_session(|_| Ok(()))
             .map_or_else(Option::Some, |_| None)
-    }
-
-    fn id(&self) -> Option<Cow<'_, str>> {
-        self.session_id
-            .as_ref()
-            .map(|session_id| Cow::Borrowed(session_id.as_ref()))
     }
 
     fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError> {
@@ -215,49 +259,6 @@ where
         }
 
         Ok(self)
-    }
-
-    fn get<T: serde::de::DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError> {
-        self.with_session(|attributes| Self::deserialize(attributes.get(name.as_ref())))
-    }
-
-    fn set_and_get<I: serde::Serialize, T: serde::de::DeserializeOwned>(
-        &mut self,
-        name: impl AsRef<str>,
-        value: &I,
-    ) -> Result<Option<T>, SessionError> {
-        self.with_session(|attributes| {
-            Self::deserialize(attributes.insert(
-                name.as_ref().to_owned(),
-                serde_json::to_vec(value).map_err(|_| SessionError::SerdeError)?,
-            ))
-        })
-    }
-
-    fn remove_and_get<T: serde::de::DeserializeOwned>(
-        &mut self,
-        name: impl AsRef<str>,
-    ) -> Result<Option<T>, SessionError> {
-        self.with_session(|attributes| Self::deserialize(attributes.remove(name.as_ref())))
-    }
-
-    fn set<I: serde::Serialize>(
-        &mut self,
-        name: impl AsRef<str>,
-        value: &I,
-    ) -> Result<bool, SessionError> {
-        self.with_session(|attributes| {
-            Ok(attributes
-                .insert(
-                    name.as_ref().to_owned(),
-                    serde_json::to_vec(value).map_err(|_| SessionError::SerdeError)?,
-                )
-                .is_some())
-        })
-    }
-
-    fn remove(&mut self, name: impl AsRef<str>) -> Result<bool, SessionError> {
-        self.with_session(|attributes| Ok(attributes.remove(name.as_ref()).is_some()))
     }
 
     fn invalidate(&mut self) -> Result<bool, SessionError> {
@@ -298,57 +299,53 @@ where
     }
 }
 
-impl<'a, M, S> Session<'a> for RequestScopedSessionReference<'a, M, S>
+impl<'a, M, S> StorageBase for RequestScopedSessionReference<'a, M, S>
 where
     M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
     S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
 {
-    fn get_error(&self) -> Option<SessionError> {
-        self.0.borrow().get_error()
+    type Error = SessionError;
+
+    fn contains(&self, name: &str) -> Result<bool, Self::Error> {
+        self.0.borrow().contains(name)
     }
 
-    fn id(&self) -> Option<Cow<'_, str>> {
-        self.0
-            .borrow()
-            .id()
-            .map(|value| Cow::Owned(value.into_owned())) // TODO
+    fn remove(&mut self, name: &str) -> Result<bool, SessionError> {
+        self.0.borrow_mut().remove(name)
+    }
+}
+
+impl<'a, M, S> Storage for RequestScopedSessionReference<'a, M, S>
+where
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
+{
+    fn get<T: serde::de::DeserializeOwned>(&self, name: &str) -> Result<Option<T>, SessionError> {
+        self.0.borrow().get(name)
+    }
+
+    fn set<I: serde::Serialize>(&mut self, name: &str, value: &I) -> Result<bool, SessionError> {
+        self.0.borrow_mut().set(name, value)
+    }
+}
+
+impl<'a, M, S> Session for RequestScopedSessionReference<'a, M, S>
+where
+    M: Mutex<Data = BTreeMap<String, SessionData<S>>>,
+    S: Mutex<Data = Option<BTreeMap<String, Vec<u8>>>>,
+{
+    fn id(&self) -> Option<heapless::String<64>> {
+        self.0.borrow().id().into()
+    }
+
+    fn get_error(&self) -> Option<SessionError> {
+        self.0.borrow().get_error()
     }
 
     fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError> {
         self.0.borrow_mut().create_if_invalid()?;
 
         Ok(self)
-    }
-
-    fn get<T: serde::de::DeserializeOwned>(&self, name: impl AsRef<str>) -> Result<Option<T>, SessionError> {
-        self.0.borrow().get(name)
-    }
-
-    fn set_and_get<I: serde::Serialize, T: serde::de::DeserializeOwned>(
-        &mut self,
-        name: impl AsRef<str>,
-        value: &I,
-    ) -> Result<Option<T>, SessionError> {
-        self.0.borrow_mut().set_and_get(name, value)
-    }
-
-    fn remove_and_get<T: serde::de::DeserializeOwned>(
-        &mut self,
-        name: impl AsRef<str>,
-    ) -> Result<Option<T>, SessionError> {
-        self.0.borrow_mut().remove_and_get(name)
-    }
-
-    fn set<I: serde::Serialize>(
-        &mut self,
-        name: impl AsRef<str>,
-        value: &I,
-    ) -> Result<bool, SessionError> {
-        self.0.borrow_mut().set(name, value)
-    }
-
-    fn remove(&mut self, name: impl AsRef<str>) -> Result<bool, SessionError> {
-        self.0.borrow_mut().remove(name)
     }
 
     fn invalidate(&mut self) -> Result<bool, SessionError> {
