@@ -138,5 +138,5 @@ pub trait Eth {
 
     fn get_configuration(&self) -> Result<Configuration, Self::Error>;
 
-    fn set_configuration<S>(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
+    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }
