@@ -16,7 +16,6 @@ impl std::error::Error for SpawnError {}
 
 #[cfg(all(
     feature = "isr-async-executor",
-    feature = "heapless",
     feature = "alloc",
     target_has_atomic = "ptr"
 ))]
@@ -213,11 +212,10 @@ pub mod isr {
     }
 }
 
-#[cfg(feature = "heapless")]
 pub mod spawn {
     use core::future::Future;
 
-    use crate::executor::asyncs::{LocalSpawner, Spawner};
+    use crate::executor::asynch::{LocalSpawner, Spawner};
 
     use super::SpawnError;
 

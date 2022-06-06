@@ -13,9 +13,9 @@ use heapless;
 
 use log::info;
 
-use crate::errors::*;
+use crate::io::{self, Io};
 use crate::mutex::*;
-use crate::unblocker::asyncs::Unblocker;
+use crate::unblocker::asynch::Unblocker;
 use crate::ws::{server::*, *};
 
 pub struct AsyncSender<U, S> {
@@ -23,14 +23,14 @@ pub struct AsyncSender<U, S> {
     sender: S,
 }
 
-impl<U, S> Errors for AsyncSender<U, S>
+impl<U, S> Io for AsyncSender<U, S>
 where
-    S: Errors,
+    S: Io,
 {
     type Error = S::Error;
 }
 
-impl<U, S> asyncs::Sender for AsyncSender<U, S>
+impl<U, S> asynch::Sender for AsyncSender<U, S>
 where
     U: Unblocker,
     S: Sender + SessionProvider + Send + Clone + 'static,
@@ -57,7 +57,7 @@ where
     }
 }
 
-impl<S> asyncs::Sender for AsyncSender<(), S>
+impl<S> asynch::Sender for AsyncSender<(), S>
 where
     S: Sender + SessionProvider + Send + Clone + 'static,
 {
@@ -152,19 +152,19 @@ where
     condvar: Arc<C>,
 }
 
-impl<C, E> Errors for AsyncReceiver<C, E>
+impl<C, E> Io for AsyncReceiver<C, E>
 where
     C: Condvar,
-    E: Error,
+    E: io::Error,
 {
     type Error = E;
 }
 
-impl<C, E> asyncs::Receiver for AsyncReceiver<C, E>
+impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
 where
     C: Condvar + Send + Sync,
     <C as MutexFamily>::Mutex<SharedReceiverState>: Send + Sync,
-    E: Error,
+    E: io::Error,
 {
     type ReceiveFuture<'a>
     where
@@ -202,14 +202,14 @@ where
     condvar: Arc<C>,
 }
 
-impl<U, C, S> Errors for AsyncAcceptor<U, C, S>
+impl<U, C, S> Io for AsyncAcceptor<U, C, S>
 where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Send + Errors,
+    S: Send + Io,
 {
-    type Error = <S as Errors>::Error;
+    type Error = <S as Io>::Error;
 }
 
 impl<'a, U, C, S> Future for &'a mut AsyncAcceptor<U, C, S>
@@ -218,12 +218,10 @@ where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + Errors + Send + Clone + 'static,
+    S: Sender + Io + Send + Clone + 'static,
 {
-    type Output = Result<
-        Option<(AsyncSender<U, S>, AsyncReceiver<C, <S as Errors>::Error>)>,
-        <S as Errors>::Error,
-    >;
+    type Output =
+        Result<Option<(AsyncSender<U, S>, AsyncReceiver<C, <S as Io>::Error>)>, <S as Io>::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut accept = self.accept.lock();
@@ -257,18 +255,18 @@ where
     }
 }
 
-impl<U, C, S> asyncs::Acceptor for AsyncAcceptor<U, C, S>
+impl<U, C, S> asynch::Acceptor for AsyncAcceptor<U, C, S>
 where
     U: Unblocker + Clone + Send,
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + SessionProvider + Errors + Send + Clone + 'static,
+    S: Sender + SessionProvider + Io + Send + Clone + 'static,
     S::Error: Send + Sync + 'static,
 {
     type Sender = AsyncSender<U, S>;
 
-    type Receiver = AsyncReceiver<C, <S as Errors>::Error>;
+    type Receiver = AsyncReceiver<C, <S as Io>::Error>;
 
     type AcceptFuture<'a>
     where
@@ -280,16 +278,16 @@ where
     }
 }
 
-impl<C, S> asyncs::Acceptor for AsyncAcceptor<(), C, S>
+impl<C, S> asynch::Acceptor for AsyncAcceptor<(), C, S>
 where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + SessionProvider + Errors + Send + Clone + 'static,
+    S: Sender + SessionProvider + Io + Send + Clone + 'static,
 {
     type Sender = AsyncSender<(), S>;
 
-    type Receiver = AsyncReceiver<C, <S as Errors>::Error>;
+    type Receiver = AsyncReceiver<C, <S as Io>::Error>;
 
     type AcceptFuture<'a>
     where
