@@ -123,7 +123,7 @@ where
     fn get_gh_releases_n<const N: usize>(
         &mut self,
     ) -> Result<(heapless::Vec<Release<'_>, N>, &str), Error<C::Error>> {
-        let response = self
+        let mut response = self
             .client
             .get(join::<U, _>(&self.base_url, "releases")?)
             .map_err(Error::Http)?
@@ -141,7 +141,7 @@ where
 
     #[cfg(feature = "alloc")]
     fn get_gh_releases(&mut self) -> Result<(alloc::vec::Vec<Release<'_>>, &str), Error<C::Error>> {
-        let response = self
+        let mut response = self
             .client
             .get(join::<U, _>(&self.base_url, "releases")?)
             .map_err(Error::Http)?
@@ -158,7 +158,7 @@ where
     }
 
     fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, Error<C::Error>> {
-        let response = self
+        let mut response = self
             .client
             .get(&join::<U, _>(
                 &join::<U, _>(&self.base_url, "release")?,

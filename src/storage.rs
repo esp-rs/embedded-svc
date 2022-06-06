@@ -21,7 +21,11 @@ pub trait Storage: StorageBase {
 pub trait RawStorage: StorageBase {
     fn len(&self, name: &str) -> Result<Option<usize>, Self::Error>;
 
-    fn get_raw(&self, name: &str, buf: &mut [u8]) -> Result<Option<(&[u8], usize)>, Self::Error>;
+    fn get_raw<'a>(
+        &self,
+        name: &str,
+        buf: &'a mut [u8],
+    ) -> Result<Option<(&'a [u8], usize)>, Self::Error>;
 
     fn put_raw(&mut self, name: &str, buf: &[u8]) -> Result<bool, Self::Error>;
 }

@@ -98,5 +98,5 @@ pub trait Response: Status + Headers + Io {
     where
         Self: 'a;
 
-    fn reader(&self) -> Self::Read<'_>;
+    fn reader(&mut self) -> Self::Read<'_>;
 }
