@@ -30,7 +30,6 @@ pub mod isr {
 
     use heapless::mpmc::MpMcQueue;
 
-    use crate::errors::Errors;
     use crate::executor::asynch::{Executor, LocalSpawner, Spawner, WaitableExecutor};
 
     use super::SpawnError;
@@ -136,14 +135,12 @@ pub mod isr {
         }
     }
 
-    impl<'a, const C: usize, N, W, S> Errors for ISRExecutor<'a, C, N, W, S> {
-        type Error = SpawnError;
-    }
-
     impl<'a, const C: usize, N, W, S> Spawner<'a> for ISRExecutor<'a, C, N, W, S>
     where
         N: NotifyFactory,
     {
+        type Error = SpawnError;
+
         type Task<T>
         where
             T: 'a,
