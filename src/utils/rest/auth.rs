@@ -9,7 +9,7 @@ use crate::http::server::*;
 use crate::http::*;
 use crate::io::read_max;
 
-use crate::storage::{DynStorage, Storage};
+use crate::storage::{DynStorage, Storage, StorageBase};
 use crate::utils::role::*;
 
 pub trait Authenticator {

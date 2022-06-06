@@ -4,7 +4,7 @@ use core::mem;
 use core::task::{Context, Poll, Waker};
 
 use crate::mutex::Mutex;
-use crate::signal::asyncs::Signal;
+use crate::signal::asynch::Signal;
 
 #[cfg(target_has_atomic = "ptr")]
 pub use atomic_signal::*;
@@ -124,7 +124,7 @@ mod atomic_signal {
 
     use futures::task::AtomicWaker;
 
-    use crate::signal::asyncs::Signal;
+    use crate::signal::asynch::Signal;
 
     pub struct AtomicSignal<T> {
         waker: AtomicWaker,
@@ -223,8 +223,8 @@ mod atomic_signal {
 pub mod adapt {
     use core::future::Future;
 
-    use crate::channel::asyncs::{Receiver, Sender};
-    use crate::signal::asyncs::Signal;
+    use crate::channel::asynch::{Receiver, Sender};
+    use crate::signal::asynch::Signal;
 
     pub fn as_channel<S, T>(signal: &'static S) -> SignalChannel<'static, S, T>
     where
@@ -296,12 +296,12 @@ pub mod adapt {
 }
 
 #[cfg(feature = "std")]
-impl crate::signal::asyncs::SignalFamily for std::sync::Condvar {
+impl crate::signal::asynch::SignalFamily for std::sync::Condvar {
     type Signal<T> = MutexSignal<std::sync::Mutex<State<T>>, T>;
 }
 
 #[cfg(feature = "std")]
-impl crate::signal::asyncs::SendSyncSignalFamily for std::sync::Condvar {
+impl crate::signal::asynch::SendSyncSignalFamily for std::sync::Condvar {
     type Signal<T>
     where
         T: Send,

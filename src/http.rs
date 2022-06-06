@@ -1,3 +1,5 @@
+use core::fmt::Write;
+
 pub mod client;
 
 #[cfg(target_has_atomic = "ptr")] // TODO: Lift in future
@@ -76,15 +78,11 @@ pub trait SendHeaders {
     }
 
     fn set_content_len(&mut self, len: usize) -> &mut Self {
-        // TODO
-        // let mut buf = [0_u8; 32];
-        // let mut formatter = core::fmt::Formatter::new(&mut buf);
+        let mut buf: heapless::String<32> = "".into();
 
-        // // Bypass format_args!() to avoid write_str with zero-length strs
-        // core::fmt::Display::fmt(&len, &mut formatter).unwrap();
-        // self.set_header("content-length", core::str::from_utf8_unchecked(&buf))
+        write!(&mut buf, "{}", len).unwrap();
 
-        self
+        self.set_header("content-length", &buf)
     }
 
     fn set_content_encoding(&mut self, encoding: &str) -> &mut Self {

@@ -9,10 +9,9 @@ use core::time::Duration;
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::channel::asyncs::Receiver;
-use crate::errors::Errors;
-use crate::signal::asyncs::Signal;
-use crate::timer::asyncs::{OnceTimer, PeriodicTimer, TimerService};
+use crate::channel::asynch::Receiver;
+use crate::signal::asynch::Signal;
+use crate::timer::asynch::{ErrorType, OnceTimer, PeriodicTimer, TimerService};
 
 pub struct AsyncTimer<T, S> {
     timer: T,
@@ -20,9 +19,9 @@ pub struct AsyncTimer<T, S> {
     duration: Option<Duration>,
 }
 
-impl<T, S> Errors for AsyncTimer<T, S>
+impl<T, S> ErrorType for AsyncTimer<T, S>
 where
-    T: Errors,
+    T: ErrorType,
 {
     type Error = T::Error;
 }
@@ -132,9 +131,9 @@ impl<T, S> super::AsyncWrapper<T> for AsyncTimerService<T, S> {
     }
 }
 
-impl<T, S> Errors for AsyncTimerService<T, S>
+impl<T, S> ErrorType for AsyncTimerService<T, S>
 where
-    T: Errors,
+    T: ErrorType,
 {
     type Error = T::Error;
 }

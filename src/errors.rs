@@ -1,35 +1,63 @@
-pub use crate::io::Error;
-pub use crate::io::ErrorKind;
-pub use crate::io::Io as Errors;
+// use core::fmt::Debug;
 
-pub mod conv {
-    use core::fmt::{self, Display, Formatter};
+// pub use crate::io::Error;
+// pub use crate::io::ErrorKind;
+// pub use crate::io::Io as Errors;
 
-    use super::{Error, ErrorKind};
+// pub trait Error: Debug {
+// }
 
-    #[derive(Debug)]
-    pub struct StrConvError;
+// impl<E> Error for E
+// where
+//     E: Debug
+// {}
 
-    impl Display for StrConvError {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            write!(f, "StrConvError")
-        }
-    }
+// pub trait Errors {
+//     type Error: Error;
+// }
 
-    #[cfg(feature = "std")]
-    impl std::error::Error for StrConvError {}
+// impl<T> Errors for &T
+// where
+//     T: Errors,
+// {
+//     type Error = T::Error;
+// }
 
-    impl Error for StrConvError {
-        fn kind(&self) -> ErrorKind {
-            ErrorKind::Other
-        }
-    }
-}
+// impl<T> Errors for &mut T
+// where
+//     T: Errors,
+// {
+//     type Error = T::Error;
+// }
+
+// pub mod conv {
+//     use core::fmt::{self, Display, Formatter};
+
+//     use embedded_io::{Error, ErrorKind};
+
+//     #[derive(Debug)]
+//     pub struct StrConvError;
+
+//     impl Display for StrConvError {
+//         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//             write!(f, "StrConvError")
+//         }
+//     }
+
+//     #[cfg(feature = "std")]
+//     impl std::error::Error for StrConvError {}
+
+//     impl Error for StrConvError {
+//         fn kind(&self) -> ErrorKind {
+//             ErrorKind::Other
+//         }
+//     }
+// }
 
 pub mod wrap {
     use core::fmt::{self, Debug, Display, Formatter};
 
-    use super::{Error, ErrorKind};
+    use embedded_io::{Error, ErrorKind};
 
     #[derive(Debug)]
     pub struct WrapError<E>(pub E);

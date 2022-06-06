@@ -1,6 +1,7 @@
 use core::fmt::Debug;
 
 use super::{registry::*, *};
+use crate::io::Io;
 
 pub trait Middleware<C>: Send
 where
@@ -104,7 +105,7 @@ where
     }
 }
 
-impl<'r, R, M> Errors for MiddlewareRegistry<'r, R, M>
+impl<'r, R, M> Io for MiddlewareRegistry<'r, R, M>
 where
     R: Registry,
     M: Middleware<R> + Clone,

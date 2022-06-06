@@ -1,11 +1,12 @@
 #[cfg(feature = "experimental")]
-pub mod asyncs {
+pub mod asynch {
+    use core::fmt::Debug;
     use core::future::Future;
     use core::result::Result;
 
-    use crate::errors::Errors;
+    pub trait Spawner<'a> {
+        type Error: Debug;
 
-    pub trait Spawner<'a>: Errors {
         type Task<T>
         where
             T: 'a;

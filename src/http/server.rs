@@ -1,7 +1,7 @@
 use core::fmt;
 
-use crate::errors::{wrap::EitherError, Errors};
-use crate::io::{copy, copy_len, Read, Write};
+use crate::errors::wrap::EitherError;
+use crate::io::{self, Io, Read, Write};
 use crate::storage::{DynStorage, Storage};
 
 use super::{Headers, Method, SendHeaders, SendStatus};
@@ -60,7 +60,7 @@ pub trait Session: Storage<Error = SessionError> {
     fn invalidate(&mut self) -> Result<bool, SessionError>;
 }
 
-pub trait Request: Headers + Errors {
+pub trait Request: Headers + Io {
     type Read<'b>: Read<Error = Self::Error>
     where
         Self: 'b;
@@ -101,7 +101,7 @@ pub trait ResponseWrite: Write {
         Self: Sized;
 }
 
-pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Errors {
+pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Io {
     type Write: ResponseWrite<Error = Self::Error>;
 
     fn send_bytes<R>(self, request: R, bytes: &[u8]) -> Result<Completion, Self::Error>
@@ -154,9 +154,9 @@ pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Errors {
         let mut write = self.into_writer().map_err(EitherError::E1)?;
 
         if let Some(size) = size {
-            copy_len::<B, _, _>(read, &mut write, size as u64)
+            io::copy_len::<B, _, _>(read, &mut write, size as u64)
         } else {
-            copy::<B, _, _>(read, &mut write)
+            io::copy::<B, _, _>(read, &mut write)
         }
         .map_err(|e| match e {
             EitherError::E1(e) => EitherError::E2(e),
@@ -187,7 +187,7 @@ pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Errors {
     }
 }
 
-pub trait Context: Errors {
+pub trait Context: Io {
     type Request: Request<Error = Self::Error>;
     type Response: Response<Error = Self::Error>;
 }
@@ -200,15 +200,14 @@ mod response_data {
     use alloc::string::String;
     use alloc::vec::Vec;
 
-    use crate::errors::{Error, ErrorKind, Errors};
     use crate::http::{SendHeaders, SendStatus};
-    use crate::io::Read;
+    use crate::io::{Error, ErrorKind, Io, Read};
 
     struct ErasedErrorRead<R>(R);
 
-    impl<R> Errors for ErasedErrorRead<R>
+    impl<R> Io for ErasedErrorRead<R>
     where
-        R: Errors,
+        R: Io,
     {
         type Error = ErrorKind;
     }

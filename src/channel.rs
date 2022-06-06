@@ -1,5 +1,5 @@
 #[cfg(feature = "experimental")]
-pub mod asyncs {
+pub mod asynch {
     use core::future::Future;
 
     pub trait Sender {

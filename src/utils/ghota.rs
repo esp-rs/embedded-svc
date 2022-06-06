@@ -1,12 +1,28 @@
-use core::convert::TryFrom;
-use core::mem::{self, MaybeUninit};
+use core::convert::TryInto;
+use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{conv::StrConvError, wrap::EitherError, Errors};
 use crate::http::{client::*, Headers};
-use crate::io;
+use crate::io::{self, ErrorKind, Io, Read};
 use crate::ota::*;
+
+#[derive(Debug)]
+pub enum Error<E> {
+    UrlOverflow,
+    BufferOverflow,
+    FirmwareInfoOverflow,
+    Http(E),
+}
+
+impl<E> io::Error for Error<E>
+where
+    E: io::Error,
+{
+    fn kind(&self) -> ErrorKind {
+        ErrorKind::Other
+    }
+}
 
 // Copied from here:
 // https://github.com/XAMPPRocky/octocrab/blob/master/src/models/repos.rs
@@ -39,114 +55,122 @@ struct Asset<'a> {
     // pub created_at: DateTime<Utc>,
 }
 
-impl<'a, S> TryFrom<(&Release<'a>, &Asset<'a>)> for FirmwareInfo<S>
-where
-    S: TryFrom<&'a str>,
-{
-    type Error = StrConvError;
-
-    fn try_from((release, asset): (&Release<'a>, &Asset<'a>)) -> Result<Self, Self::Error> {
-        Ok(Self {
-            version: S::try_from(release.tag_name).map_err(|_| StrConvError)?,
-            released: S::try_from(asset.updated_at).map_err(|_| StrConvError)?,
-            description: S::try_from(release.body.unwrap_or_else(|| ""))
-                .map_err(|_| StrConvError)?,
+impl<'a> Asset<'a> {
+    fn as_firmware_info<E>(&'a self, release: &'a Release<'a>) -> Result<FirmwareInfo, Error<E>>
+    where
+        E: io::Error,
+    {
+        Ok(FirmwareInfo {
+            version: release
+                .tag_name
+                .try_into()
+                .map_err(|_| Error::FirmwareInfoOverflow)?,
+            released: self
+                .updated_at
+                .try_into()
+                .map_err(|_| Error::FirmwareInfoOverflow)?,
+            description: if let Some(body) = release.body {
+                Some(body.try_into().map_err(|_| Error::FirmwareInfoOverflow)?)
+            } else {
+                None
+            },
             signature: None,
-            download_id: Some(S::try_from(asset.browser_download_url).map_err(|_| StrConvError)?),
+            download_id: Some(
+                self.browser_download_url
+                    .try_into()
+                    .map_err(|_| Error::FirmwareInfoOverflow)?,
+            ),
         })
     }
 }
 
-pub struct GitHubOtaService<'a, C, const N: usize = 128, const U: usize = 256> {
-    base_url: &'a str,
+pub struct GitHubOtaService<'a, C, const B: usize = 1024, const U: usize = 256> {
+    base_url: heapless::String<U>,
     label: &'a str,
     client: C,
-    buf: &'a mut [u8],
+    buf: [u8; B],
 }
 
-impl<'a, C, const N: usize, const U: usize> GitHubOtaService<'a, C, N, U>
+impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
 where
     C: Client,
 {
-    pub fn new(base_url: &'a str, label: &'a str, client: C, buf: &'a mut [u8]) -> Self {
-        Self {
-            base_url,
+    pub fn new(base_url: &str, label: &'a str, client: C) -> Result<Self, Error<C::Error>> {
+        Ok(Self {
+            base_url: base_url.try_into().map_err(|_| Error::UrlOverflow)?,
             label,
             client,
-            buf,
-        }
+            buf: [0_u8; B],
+        })
     }
 
-    // pub fn new_with_repo(repo: &str, project: &str, label: &'a str, client: C) -> Self {
-    //     Self::new(
-    //         join(join("https://api.github.com/repos", repo), project),
-    //         label,
-    //         client,
-    //     )
-    // }
+    pub fn new_with_repo(
+        repo: &str,
+        project: &str,
+        label: &'a str,
+        client: C,
+    ) -> Result<Self, Error<C::Error>> {
+        Self::new(
+            &join::<U, _>(
+                &join::<U, _>("https://api.github.com/repos", repo)?,
+                project,
+            )?,
+            label,
+            client,
+        )
+    }
 
-    fn get_gh_releases(
+    fn get_gh_releases_n<const N: usize>(
         &mut self,
-    ) -> Result<(heapless::Vec<Release<'_>, N>, &str), EitherError<C::Error, StrConvError>> {
+    ) -> Result<(heapless::Vec<Release<'_>, N>, &str), Error<C::Error>> {
         let response = self
             .client
-            .get(join::<U>(self.base_url, "releases").map_err(EitherError::E2)?)
-            .map_err(EitherError::E1)?
+            .get(join::<U, _>(&self.base_url, "releases")?)
+            .map_err(Error::Http)?
             .submit()
-            .map_err(EitherError::E1)?;
+            .map_err(Error::Http)?;
 
         let mut read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, self.buf).map_err(EitherError::E1)?;
+        let (buf, _) = io::read_max(&mut read, &mut self.buf).map_err(Error::Http)?;
 
         let releases = serde_json::from_slice::<heapless::Vec<Release<'_>, N>>(buf).unwrap(); // TODO
 
         Ok((releases, self.label))
     }
 
-    // fn fill_gh_releases<const N: usize>(
-    //     &'a mut self,
-    //     releases: &'a mut [Release<'a>],
-    // ) -> Result<(&'a [Release<'a>], usize), C::Error>
-    // where
-    //     Self: 'a,
-    // {
-    //     let response = self
-    //         .client
-    //         .get(&join::<128>(self.base_url, "releases"))?
-    //         .submit()?;
-
-    //     let mut read = response.reader();
-
-    //     let (buf, _) = io::read_max(&mut read, self.buf)?;
-
-    //     let releases_vec = serde_json::from_slice::<heapless::Vec<Release<'a>, N>>(buf).unwrap();
-
-    //     let cnt = max(releases.len(), releases_vec.len());
-    //     releases[..cnt].clone_from_slice(&releases_vec[..cnt]);
-
-    //     Ok((&releases[..cnt], cnt))
-    // }
-
-    fn get_gh_latest_release(
-        &mut self,
-    ) -> Result<Option<Release<'_>>, EitherError<C::Error, StrConvError>> {
+    #[cfg(feature = "alloc")]
+    fn get_gh_releases(&mut self) -> Result<(alloc::vec::Vec<Release<'_>>, &str), Error<C::Error>> {
         let response = self
             .client
-            .get(
-                &join::<U>(
-                    &join::<U>(self.base_url, "release").map_err(EitherError::E2)?,
-                    "latest",
-                )
-                .map_err(EitherError::E2)?,
-            )
-            .map_err(EitherError::E1)?
+            .get(join::<U, _>(&self.base_url, "releases")?)
+            .map_err(Error::Http)?
             .submit()
-            .map_err(EitherError::E1)?;
+            .map_err(Error::Http)?;
 
         let mut read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, self.buf).map_err(EitherError::E1)?;
+        let (buf, _) = io::read_max(&mut read, &mut self.buf).map_err(Error::Http)?;
+
+        let releases = serde_json::from_slice::<alloc::vec::Vec<Release<'_>>>(buf).unwrap(); // TODO
+
+        Ok((releases, self.label))
+    }
+
+    fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, Error<C::Error>> {
+        let response = self
+            .client
+            .get(&join::<U, _>(
+                &join::<U, _>(&self.base_url, "release")?,
+                "latest",
+            )?)
+            .map_err(Error::Http)?
+            .submit()
+            .map_err(Error::Http)?;
+
+        let mut read = response.reader();
+
+        let (buf, _) = io::read_max(&mut read, &mut self.buf).map_err(Error::Http)?;
 
         let release = serde_json::from_slice::<Option<Release<'_>>>(buf).unwrap(); // TODO
 
@@ -159,11 +183,11 @@ pub struct GitHubOtaRead<R> {
     response: R,
 }
 
-impl<S> Errors for GitHubOtaRead<S>
+impl<S> Io for GitHubOtaRead<S>
 where
-    S: Errors,
+    S: Response,
 {
-    type Error = S::Error;
+    type Error = Error<S::Error>;
 }
 
 impl<R> OtaRead for GitHubOtaRead<R>
@@ -175,20 +199,20 @@ where
     }
 }
 
-impl<R> io::Read for GitHubOtaRead<R>
+impl<R> Read for GitHubOtaRead<R>
 where
     R: Response,
 {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.response.reader().read(buf)
+        self.response.reader().read(buf).map_err(Error::Http)
     }
 }
 
-impl<'a, C> Errors for GitHubOtaService<'a, C>
+impl<'a, C> Io for GitHubOtaService<'a, C>
 where
-    C: Errors,
+    C: Io,
 {
-    type Error = C::Error;
+    type Error = Error<C::Error>;
 }
 
 impl<'a, C> OtaServer for GitHubOtaService<'a, C>
@@ -202,12 +226,7 @@ where
         <<<C as Client>::Request<'b> as Request<'b>>::Write<'b> as RequestWrite<'b>>::Response,
     >;
 
-    fn get_latest_release<'b, S>(
-        &'b mut self,
-    ) -> Result<Option<FirmwareInfo<S>>, EitherError<Self::Error, StrConvError>>
-    where
-        S: TryFrom<&'b str>,
-    {
+    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
         let label = self.label;
 
         let release = self.get_gh_latest_release()?;
@@ -215,9 +234,7 @@ where
         if let Some(release) = release.as_ref() {
             for asset in &release.assets {
                 if asset.label == Some(label) {
-                    return Ok(Some(
-                        FirmwareInfo::try_from((release, asset)).map_err(EitherError::E2)?,
-                    ));
+                    return Ok(Some(asset.as_firmware_info(release)?));
                 }
             }
         }
@@ -225,68 +242,8 @@ where
         Ok(None)
     }
 
-    fn fill_releases<'b, 'c, S>(
-        &'b mut self,
-        infos: &'c mut [MaybeUninit<FirmwareInfo<S>>],
-    ) -> Result<(&'c [FirmwareInfo<S>], usize), EitherError<Self::Error, StrConvError>>
-    where
-        S: TryFrom<&'b str>,
-    {
-        let (releases, label) = self.get_gh_releases()?;
-
-        let iter = releases.iter().flat_map(|release| {
-            release
-                .assets
-                .iter()
-                .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
-                .map(move |asset| FirmwareInfo::try_from((release, asset)))
-        });
-
-        let mut len = 0_usize;
-        let mut max_len = 0_usize;
-        for (index, info) in iter.enumerate() {
-            let info = info.map_err(EitherError::E2)?;
-
-            max_len = index + 1;
-
-            if index < infos.len() {
-                len = index + 1;
-                infos[index].write(info);
-            }
-        }
-
-        Ok((unsafe { mem::transmute(&infos[0..len]) }, max_len))
-    }
-
     #[cfg(feature = "alloc")]
-    fn get_releases(
-        &mut self,
-    ) -> Result<alloc::vec::Vec<FirmwareInfo<alloc::string::String>>, Self::Error> {
-        let (releases, label) = self.get_gh_releases().map_err(|e| match e {
-            EitherError::E1(e) => e,
-            EitherError::E2(_) => unreachable!(),
-        })?;
-
-        Ok(releases
-            .iter()
-            .flat_map(|release| {
-                release
-                    .assets
-                    .iter()
-                    .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
-                    .map(move |asset| FirmwareInfo::try_from((release, asset)))
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap())
-    }
-
-    #[cfg(feature = "heapless")]
-    fn get_releases_heapless<'b, S, const N: usize>(
-        &'b mut self,
-    ) -> Result<heapless::Vec<FirmwareInfo<S>, N>, EitherError<Self::Error, StrConvError>>
-    where
-        S: TryFrom<&'b str>,
-    {
+    fn get_releases(&mut self) -> Result<alloc::vec::Vec<FirmwareInfo>, Self::Error> {
         let (releases, label) = self.get_gh_releases()?;
 
         Ok(releases
@@ -296,14 +253,35 @@ where
                     .assets
                     .iter()
                     .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
-                    .map(move |asset| FirmwareInfo::try_from((release, asset)))
+                    .map(move |asset| asset.as_firmware_info(release))
             })
-            .collect::<Result<heapless::Vec<_, N>, _>>()
-            .map_err(EitherError::E2)?)
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    fn get_releases_n<const N: usize>(
+        &mut self,
+    ) -> Result<heapless::Vec<FirmwareInfo, N>, Self::Error> {
+        let (releases, label) = self.get_gh_releases_n::<N>()?;
+
+        Ok(releases
+            .iter()
+            .flat_map(|release| {
+                release
+                    .assets
+                    .iter()
+                    .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
+                    .map(move |asset| asset.as_firmware_info(release))
+            })
+            .collect::<Result<heapless::Vec<_, N>, _>>()?)
     }
 
     fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error> {
-        let response = self.client.get(download_id)?.submit()?;
+        let response = self
+            .client
+            .get(download_id)
+            .map_err(Error::Http)?
+            .submit()
+            .map_err(Error::Http)?;
 
         Ok(GitHubOtaRead {
             size: response.content_len(),
@@ -312,7 +290,10 @@ where
     }
 }
 
-fn join<const N: usize>(uri: &str, path: &str) -> Result<heapless::String<N>, StrConvError> {
+fn join<const N: usize, E>(uri: &str, path: &str) -> Result<heapless::String<N>, Error<E>>
+where
+    E: io::Error,
+{
     let uri_slash = uri.ends_with('/');
     let path_slash = path.starts_with('/');
 
@@ -328,10 +309,10 @@ fn join<const N: usize>(uri: &str, path: &str) -> Result<heapless::String<N>, St
         let mut result = heapless::String::from(uri);
 
         if !uri_slash && !path_slash {
-            result.push('/').map_err(|_| StrConvError)?;
+            result.push('/').map_err(|_| Error::UrlOverflow)?;
         }
 
-        result.push_str(path).map_err(|_| StrConvError)?;
+        result.push_str(path).map_err(|_| Error::UrlOverflow)?;
 
         result
     };

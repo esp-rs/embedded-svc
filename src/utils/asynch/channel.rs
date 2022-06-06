@@ -2,8 +2,8 @@ pub mod adapt {
     use core::future::{pending, ready, Future, Pending, Ready};
     use core::marker::PhantomData;
 
-    use crate::channel::asyncs::{Receiver, Sender};
-    use crate::utils::asyncs::select::{select, Either};
+    use crate::channel::asynch::{Receiver, Sender};
+    use crate::utils::asynch::select::{select, Either};
 
     pub fn adapt<C, T, F>(channel: C, adapter: F) -> AdapterChannel<C, F, T> {
         AdapterChannel::new(channel, adapter)

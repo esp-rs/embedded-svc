@@ -1,4 +1,4 @@
-use crate::errors::Errors;
+use crate::io::Io;
 
 pub mod server;
 
@@ -34,23 +34,23 @@ impl FrameType {
     }
 }
 
-pub trait Receiver: Errors {
+pub trait Receiver: Io {
     fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error>;
 }
 
-pub trait Sender: Errors {
+pub trait Sender: Io {
     fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>)
         -> Result<(), Self::Error>;
 }
 
-pub mod asyncs {
+pub mod asynch {
     use core::future::Future;
 
-    use crate::errors::Errors;
+    use crate::io::Io;
 
     pub use super::{Fragmented, FrameType};
 
-    pub trait Acceptor: Errors {
+    pub trait Acceptor: Io {
         type Sender: Sender<Error = Self::Error> + Send;
         type Receiver: Receiver<Error = Self::Error> + Send;
 
@@ -62,7 +62,7 @@ pub mod asyncs {
         fn accept(&mut self) -> Self::AcceptFuture<'_>;
     }
 
-    pub trait Receiver: Errors {
+    pub trait Receiver: Io {
         type ReceiveFuture<'a>: Future<Output = Result<(FrameType, usize), Self::Error>> + Send
         where
             Self: 'a;
@@ -70,7 +70,7 @@ pub mod asyncs {
         fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a>;
     }
 
-    pub trait Sender: Errors {
+    pub trait Sender: Io {
         type SendFuture<'a>: Future<Output = Result<(), Self::Error>> + Send
         where
             Self: 'a;

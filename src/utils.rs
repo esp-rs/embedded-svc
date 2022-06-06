@@ -6,12 +6,12 @@
 pub mod asyncify;
 
 #[cfg(feature = "experimental")]
-pub mod asyncs;
+pub mod asynch;
 
 #[cfg(all(feature = "experimental", target_has_atomic = "8"))]
 pub mod forever;
 
-#[cfg(all(feature = "experimental", feature = "use_serde", feature = "heapless"))]
+#[cfg(all(feature = "experimental", feature = "use_serde"))]
 pub mod ghota;
 
 #[cfg(all(feature = "experimental", feature = "use_serde"))]

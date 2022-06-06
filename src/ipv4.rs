@@ -11,8 +11,6 @@ pub use no_std_net::Ipv4Addr;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::errors::conv::StrConvError;
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -133,11 +131,11 @@ impl Default for ClientSettings {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct DHCPClientSettings<S> {
-    pub hostname: Option<S>,
+pub struct DHCPClientSettings {
+    pub hostname: Option<heapless::String<30>>,
 }
 
-impl<S> Default for DHCPClientSettings<S> {
+impl Default for DHCPClientSettings {
     fn default() -> Self {
         Self {
             hostname: Default::default(),
@@ -145,32 +143,14 @@ impl<S> Default for DHCPClientSettings<S> {
     }
 }
 
-impl<I> DHCPClientSettings<I>
-where
-    I: AsRef<str>,
-{
-    pub fn try_convert_strings<S>(&self) -> Result<DHCPClientSettings<S>, StrConvError>
-    where
-        S: for<'b> TryFrom<&'b str>,
-    {
-        Ok(DHCPClientSettings {
-            hostname: if let Some(hostname) = &self.hostname {
-                Some(S::try_from(hostname.as_ref()).map_err(|_| StrConvError)?)
-            } else {
-                None
-            },
-        })
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ClientConfiguration<S> {
-    DHCP(DHCPClientSettings<S>),
+pub enum ClientConfiguration {
+    DHCP(DHCPClientSettings),
     Fixed(ClientSettings),
 }
 
-impl<S> ClientConfiguration<S> {
+impl ClientConfiguration {
     pub fn as_fixed_settings_ref(&self) -> Option<&ClientSettings> {
         match self {
             Self::Fixed(client_settings) => Some(client_settings),
@@ -189,24 +169,9 @@ impl<S> ClientConfiguration<S> {
     }
 }
 
-impl<S> Default for ClientConfiguration<S> {
-    fn default() -> ClientConfiguration<S> {
+impl Default for ClientConfiguration {
+    fn default() -> ClientConfiguration {
         ClientConfiguration::DHCP(Default::default())
-    }
-}
-
-impl<I> ClientConfiguration<I>
-where
-    I: AsRef<str>,
-{
-    pub fn try_convert_strings<S>(&self) -> Result<ClientConfiguration<S>, StrConvError>
-    where
-        S: for<'b> TryFrom<&'b str>,
-    {
-        Ok(match self {
-            Self::DHCP(settings) => ClientConfiguration::DHCP(settings.try_convert_strings()?),
-            Self::Fixed(settings) => ClientConfiguration::Fixed(settings.clone()),
-        })
     }
 }
 

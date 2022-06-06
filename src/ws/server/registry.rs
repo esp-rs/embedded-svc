@@ -1,12 +1,11 @@
 use core::fmt;
 
-use crate::errors::Errors;
-
+use crate::io::Io;
 use crate::ws::server::*;
 
-pub trait Registry: Errors {
-    type Receiver: Receiver + SessionProvider;
-    type Sender: Sender + SenderFactory;
+pub trait Registry: Io {
+    type Receiver: Receiver<Error = Self::Error> + SessionProvider;
+    type Sender: Sender<Error = Self::Error> + SenderFactory<Error = Self::Error>;
 
     fn ws<'a>(&'a mut self, uri: &'a str) -> HandlerRegistrationBuilder<'a, Self>
     where

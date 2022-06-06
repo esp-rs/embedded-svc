@@ -1,11 +1,9 @@
-use serde::Serialize;
-
-use crate::errors::{wrap::EitherError, Errors};
-use crate::io::{self, Write};
+use crate::errors::wrap::EitherError;
+use crate::io::{self, Io, Read, Write};
 
 use super::{Headers, Method, SendHeaders, Status};
 
-pub trait Client: Errors {
+pub trait Client: Io {
     type Request<'a>: Request<'a, Error = Self::Error>
     where
         Self: 'a;
@@ -33,13 +31,13 @@ pub trait Client: Errors {
     ) -> Result<Self::Request<'_>, Self::Error>;
 }
 
-pub trait RequestWrite<'a>: io::Write {
+pub trait RequestWrite<'a>: Write {
     type Response: Response<Error = Self::Error>;
 
     fn into_response(self) -> Result<Self::Response, Self::Error>;
 }
 
-pub trait Request<'a>: SendHeaders + Errors {
+pub trait Request<'a>: SendHeaders + Io {
     type Write<'b>: RequestWrite<'b, Error = Self::Error>;
 
     fn send_bytes(
@@ -66,23 +64,8 @@ pub trait Request<'a>: SendHeaders + Errors {
         self.send_bytes(s.as_ref().as_bytes())
     }
 
-    fn send_json<T: Serialize>(
-        self,
-        o: impl AsRef<T>,
-    ) -> Result<
-        <Self::Write<'a> as RequestWrite<'a>>::Response,
-        EitherError<Self::Error, serde_json::Error>,
-    >
-    where
-        Self: Sized,
-    {
-        let s = serde_json::to_string(o.as_ref()).map_err(EitherError::E2)?;
-
-        self.send_str(s).map_err(EitherError::E1)
-    }
-
     #[allow(clippy::type_complexity)]
-    fn send_reader<R: io::Read>(
+    fn send_reader<R: Read>(
         self,
         size: usize,
         read: R,
@@ -110,7 +93,7 @@ pub trait Request<'a>: SendHeaders + Errors {
     }
 }
 
-pub trait Response: Status + Headers + Errors {
+pub trait Response: Status + Headers + Io {
     type Read<'a>: io::Read<Error = Self::Error>
     where
         Self: 'a;

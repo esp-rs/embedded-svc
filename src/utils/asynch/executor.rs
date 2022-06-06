@@ -1,7 +1,5 @@
 use core::fmt;
 
-use crate::errors::{Error, ErrorKind};
-
 #[derive(Debug)]
 pub enum SpawnError {
     QueueFull,
@@ -13,22 +11,8 @@ impl fmt::Display for SpawnError {
     }
 }
 
-impl Error for SpawnError {
-    fn kind(&self) -> ErrorKind {
-        ErrorKind::Other
-    }
-}
-
 #[cfg(feature = "std")]
-impl std::error::Error for SpawnError {
-    // TODO
-    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    //     match self {
-    //         Self::ReadError(r) => Some(r),
-    //         CopyError::WriteError(w) => Some(w),
-    //     }
-    // }
-}
+impl std::error::Error for SpawnError {}
 
 #[cfg(all(
     feature = "isr-async-executor",
@@ -48,7 +32,7 @@ pub mod isr {
     use heapless::mpmc::MpMcQueue;
 
     use crate::errors::Errors;
-    use crate::executor::asyncs::{Executor, LocalSpawner, Spawner, WaitableExecutor};
+    use crate::executor::asynch::{Executor, LocalSpawner, Spawner, WaitableExecutor};
 
     use super::SpawnError;
 

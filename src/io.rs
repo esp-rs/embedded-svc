@@ -1,57 +1,71 @@
+//use core::fmt::Debug;
+
 pub use embedded_io::adapters;
 pub use embedded_io::blocking::*;
 pub use embedded_io::*;
 
 use crate::errors::wrap::EitherError;
 
-pub struct Bytes<R, const N: usize> {
-    reader: R,
-    buf: [u8; N],
-    index: usize,
-    read: usize,
-}
+// #[derive(Debug)]
+// pub struct IOError<E>(pub E);
 
-impl<R, const N: usize> Bytes<R, N>
-where
-    R: Read,
-{
-    pub fn new(reader: R) -> Self {
-        Self {
-            reader,
-            buf: [0_u8; N],
-            index: 1,
-            read: 1,
-        }
-    }
-}
+// impl<E> Error for IOError<E>
+// where
+//     E: Debug,
+// {
+//     fn kind(&self) -> ErrorKind {
+//         ErrorKind::Other
+//     }
+// }
 
-impl<R, const N: usize> Iterator for Bytes<R, N>
-where
-    R: Read,
-{
-    type Item = Result<u8, R::Error>;
+// pub struct Bytes<R, const N: usize> {
+//     reader: R,
+//     buf: [u8; N],
+//     index: usize,
+//     read: usize,
+// }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.read && self.read > 0 {
-            match self.reader.read(&mut self.buf) {
-                Err(e) => return Some(Err(e)),
-                Ok(read) => {
-                    self.read = read;
-                    self.index = 0;
-                }
-            }
-        }
+// impl<R, const N: usize> Bytes<R, N>
+// where
+//     R: Read,
+// {
+//     pub fn new(reader: R) -> Self {
+//         Self {
+//             reader,
+//             buf: [0_u8; N],
+//             index: 1,
+//             read: 1,
+//         }
+//     }
+// }
 
-        if self.read == 0 {
-            None
-        } else {
-            let result = self.buf[self.index];
-            self.index += 1;
+// impl<R, const N: usize> Iterator for Bytes<R, N>
+// where
+//     R: Read,
+// {
+//     type Item = Result<u8, R::Error>;
 
-            Some(Ok(result))
-        }
-    }
-}
+//     fn next(&mut self) -> Option<Self::Item> {
+//         if self.index == self.read && self.read > 0 {
+//             match self.reader.read(&mut self.buf) {
+//                 Err(e) => return Some(Err(e)),
+//                 Ok(read) => {
+//                     self.read = read;
+//                     self.index = 0;
+//                 }
+//             }
+//         }
+
+//         if self.read == 0 {
+//             None
+//         } else {
+//             let result = self.buf[self.index];
+//             self.index += 1;
+
+//             Some(Ok(result))
+//         }
+//     }
+// }
 
 pub fn read_max<'a, R: Read>(
     mut read: R,
@@ -130,7 +144,8 @@ where
     Ok(copied)
 }
 
-pub mod asyncs {
+#[cfg(feature = "eperimental")]
+pub mod asynch {
     pub use embedded_io::*;
     //pub use embedded_io::asynch::adapters;
     pub use embedded_io::asynch::*;

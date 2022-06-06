@@ -1,10 +1,9 @@
 use core::fmt::Debug;
-use core::mem::MaybeUninit;
 
 use crate::errors::wrap::{EitherError, EitherError4};
 use crate::io::read_max;
 use crate::mutex::Mutex;
-use crate::wifi::{self, AccessPointInfo};
+use crate::wifi;
 use crate::{http::server::registry::*, http::server::*};
 
 use crate::utils::role::*;
@@ -74,14 +73,11 @@ fn scan(
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
 ) -> Result<Completion, impl Debug> {
-    let mut aps: [MaybeUninit<AccessPointInfo<heapless::String<64>>>; 20] =
-        unsafe { MaybeUninit::uninit().assume_init() };
-
     let mut wifi = wifi.lock();
 
-    let (aps, _) = wifi.scan_fill(&mut aps).map_err(EitherError::E1)?;
+    let (aps, _) = wifi.scan_n::<20>().map_err(EitherError::E1)?; // TODO
 
-    resp.send_json(req, aps).map_err(EitherError::E2)
+    resp.send_json(req, &aps).map_err(EitherError::E2)
 }
 
 fn get_configuration(
@@ -91,9 +87,7 @@ fn get_configuration(
 ) -> Result<Completion, impl Debug> {
     let wifi = wifi.lock();
 
-    let conf = wifi
-        .get_configuration::<heapless::String<64>>()
-        .map_err(EitherError::E1)?;
+    let conf = wifi.get_configuration().map_err(EitherError::E1)?;
 
     resp.send_json(req, &conf).map_err(EitherError::E2)
 }
@@ -103,11 +97,11 @@ fn set_configuration(
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
 ) -> Result<Completion, impl Debug> {
-    let mut buf = [0_u8; 1000];
+    let mut buf = [0_u8; 1000]; // TODO
 
     let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError4::E1)?;
 
-    let conf: wifi::Configuration<&str> = serde_json::from_slice(buf).map_err(EitherError4::E2)?;
+    let conf: wifi::Configuration = serde_json::from_slice(buf).map_err(EitherError4::E2)?;
 
     wifi.lock()
         .set_configuration(&conf)

@@ -5,7 +5,7 @@ extern crate alloc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::Errors;
+use crate::io::Io;
 
 /// Quality of service
 #[repr(u8)]
@@ -139,7 +139,7 @@ pub struct SubsequentChunkData {
     pub total_data_size: usize,
 }
 
-pub trait Client: Errors {
+pub trait Client: Io {
     fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error>;
 
     fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error>;
@@ -158,7 +158,7 @@ where
     }
 }
 
-pub trait Publish: Errors {
+pub trait Publish: Io {
     fn publish<'a>(
         &'a mut self,
         topic: &'a str,
@@ -183,7 +183,7 @@ where
     }
 }
 
-pub trait Enqueue: Errors {
+pub trait Enqueue: Io {
     fn enqueue<'a>(
         &'a mut self,
         topic: &'a str,
@@ -208,7 +208,7 @@ where
     }
 }
 
-pub trait Connection: Errors {
+pub trait Connection: Io {
     type Message;
 
     fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>>;
@@ -232,7 +232,7 @@ pub mod utils {
     use alloc::sync::Arc;
 
     use crate::{
-        errors,
+        io,
         mutex::{Condvar, Mutex},
     };
 
@@ -337,17 +337,17 @@ pub mod utils {
     impl<CV, M, E> Connection<CV, M, E>
     where
         CV: Condvar,
-        E: errors::Error,
+        E: io::Error,
     {
         pub fn new(connection_state: Arc<ConnStateGuard<CV, ConnState<M, E>>>) -> Self {
             Self(connection_state)
         }
     }
 
-    impl<CV, M, E> errors::Errors for Connection<CV, M, E>
+    impl<CV, M, E> io::Io for Connection<CV, M, E>
     where
         CV: Condvar,
-        E: errors::Error,
+        E: io::Error,
     {
         type Error = E;
     }
@@ -355,7 +355,7 @@ pub mod utils {
     impl<CV, M, E> super::Connection for Connection<CV, M, E>
     where
         CV: Condvar,
-        E: errors::Error,
+        E: io::Error,
     {
         type Message = M;
 
@@ -382,14 +382,14 @@ pub mod utils {
 }
 
 #[cfg(feature = "experimental")]
-pub mod asyncs {
+pub mod asynch {
     use core::future::Future;
 
     pub use super::{Details, Event, Message, MessageId, QoS};
 
-    use crate::errors::Errors;
+    use crate::io::Io;
 
-    pub trait Client: Errors {
+    pub trait Client: Io {
         type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
@@ -402,7 +402,7 @@ pub mod asyncs {
         fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a>;
     }
 
-    pub trait Publish: Errors {
+    pub trait Publish: Io {
         type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
@@ -418,7 +418,7 @@ pub mod asyncs {
 
     /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
     /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
-    pub trait Connection: Errors {
+    pub trait Connection: Io {
         type Message;
 
         type NextFuture<'a>: Future<Output = Option<Result<Event<Self::Message>, Self::Error>>>

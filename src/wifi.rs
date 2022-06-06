@@ -1,4 +1,3 @@
-use core::convert::TryFrom;
 use core::fmt::Debug;
 use core::mem;
 
@@ -16,7 +15,6 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::errors::{conv::StrConvError, wrap::EitherError, Errors};
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
@@ -138,10 +136,10 @@ impl Default for SecondaryChannel {
     }
 }
 
-#[derive(Copy /*TODO: Not ideal*/, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct AccessPointInfo<S> {
-    pub ssid: S,
+pub struct AccessPointInfo {
+    pub ssid: heapless::String<30>,
     pub bssid: [u8; 6],
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
@@ -150,41 +148,21 @@ pub struct AccessPointInfo<S> {
     pub auth_method: AuthMethod,
 }
 
-impl<I> AccessPointInfo<I>
-where
-    I: AsRef<str>,
-{
-    pub fn try_convert_strings<S>(&self) -> Result<AccessPointInfo<S>, StrConvError>
-    where
-        S: for<'a> TryFrom<&'a str> + Sized + 'static,
-    {
-        Ok(AccessPointInfo {
-            ssid: S::try_from(self.ssid.as_ref()).map_err(|_| StrConvError)?,
-            bssid: self.bssid.clone(),
-            channel: self.channel,
-            secondary_channel: self.secondary_channel.clone(),
-            signal_strength: self.signal_strength,
-            protocols: self.protocols.clone(),
-            auth_method: self.auth_method.clone(),
-        })
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct AccessPointConfiguration<S> {
-    pub ssid: S,
+pub struct AccessPointConfiguration {
+    pub ssid: heapless::String<30>,
     pub ssid_hidden: bool,
     pub channel: u8,
     pub secondary_channel: Option<u8>,
     pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
-    pub password: S,
+    pub password: heapless::String<64>,
     pub max_connections: u16,
     pub ip_conf: Option<ipv4::RouterConfiguration>,
 }
 
-impl<S> AccessPointConfiguration<S> {
+impl AccessPointConfiguration {
     pub fn as_ip_conf_ref(&self) -> Option<&ipv4::RouterConfiguration> {
         self.ip_conf.as_ref()
     }
@@ -205,7 +183,7 @@ impl<S> AccessPointConfiguration<S> {
     }
 }
 
-impl<S: for<'a> From<&'a str>> Default for AccessPointConfiguration<S> {
+impl Default for AccessPointConfiguration {
     fn default() -> Self {
         Self {
             ssid: "iot-device".into(),
@@ -221,52 +199,30 @@ impl<S: for<'a> From<&'a str>> Default for AccessPointConfiguration<S> {
     }
 }
 
-impl<I> AccessPointConfiguration<I>
-where
-    I: AsRef<str>,
-{
-    pub fn try_convert_strings<S>(&self) -> Result<AccessPointConfiguration<S>, StrConvError>
-    where
-        S: for<'b> TryFrom<&'b str>,
-    {
-        Ok(AccessPointConfiguration {
-            ssid: S::try_from(self.ssid.as_ref()).map_err(|_| StrConvError)?,
-            ssid_hidden: self.ssid_hidden,
-            channel: self.channel,
-            secondary_channel: self.secondary_channel,
-            protocols: self.protocols,
-            auth_method: self.auth_method,
-            password: S::try_from(self.password.as_ref()).map_err(|_| StrConvError)?,
-            max_connections: self.max_connections,
-            ip_conf: self.ip_conf.clone(),
-        })
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct ClientConfiguration<S> {
-    pub ssid: S,
+pub struct ClientConfiguration {
+    pub ssid: heapless::String<30>,
     pub bssid: Option<[u8; 6]>,
     //pub protocol: Protocol,
     pub auth_method: AuthMethod,
-    pub password: S,
+    pub password: heapless::String<64>,
     pub channel: Option<u8>,
-    pub ip_conf: Option<ipv4::ClientConfiguration<S>>,
+    pub ip_conf: Option<ipv4::ClientConfiguration>,
 }
 
-impl<S> ClientConfiguration<S> {
-    pub fn as_ip_conf_ref(&self) -> Option<&ipv4::ClientConfiguration<S>> {
+impl ClientConfiguration {
+    pub fn as_ip_conf_ref(&self) -> Option<&ipv4::ClientConfiguration> {
         self.ip_conf.as_ref()
     }
 
-    pub fn as_ip_conf_mut(&mut self) -> &mut ipv4::ClientConfiguration<S> {
+    pub fn as_ip_conf_mut(&mut self) -> &mut ipv4::ClientConfiguration {
         Self::to_ip_conf(&mut self.ip_conf)
     }
 
     fn to_ip_conf(
-        ip_conf: &mut Option<ipv4::ClientConfiguration<S>>,
-    ) -> &mut ipv4::ClientConfiguration<S> {
+        ip_conf: &mut Option<ipv4::ClientConfiguration>,
+    ) -> &mut ipv4::ClientConfiguration {
         if let Some(ip_conf) = ip_conf {
             return ip_conf;
         }
@@ -276,7 +232,7 @@ impl<S> ClientConfiguration<S> {
     }
 }
 
-impl<S: for<'a> From<&'a str>> Default for ClientConfiguration<S> {
+impl Default for ClientConfiguration {
     fn default() -> Self {
         ClientConfiguration {
             ssid: "".into(),
@@ -286,29 +242,6 @@ impl<S: for<'a> From<&'a str>> Default for ClientConfiguration<S> {
             channel: None,
             ip_conf: Some(Default::default()),
         }
-    }
-}
-
-impl<I> ClientConfiguration<I>
-where
-    I: AsRef<str>,
-{
-    pub fn try_convert_strings<S>(&self) -> Result<ClientConfiguration<S>, StrConvError>
-    where
-        S: for<'b> TryFrom<&'b str>,
-    {
-        Ok(ClientConfiguration {
-            ssid: S::try_from(self.ssid.as_ref()).map_err(|_| StrConvError)?,
-            bssid: self.bssid,
-            auth_method: self.auth_method,
-            password: S::try_from(self.password.as_ref()).map_err(|_| StrConvError)?,
-            channel: self.channel,
-            ip_conf: if let Some(ip_conf) = &self.ip_conf {
-                Some(ip_conf.try_convert_strings()?)
-            } else {
-                None
-            },
-        })
     }
 }
 
@@ -337,32 +270,29 @@ pub enum Capability {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum Configuration<S> {
+pub enum Configuration {
     None,
-    Client(ClientConfiguration<S>),
-    AccessPoint(AccessPointConfiguration<S>),
-    Mixed(ClientConfiguration<S>, AccessPointConfiguration<S>),
+    Client(ClientConfiguration),
+    AccessPoint(AccessPointConfiguration),
+    Mixed(ClientConfiguration, AccessPointConfiguration),
 }
 
-impl<S> Configuration<S> {
-    pub fn as_client_conf_ref(&self) -> Option<&ClientConfiguration<S>> {
+impl Configuration {
+    pub fn as_client_conf_ref(&self) -> Option<&ClientConfiguration> {
         match self {
             Self::Client(client_conf) | Self::Mixed(client_conf, _) => Some(client_conf),
             _ => None,
         }
     }
 
-    pub fn as_ap_conf_ref(&self) -> Option<&AccessPointConfiguration<S>> {
+    pub fn as_ap_conf_ref(&self) -> Option<&AccessPointConfiguration> {
         match self {
             Self::AccessPoint(ap_conf) | Self::Mixed(_, ap_conf) => Some(ap_conf),
             _ => None,
         }
     }
 
-    pub fn as_client_conf_mut(&mut self) -> &mut ClientConfiguration<S>
-    where
-        S: for<'a> From<&'a str>,
-    {
+    pub fn as_client_conf_mut(&mut self) -> &mut ClientConfiguration {
         match self {
             Self::Client(client_conf) => client_conf,
             Self::Mixed(_, _) => {
@@ -382,10 +312,7 @@ impl<S> Configuration<S> {
         }
     }
 
-    pub fn as_ap_conf_mut(&mut self) -> &mut AccessPointConfiguration<S>
-    where
-        S: for<'a> From<&'a str>,
-    {
+    pub fn as_ap_conf_mut(&mut self) -> &mut AccessPointConfiguration {
         match self {
             Self::AccessPoint(ap_conf) => ap_conf,
             Self::Mixed(_, _) => {
@@ -407,13 +334,7 @@ impl<S> Configuration<S> {
 
     pub fn as_mixed_conf_mut(
         &mut self,
-    ) -> (
-        &mut ClientConfiguration<S>,
-        &mut AccessPointConfiguration<S>,
-    )
-    where
-        S: for<'a> From<&'a str>,
-    {
+    ) -> (&mut ClientConfiguration, &mut AccessPointConfiguration) {
         match self {
             Self::Mixed(client_conf, ref mut ap_conf) => (client_conf, ap_conf),
             Self::AccessPoint(_) => {
@@ -444,29 +365,9 @@ impl<S> Configuration<S> {
     }
 }
 
-impl<S> Default for Configuration<S> {
+impl Default for Configuration {
     fn default() -> Self {
         Configuration::None
-    }
-}
-
-impl<I> Configuration<I>
-where
-    I: AsRef<str>,
-{
-    pub fn try_convert_strings<S>(&self) -> Result<Configuration<S>, StrConvError>
-    where
-        S: for<'b> TryFrom<&'b str>,
-    {
-        Ok(match self {
-            Self::None => Configuration::None,
-            Self::Client(conf) => Configuration::Client(conf.try_convert_strings()?),
-            Self::AccessPoint(conf) => Configuration::AccessPoint(conf.try_convert_strings()?),
-            Self::Mixed(sta_conf, ap_conf) => Configuration::Mixed(
-                sta_conf.try_convert_strings()?,
-                ap_conf.try_convert_strings()?,
-            ),
-        })
     }
 }
 
@@ -635,37 +536,21 @@ impl Status {
     }
 }
 
-pub trait Wifi: Errors {
+pub trait Wifi {
+    type Error: Debug;
+
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
     fn get_status(&self) -> Status;
 
-    fn scan_fill<'a, 'b, S>(
-        &'a mut self,
-        access_points: &'b mut [mem::MaybeUninit<AccessPointInfo<S>>],
-    ) -> Result<(&'b [AccessPointInfo<S>], usize), EitherError<Self::Error, StrConvError>>
-    where
-        S: TryFrom<&'a str> + 'static;
+    fn scan_n<const N: usize>(
+        &mut self,
+    ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error>;
 
     #[cfg(feature = "alloc")]
-    fn scan(
-        &mut self,
-    ) -> Result<alloc::vec::Vec<AccessPointInfo<alloc::string::String>>, Self::Error>;
+    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
 
-    #[cfg(feature = "heapless")]
-    fn scan_heapless<'a, const N: usize, S>(
-        &'a mut self,
-    ) -> Result<(heapless::Vec<AccessPointInfo<S>, N>, usize), EitherError<Self::Error, StrConvError>>
-    where
-        S: TryFrom<&'a str> + 'static;
+    fn get_configuration(&self) -> Result<Configuration, Self::Error>;
 
-    fn get_configuration<'a, S>(
-        &'a self,
-    ) -> Result<Configuration<S>, EitherError<Self::Error, StrConvError>>
-    where
-        S: TryFrom<&'a str> + 'static;
-
-    fn set_configuration<S>(&mut self, conf: &Configuration<S>) -> Result<(), Self::Error>
-    where
-        S: AsRef<str>;
+    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }

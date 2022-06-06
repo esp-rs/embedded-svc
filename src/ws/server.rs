@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 
-use crate::errors::*;
+use crate::io::Io;
 use crate::ws::*;
 
 pub mod registry;
@@ -14,8 +14,8 @@ pub trait SessionProvider {
     fn is_closed(&self) -> bool;
 }
 
-pub trait SenderFactory: Errors {
-    type Sender: Sender;
+pub trait SenderFactory: Io {
+    type Sender: Sender<Error = Self::Error>;
 
     fn create(&self) -> Result<Self::Sender, Self::Error>;
 }

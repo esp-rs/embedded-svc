@@ -1,4 +1,3 @@
-use core::convert::TryFrom;
 use core::fmt::Debug;
 
 use enumset::*;
@@ -12,7 +11,6 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::errors::{conv::StrConvError, wrap::EitherError, Errors};
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
@@ -30,10 +28,10 @@ pub enum Capability {
 
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum Configuration<S> {
+pub enum Configuration {
     None,
     NOIP,
-    Client(ipv4::ClientConfiguration<S>),
+    Client(ipv4::ClientConfiguration),
     Router(ipv4::RouterConfiguration),
 }
 
@@ -131,18 +129,14 @@ impl TransitionalState<ConnectionStatus> for Status {
     }
 }
 
-pub trait Eth: Errors {
+pub trait Eth {
+    type Error: Debug;
+
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
     fn get_status(&self) -> Status;
 
-    fn get_configuration<'a, S>(
-        &'a self,
-    ) -> Result<Configuration<S>, EitherError<Self::Error, StrConvError>>
-    where
-        S: TryFrom<&'a str> + 'static;
+    fn get_configuration(&self) -> Result<Configuration, Self::Error>;
 
-    fn set_configuration<S>(&mut self, conf: &Configuration<S>) -> Result<(), Self::Error>
-    where
-        S: AsRef<str>;
+    fn set_configuration<S>(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }

@@ -68,7 +68,7 @@ fn get_status(
 
     let slot = ota.get_running_slot().map_err(EitherError3::E1)?;
 
-    let info = slot.get_firmware_info::<&str>().map_err(EitherError3::E2)?;
+    let info = slot.get_firmware_info().map_err(EitherError3::E2)?;
 
     resp.send_json(req, &info).map_err(EitherError3::E3)
 }
@@ -92,9 +92,7 @@ fn get_latest_update(
 ) -> Result<Completion, impl Debug> {
     let mut ota_server = ota_server.lock();
 
-    let update = ota_server
-        .get_latest_release::<&str>()
-        .map_err(EitherError::E2)?;
+    let update = ota_server.get_latest_release().map_err(EitherError::E2)?;
 
     resp.send_json(req, &update).map_err(EitherError::E1)
 }
@@ -116,11 +114,12 @@ fn update<'a>(
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
     progress: &impl Mutex<Data = Option<usize>>,
 ) -> Result<Completion, impl Debug> {
-    let mut buf = [0_u8; 1000];
+    let mut buf = [0_u8; 1000]; // TODO
 
     let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError8::E1)?;
 
-    let download_id: Option<&str> = serde_json::from_slice(buf).map_err(EitherError8::E2)?;
+    let download_id: Option<heapless::String<128>> =
+        serde_json::from_slice(buf).map_err(EitherError8::E2)?;
 
     let mut ota_server = ota_server.lock();
 

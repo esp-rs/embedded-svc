@@ -7,11 +7,10 @@ use core::task::{Context, Poll, Waker};
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::channel::asyncs::{Receiver, Sender};
-use crate::errors::Errors;
-use crate::event_bus::asyncs::{EventBus, PostboxProvider};
+use crate::channel::asynch::{Receiver, Sender};
+use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider};
 use crate::mutex::{Condvar, Mutex, MutexFamily};
-use crate::unblocker::asyncs::Unblocker;
+use crate::unblocker::asynch::Unblocker;
 
 pub struct AsyncPostbox<U, P, PB> {
     unblocker: U,
@@ -221,9 +220,9 @@ impl<CV, E> super::AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
     }
 }
 
-impl<U, CV, E> Errors for AsyncEventBus<U, CV, E>
+impl<U, CV, E> ErrorType for AsyncEventBus<U, CV, E>
 where
-    E: Errors,
+    E: ErrorType,
 {
     type Error = E::Error;
 }

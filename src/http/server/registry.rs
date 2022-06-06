@@ -1,7 +1,8 @@
 use core::fmt::Debug;
 
 use super::{middleware, *};
-use crate::errors::{wrap::EitherError3, ErrorKind};
+use crate::errors::wrap::EitherError3;
+use crate::io::ErrorKind;
 
 pub trait PrefixedRegistry: Registry {
     fn prefix<'a>(&'a mut self, prefix: &'a str) -> Self
