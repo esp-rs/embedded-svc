@@ -1,71 +1,8 @@
-//use core::fmt::Debug;
-
 pub use embedded_io::adapters;
 pub use embedded_io::blocking::*;
 pub use embedded_io::*;
 
 use crate::errors::wrap::EitherError;
-
-// #[derive(Debug)]
-// pub struct IOError<E>(pub E);
-
-// impl<E> Error for IOError<E>
-// where
-//     E: Debug,
-// {
-//     fn kind(&self) -> ErrorKind {
-//         ErrorKind::Other
-//     }
-// }
-
-// pub struct Bytes<R, const N: usize> {
-//     reader: R,
-//     buf: [u8; N],
-//     index: usize,
-//     read: usize,
-// }
-
-// impl<R, const N: usize> Bytes<R, N>
-// where
-//     R: Read,
-// {
-//     pub fn new(reader: R) -> Self {
-//         Self {
-//             reader,
-//             buf: [0_u8; N],
-//             index: 1,
-//             read: 1,
-//         }
-//     }
-// }
-
-// impl<R, const N: usize> Iterator for Bytes<R, N>
-// where
-//     R: Read,
-// {
-//     type Item = Result<u8, R::Error>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.index == self.read && self.read > 0 {
-//             match self.reader.read(&mut self.buf) {
-//                 Err(e) => return Some(Err(e)),
-//                 Ok(read) => {
-//                     self.read = read;
-//                     self.index = 0;
-//                 }
-//             }
-//         }
-
-//         if self.read == 0 {
-//             None
-//         } else {
-//             let result = self.buf[self.index];
-//             self.index += 1;
-
-//             Some(Ok(result))
-//         }
-//     }
-// }
 
 pub fn read_max<'a, R: Read>(
     mut read: R,
@@ -144,13 +81,34 @@ where
     Ok(copied)
 }
 
-#[cfg(feature = "eperimental")]
+#[cfg(feature = "experimental")]
 pub mod asynch {
     pub use embedded_io::*;
     //pub use embedded_io::asynch::adapters;
     pub use embedded_io::asynch::*;
 
     use crate::errors::wrap::EitherError;
+
+    pub async fn read_max<'a, R: Read>(
+        mut read: R,
+        buf: &'a mut [u8],
+    ) -> Result<(&'a [u8], usize), R::Error> {
+        let mut offset = 0;
+        let mut size = 0;
+
+        loop {
+            let r = read.read(&mut buf[offset..]).await?;
+
+            if size == 0 {
+                break;
+            }
+
+            offset += r;
+            size += r;
+        }
+
+        Ok((&buf[..size], size))
+    }
 
     pub async fn copy<const N: usize, R, W>(
         read: R,
