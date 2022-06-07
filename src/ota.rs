@@ -10,7 +10,7 @@ pub struct FirmwareInfo {
     pub version: heapless::String<24>,
     pub released: heapless::String<24>,
     pub description: Option<heapless::String<128>>,
-    pub signature: Option<heapless::Vec<u8, 64>>,
+    pub signature: Option<heapless::Vec<u8, 32>>,
     pub download_id: Option<heapless::String<128>>,
 }
 
