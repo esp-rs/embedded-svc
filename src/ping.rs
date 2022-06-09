@@ -65,3 +65,30 @@ pub trait Ping {
         reply_callback: &F,
     ) -> Result<Summary, Self::Error>;
 }
+
+#[cfg(feature = "experimental")]
+pub mod asynch {
+    use core::fmt::Debug;
+    use core::future::Future;
+
+    use crate::ipv4;
+
+    pub use super::{Configuration, Reply, Summary};
+
+    pub trait Ping {
+        type Error: Debug;
+
+        type PingFuture<'a>: Future<Output = Result<Summary, Self::Error>>
+        where
+            Self: 'a;
+
+        fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Self::PingFuture<'_>;
+
+        fn ping_details<F: Fn(&Summary, &Reply)>(
+            &mut self,
+            ip: ipv4::Ipv4Addr,
+            conf: &Configuration,
+            reply_callback: &F,
+        ) -> Self::PingFuture<'_>;
+    }
+}

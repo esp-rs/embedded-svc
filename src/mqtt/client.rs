@@ -393,6 +393,7 @@ pub mod asynch {
         type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
+
         type UnsubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
