@@ -1,94 +1,62 @@
-use core::fmt::{self, Debug};
+use core::fmt::Debug;
 
 use crate::errors::wrap::EitherError;
 use crate::http::server::Request;
-use crate::http::server::{middleware::Middleware, registry::*, Completion, Context, Response};
-use crate::http::{Headers, SendHeaders, SendStatus};
+use crate::http::server::{Completion, Response};
 use crate::mutex::*;
 
-pub fn register<R, M>(
-    registry: &mut R,
-    portal_uri: &'static str,
-    captive: M,
-) -> Result<(), R::Error>
-where
-    R: Registry,
-    M: Mutex<Data = bool> + Send + Sync + 'static,
-{
-    registry
-        .at("")
-        .inline()
-        .get(move |req, resp| get_status(req, resp, portal_uri, &captive))?;
-
-    Ok(())
-}
-
-fn get_status(
+pub fn get_status(
     req: impl Request,
     resp: impl Response,
-    portal_uri: impl AsRef<str>,
+    portal_uri: &str,
     captive: &impl Mutex<Data = bool>,
 ) -> Result<Completion, impl Debug> {
     let data = format!(
+        // TODO
         r#"
         {{
             "captive": {},
             "user-portal-url": "{}"
         }}"#,
         *captive.lock(),
-        portal_uri.as_ref(),
+        portal_uri,
     );
 
     resp.content_type("application/captive+json")
         .send_str(req, &data)
 }
 
-#[derive(Clone)]
-pub struct WithCaptivePortalMiddleware<M, F: Clone> {
-    pub portal_uri: &'static str,
-    pub captive: M,
-    pub allowed_hosts: Option<F>,
-}
-
-impl<M, F, C> Middleware<C> for WithCaptivePortalMiddleware<M, F>
+pub fn with_captive_portal<R, S, H, E>(
+    req: R,
+    resp: S,
+    handler: H,
+    portal_uri: &str,
+    captive: &impl Mutex<Data = bool>,
+    allowed_hosts: Option<impl Fn(&str) -> bool>,
+) -> Result<Completion, impl Debug>
 where
-    M: Mutex<Data = bool> + Send + Sync,
-    F: Fn(&str) -> bool + Clone + Send,
-    C: Context,
+    R: Request,
+    S: Response,
+    H: Fn(R, S) -> Result<Completion, E>,
+    E: Debug,
 {
-    type Error = C::Error;
+    let captive = *captive.lock();
 
-    fn handle<'a, H, E>(
-        &self,
-        req: C::Request,
-        resp: C::Response,
-        handler: H,
-    ) -> Result<Completion, EitherError<Self::Error, E>>
-    where
-        H: Fn(C::Request, C::Response) -> Result<Completion, E> + Send + Sync,
-        E: fmt::Debug,
-    {
-        let captive = *self.captive.lock();
+    let allow = !captive
+        || allowed_hosts
+            .as_ref()
+            .and_then(|allowed_hosts| req.header("host").map(|host| allowed_hosts(host.as_ref())))
+            .unwrap_or(true);
 
-        let allow = !captive
-            || self
-                .allowed_hosts
-                .as_ref()
-                .and_then(|allowed_hosts| {
-                    req.header("host").map(|host| allowed_hosts(host.as_ref()))
-                })
-                .unwrap_or(true);
+    if allow {
+        handler(req, resp).map_err(EitherError::E2)
+    } else {
+        let completion = resp
+            .status(307)
+            .header("Location", portal_uri.to_owned())
+            .submit(req)
+            .map_err(EitherError::E1)?;
 
-        if allow {
-            handler(req, resp).map_err(EitherError::E2)
-        } else {
-            let completion = resp
-                .status(307)
-                .header("Location", self.portal_uri.to_owned())
-                .submit(req)
-                .map_err(EitherError::E1)?;
-
-            Ok(completion)
-        }
+        Ok(completion)
     }
 }

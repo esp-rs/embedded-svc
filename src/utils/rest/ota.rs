@@ -2,64 +2,12 @@ use core::cmp::min;
 use core::fmt::Debug;
 
 use crate::errors::wrap::{EitherError, EitherError3, EitherError8, WrapError};
-use crate::http::server::registry::*;
 use crate::http::server::*;
 use crate::io::read_max;
 use crate::mutex::*;
 use crate::ota::{self, OtaRead, OtaSlot, OtaUpdate};
 
-use crate::utils::role::*;
-
-pub fn register<'a, R, MO, MS, MP, O, S>(
-    registry: &mut R,
-    ota: MO,
-    ota_server: MS,
-    progress: MP,
-    default_role: Option<Role>,
-) -> Result<(), R::Error>
-where
-    R: Registry,
-    MO: Mutex<Data = O> + Send + Sync + Clone + 'static,
-    MS: Mutex<Data = S> + Send + Sync + Clone + 'static,
-    MP: Mutex<Data = Option<usize>> + Send + Sync + Clone + 'static,
-    O: ota::Ota,
-    S: ota::OtaServer,
-{
-    let otas_get_updates = ota_server.clone();
-    let otas_get_latest_update = ota_server.clone();
-    let otas_update = ota_server;
-    let ota_get_status = ota.clone();
-    let ota_factory_reset = ota.clone();
-    let progress_update = progress.clone();
-
-    registry
-        .with_middleware(super::auth::WithRoleMiddleware {
-            role: Role::Admin,
-            default_role,
-        })
-        .at("/reset")
-        .inline()
-        .post(move |req, resp| factory_reset(req, resp, &ota_factory_reset))?
-        .at("/updates/latest")
-        .inline()
-        .get(move |req, resp| get_latest_update(req, resp, &otas_get_latest_update))?
-        .at("/update/progress")
-        .inline()
-        .get(move |req, resp| get_update_progress(req, resp, &progress))?
-        .at("/updates")
-        .inline()
-        .get(move |req, resp| get_updates(req, resp, &otas_get_updates))?
-        .at("/update")
-        .inline()
-        .post(move |req, resp| update(req, resp, &ota, &otas_update, &progress_update))?
-        .at("")
-        .inline()
-        .get(move |req, resp| get_status(req, resp, &ota_get_status))?;
-
-    Ok(())
-}
-
-fn get_status(
+pub fn get_status(
     req: impl Request,
     resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,
@@ -73,7 +21,7 @@ fn get_status(
     resp.send_json(req, &info).map_err(EitherError3::E3)
 }
 
-fn get_updates<'a>(
+pub fn get_updates(
     req: impl Request,
     resp: impl Response,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
@@ -85,7 +33,7 @@ fn get_updates<'a>(
     resp.send_json(req, &updates).map_err(EitherError::E1)
 }
 
-fn get_latest_update(
+pub fn get_latest_update(
     req: impl Request,
     resp: impl Response,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
@@ -97,7 +45,7 @@ fn get_latest_update(
     resp.send_json(req, &update).map_err(EitherError::E1)
 }
 
-fn factory_reset(
+pub fn factory_reset(
     req: impl Request,
     resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,
@@ -107,7 +55,7 @@ fn factory_reset(
     resp.submit(req).map_err(EitherError::E1)
 }
 
-fn update<'a>(
+pub fn update(
     mut req: impl Request,
     resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,
@@ -155,7 +103,7 @@ fn update<'a>(
     resp.submit(req).map_err(EitherError8::E6)
 }
 
-fn get_update_progress(
+pub fn get_update_progress(
     req: impl Request,
     resp: impl Response,
     progress: &impl Mutex<Data = Option<usize>>,

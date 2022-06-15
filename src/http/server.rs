@@ -2,76 +2,22 @@ use core::fmt;
 
 use crate::errors::wrap::EitherError;
 use crate::io::{self, Io, Read, Write};
-use crate::storage::{DynStorage, Storage};
 
-use super::{Headers, Method, SendHeaders, SendStatus};
+use super::{Headers, SendHeaders, SendStatus};
 
-pub mod attr;
-pub mod middleware;
-pub mod registry;
-
-#[cfg(feature = "alloc")]
 pub mod session;
 
 #[cfg(feature = "alloc")]
 pub use response_data::*;
-
-#[derive(Debug)]
-pub enum SessionError {
-    MissingError,
-    TimeoutError,
-    InvalidatedError,
-    MaxSessiuonsReachedError,
-    SerdeError, // TODO
-}
-
-impl fmt::Display for SessionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SessionError::MissingError => write!(f, "No session"),
-            SessionError::TimeoutError => write!(f, "Session timed out"),
-            SessionError::InvalidatedError => write!(f, "Session invalidated"),
-            SessionError::MaxSessiuonsReachedError => write!(f, "Max number of sessions reached"),
-            SessionError::SerdeError => write!(f, "Serde error"),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for SessionError {}
-
-pub trait Session: Storage<Error = SessionError> {
-    fn id(&self) -> Option<heapless::String<64>>;
-
-    fn is_valid(&self) -> bool {
-        self.get_error().is_none()
-    }
-
-    fn get_error(&self) -> Option<SessionError>;
-
-    fn create_if_invalid(&mut self) -> Result<&mut Self, SessionError>;
-
-    fn invalidate(&mut self) -> Result<bool, SessionError>;
-}
 
 pub trait Request: Headers + Io {
     type Read<'b>: Read<Error = Self::Error>
     where
         Self: 'b;
 
-    type Attributes<'b>: DynStorage<'b, Error = Self::Error>
-    where
-        Self: 'b;
-
-    type Session<'b>: Session
-    where
-        Self: 'b;
+    fn get_request_id(&self) -> &'_ str;
 
     fn query_string(&self) -> &'_ str;
-
-    fn attrs(&self) -> Self::Attributes<'_>;
-
-    fn session(&self) -> Self::Session<'_>;
 
     fn reader(&mut self) -> Self::Read<'_>;
 }

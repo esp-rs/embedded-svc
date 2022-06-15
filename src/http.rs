@@ -170,13 +170,14 @@ pub mod cookies {
             Self(cookies_str)
         }
 
-        pub fn get(&self, name: &str) -> Option<&'_ str> {
-            self.into_iter()
+        pub fn get(&self, name: &str) -> Option<&'a str> {
+            Cookies::new(self.0)
+                .into_iter()
                 .find(|(key, _)| *key == name)
                 .map(|(_, value)| value)
         }
 
-        pub fn insert<'b, I>(
+        pub fn set<'b, I>(
             iter: I,
             name: &'b str,
             value: &'b str,
@@ -209,22 +210,13 @@ pub mod cookies {
         }
     }
 
-    impl<'a> AsRef<str> for Cookies<'a> {
-        fn as_ref(&self) -> &str {
-            self.0
-        }
-    }
+    impl<'a> IntoIterator for Cookies<'a> {
+        type Item = (&'a str, &'a str);
 
-    impl<'a, 'b> IntoIterator for &'b Cookies<'a>
-    where
-        'a: 'b,
-    {
-        type Item = (&'b str, &'b str);
-
-        type IntoIter = CookieIterator<'b>;
+        type IntoIter = CookieIterator<'a>;
 
         fn into_iter(self) -> Self::IntoIter {
-            CookieIterator::new(self.0.as_ref())
+            CookieIterator::new(self.0)
         }
     }
 

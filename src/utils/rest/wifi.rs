@@ -1,54 +1,12 @@
 use core::fmt::Debug;
 
 use crate::errors::wrap::{EitherError, EitherError4};
+use crate::http::server::*;
 use crate::io::read_max;
 use crate::mutex::Mutex;
 use crate::wifi;
-use crate::{http::server::registry::*, http::server::*};
 
-use crate::utils::role::*;
-
-pub fn register<R, W, T>(
-    registry: &mut R,
-    wifi: W,
-    default_role: Option<Role>,
-) -> Result<(), R::Error>
-where
-    R: Registry,
-    W: Mutex<Data = T> + Send + Sync + Clone + 'static,
-    T: wifi::Wifi,
-{
-    let wifi_get_status = wifi.clone();
-    let wifi_scan = wifi.clone();
-    let wifi_get_capabilities = wifi.clone();
-    let wifi_get_configuration = wifi.clone();
-    let wifi_set_configuration = wifi;
-
-    registry
-        .with_middleware(super::auth::WithRoleMiddleware {
-            role: Role::Admin,
-            default_role,
-        })
-        .at("/scan")
-        .inline()
-        .post(move |req, resp| scan(req, resp, &wifi_scan))?
-        .at("/caps")
-        .inline()
-        .get(move |req, resp| get_capabilities(req, resp, &wifi_get_capabilities))?
-        .at("/conf")
-        .inline()
-        .get(move |req, resp| get_configuration(req, resp, &wifi_get_configuration))?
-        .at("/conf")
-        .inline()
-        .put(move |req, resp| set_configuration(req, resp, &wifi_set_configuration))?
-        .at("")
-        .inline()
-        .get(move |req, resp| get_status(req, resp, &wifi_get_status))?;
-
-    Ok(())
-}
-
-fn get_capabilities(
+pub fn get_capabilities(
     req: impl Request,
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
@@ -58,7 +16,7 @@ fn get_capabilities(
     resp.send_json(req, &caps).map_err(EitherError::E2)
 }
 
-fn get_status(
+pub fn get_status(
     req: impl Request,
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
@@ -68,7 +26,7 @@ fn get_status(
     resp.send_json(req, &status)
 }
 
-fn scan(
+pub fn scan(
     req: impl Request,
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
@@ -80,7 +38,7 @@ fn scan(
     resp.send_json(req, &aps).map_err(EitherError::E2)
 }
 
-fn get_configuration(
+pub fn get_configuration(
     req: impl Request,
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
@@ -92,7 +50,7 @@ fn get_configuration(
     resp.send_json(req, &conf).map_err(EitherError::E2)
 }
 
-fn set_configuration(
+pub fn set_configuration(
     mut req: impl Request,
     resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
