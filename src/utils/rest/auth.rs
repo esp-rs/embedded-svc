@@ -117,7 +117,9 @@ pub fn login(
 
             Ok(())
         } else {
-            Ok(resp.status(401).send_str("Invalid username or password")?)
+            resp.status(401).send_str("Invalid username or password")?;
+
+            Ok(())
         }
     }
 }

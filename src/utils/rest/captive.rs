@@ -96,7 +96,8 @@ where
     )
     .unwrap();
 
-    Ok(resp
-        .content_type("application/captive+json")
-        .send_str(&data)?)
+    resp.content_type("application/captive+json")
+        .send_str(&data)?;
+
+    Ok(())
 }

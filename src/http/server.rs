@@ -24,16 +24,18 @@ pub trait Request: Headers + Io {
 pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Io {
     type Write: Write<Error = Self::Error>;
 
-    fn send_bytes(self, bytes: &[u8]) -> Result<(), Self::Error>
+    fn send_bytes(self, bytes: &[u8]) -> Result<Self::Write, Self::Error>
     where
         Self: Sized,
     {
         let mut write = self.into_writer()?;
 
-        write.write_all(bytes.as_ref())
+        write.write_all(bytes.as_ref())?;
+
+        Ok(write)
     }
 
-    fn send_str(self, s: &str) -> Result<(), Self::Error>
+    fn send_str(self, s: &str) -> Result<Self::Write, Self::Error>
     where
         Self: Sized,
     {
@@ -44,7 +46,7 @@ pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Io {
         self,
         size: Option<usize>,
         read: I,
-    ) -> Result<(), EitherError<Self::Error, I::Error>>
+    ) -> Result<Self::Write, EitherError<Self::Error, I::Error>>
     where
         I: Read,
         Self: Sized,
@@ -61,7 +63,7 @@ pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Io {
             EitherError::E2(e) => EitherError::E1(e),
         })?;
 
-        Ok(())
+        Ok(write)
     }
 
     fn into_writer(self) -> Result<Self::Write, Self::Error>
