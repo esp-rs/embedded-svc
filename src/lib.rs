@@ -17,8 +17,8 @@ pub mod event_bus;
 pub mod executor;
 #[cfg(feature = "experimental")]
 pub mod http;
-#[cfg(feature = "std")] // TODO: Retire
-pub mod httpd;
+#[cfg(feature = "std")]
+pub mod httpd; // TODO: Retire
 pub mod io;
 pub mod ipv4;
 pub mod mqtt;

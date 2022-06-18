@@ -1,8 +1,6 @@
 use core::fmt::Write;
 
 pub mod client;
-
-#[cfg(target_has_atomic = "ptr")] // TODO: Lift in future
 pub mod server;
 
 pub mod status {

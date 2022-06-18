@@ -33,7 +33,9 @@ pub mod registry {
 
         fn handle_ws<H, E>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
         where
-            H: for<'a> Fn(&'a mut Self::Receiver, &'a mut Self::Sender) -> Result<(), E> + 'static,
+            H: for<'a> Fn(&'a mut Self::Receiver, &'a mut Self::Sender) -> Result<(), E>
+                + Send
+                + 'static,
             E: Debug;
     }
 }
