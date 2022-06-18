@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use core::future::Future;
 use core::mem;
 use core::pin::Pin;
@@ -8,9 +9,9 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use crate::io::{self, Io};
 use crate::mqtt::client::asynch::{Client, Connection, Event, MessageId, Publish, QoS};
 use crate::mqtt::client::utils::ConnStateGuard;
+use crate::mqtt::client::ErrorType;
 use crate::mutex::{Condvar, Mutex, MutexFamily};
 use crate::unblocker::asynch::Unblocker;
 
@@ -66,10 +67,10 @@ impl<U, W> AsyncClient<U, W> {
     }
 }
 
-impl<U, M, C> Io for AsyncClient<U, Arc<M>>
+impl<U, M, C> ErrorType for AsyncClient<U, Arc<M>>
 where
     M: Mutex<Data = C>,
-    C: Io,
+    C: ErrorType,
 {
     type Error = C::Error;
 }
@@ -153,9 +154,9 @@ pub struct Blocking<C, P> {
     _policy: P,
 }
 
-impl<E, P> Io for AsyncClient<(), Blocking<E, P>>
+impl<E, P> ErrorType for AsyncClient<(), Blocking<E, P>>
 where
-    E: Io,
+    E: ErrorType,
 {
     type Error = E::Error;
 }
@@ -373,10 +374,10 @@ where
     }
 }
 
-impl<CV, M, E> Io for AsyncConnection<CV, M, E>
+impl<CV, M, E> ErrorType for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
-    E: io::Error,
+    E: Debug,
 {
     type Error = E;
 }
@@ -385,7 +386,7 @@ impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
     CV: Condvar + Send + Sync + 'static,
     <CV as MutexFamily>::Mutex<Option<AsyncConnState<M, E>>>: Sync + 'static,
-    E: io::Error,
+    E: Debug,
 {
     type Message = M;
 

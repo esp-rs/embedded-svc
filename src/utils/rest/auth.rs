@@ -2,7 +2,8 @@ use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::wrap::{EitherError, EitherError4};
+use crate::http::server::middleware::Middleware;
+use crate::http::server::registry::Registry;
 use crate::http::server::session::Session;
 use crate::http::server::*;
 use crate::io::read_max;
@@ -14,37 +15,80 @@ pub trait RoleSessionData {
     fn set_role(&mut self, role: Role);
 }
 
-pub fn with_role<R, S, E>(
-    req: R,
-    resp: S,
-    handler: impl Fn(R, S, Role) -> Result<Completion, E>,
+pub struct WithRoleMiddleware<A, S> {
+    auth: A,
+    session: Option<S>,
     min_role: Role,
-    auth: impl Fn(&R) -> Option<Role>,
-    session: &impl Session<SessionData = impl RoleSessionData>,
-) -> Result<Completion, impl Debug>
-where
-    R: Request,
-    S: Response,
-    E: Debug,
-{
-    let role = session
-        .with_existing(&req, |sd| sd.get_role())
-        .flatten()
-        .or_else(|| auth(&req));
+}
 
-    if let Some(role) = role {
-        if role >= min_role {
-            return handler(req, resp, role).map_err(EitherError::E2);
+impl<A, S> WithRoleMiddleware<A, S> {
+    pub fn new(auth: A, session: Option<S>, min_role: Role) -> Self {
+        Self {
+            auth,
+            session,
+            min_role,
         }
     }
+}
 
-    let completion = resp
-        .status(401)
-        .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
-        .submit(req)
-        .map_err(EitherError::E1)?;
+impl<R, P, A, S, D> Middleware<R, P> for WithRoleMiddleware<A, S>
+where
+    R: Request,
+    P: Response,
+    A: Fn(&R) -> Option<Role> + Send,
+    S: Session<SessionData = D>,
+    D: RoleSessionData,
+{
+    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<Completion, HandlerError>
+    where
+        H: Handler<R, P>,
+    {
+        let role = (self.auth)(&req);
 
-    Ok(completion)
+        if let Some(role) = role {
+            if role >= self.min_role {
+                return handler.handle(req, resp);
+            }
+        } else {
+            let role = self
+                .session
+                .as_ref()
+                .and_then(|session| session.with_existing(&req, |sd| sd.get_role()))
+                .flatten();
+
+            if let Some(role) = role {
+                if role >= self.min_role {
+                    return handler.handle(req, resp);
+                }
+            }
+        }
+
+        let completion = resp
+            .status(401)
+            .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
+            .submit()?;
+
+        Ok(completion)
+    }
+}
+
+pub fn register<R>(
+    registry: &mut R,
+    session: impl Session<SessionData = impl RoleSessionData> + Clone + 'static,
+    auth: impl Fn(&str, &str) -> Option<Role> + Send + Sync + 'static,
+) -> Result<(), R::Error>
+where
+    R: Registry,
+{
+    let session1 = session.clone();
+
+    registry
+        .handle_post("/login", move |req, resp| {
+            login(req, resp, &session1, &auth)
+        })?
+        .handle_post("/logout", move |req, resp| logout(req, resp, &session))?;
+
+    Ok(())
 }
 
 pub fn login(
@@ -52,17 +96,17 @@ pub fn login(
     mut resp: impl Response,
     session: &impl Session<SessionData = impl RoleSessionData>,
     auth: impl Fn(&str, &str) -> Option<Role>,
-) -> Result<Completion, impl Debug> {
+) -> Result<Completion, HandlerError> {
     if session
         .with_existing(&req, |sd| sd.get_role())
         .flatten()
         .is_some()
     {
-        resp.submit(req).map_err(EitherError4::E1)
+        Ok(resp.submit()?)
     } else {
         let mut buf = [0_u8; 1000];
 
-        let (buf, _) = read_max(req.reader(), &mut buf).map_err(EitherError4::E2)?;
+        let (buf, _) = read_max(req.reader(), &mut buf)?;
 
         #[derive(Clone, Debug, Serialize, Deserialize)]
         struct Credentials<'a> {
@@ -70,20 +114,16 @@ pub fn login(
             password: &'a str,
         }
 
-        let credentials: Credentials = serde_json::from_slice(&buf).map_err(EitherError4::E3)?;
+        let credentials: Credentials = serde_json::from_slice(&buf)?;
 
         if let Some(role) = auth(credentials.username, credentials.password) {
             session.invalidate(&req);
 
-            session
-                .with(&req, &mut resp, |sd| sd.set_role(role))
-                .map_err(EitherError4::E4)?;
+            session.with(&req, &mut resp, |sd| sd.set_role(role))?;
 
-            resp.submit(req).map_err(EitherError4::E1)
+            Ok(resp.submit()?)
         } else {
-            resp.status(401)
-                .send_str(req, "Invalid username or password")
-                .map_err(EitherError4::E1)
+            Ok(resp.status(401).send_str("Invalid username or password")?)
         }
     }
 }
@@ -91,9 +131,9 @@ pub fn login(
 pub fn logout(
     req: impl Request,
     resp: impl Response,
-    session: impl Session,
-) -> Result<Completion, impl Debug> {
+    session: &impl Session,
+) -> Result<Completion, HandlerError> {
     session.invalidate(&req);
 
-    resp.submit(req)
+    Ok(resp.submit()?)
 }

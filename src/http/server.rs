@@ -1,10 +1,12 @@
-use core::fmt;
+use core::fmt::{self, Debug, Display, Write as _};
 
 use crate::errors::wrap::EitherError;
 use crate::io::{self, Io, Read, Write};
 
 use super::{Headers, SendHeaders, SendStatus};
 
+pub mod middleware;
+pub mod registry;
 pub mod session;
 
 #[cfg(feature = "alloc")]
@@ -35,59 +37,49 @@ impl Completion {
 }
 
 pub trait ResponseWrite: Write {
-    fn complete<R>(self, request: R) -> Result<Completion, Self::Error>
+    fn complete(self) -> Result<Completion, Self::Error>
     where
-        R: Request,
         Self: Sized;
 }
 
 pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Io {
     type Write: ResponseWrite<Error = Self::Error>;
 
-    fn send_bytes<R>(self, request: R, bytes: &[u8]) -> Result<Completion, Self::Error>
+    fn send_bytes(self, bytes: &[u8]) -> Result<Completion, Self::Error>
     where
-        R: Request,
         Self: Sized,
     {
         let mut write = self.into_writer()?;
 
         write.write_all(bytes.as_ref())?;
 
-        write.complete(request)
+        write.complete()
     }
 
-    fn send_str<R>(self, request: R, s: &str) -> Result<Completion, Self::Error>
+    fn send_str(self, s: &str) -> Result<Completion, Self::Error>
     where
-        R: Request,
         Self: Sized,
     {
-        self.send_bytes(request, s.as_bytes())
+        self.send_bytes(s.as_bytes())
     }
 
     #[cfg(feature = "alloc")]
-    fn send_json<R, T>(
-        self,
-        request: R,
-        o: &T,
-    ) -> Result<Completion, EitherError<Self::Error, serde_json::Error>>
+    fn send_json<T>(self, o: &T) -> Result<Completion, EitherError<Self::Error, serde_json::Error>>
     where
-        R: Request,
         T: serde::Serialize + ?Sized,
         Self: Sized,
     {
         let s = serde_json::to_string(o).map_err(EitherError::E2)?;
 
-        self.send_str(request, &s).map_err(EitherError::E1)
+        self.send_str(&s).map_err(EitherError::E1)
     }
 
-    fn send_reader<R, I>(
+    fn send_reader<I>(
         self,
-        request: R,
         size: Option<usize>,
         read: I,
     ) -> Result<Completion, EitherError<Self::Error, I::Error>>
     where
-        R: Request,
         I: Read,
         Self: Sized,
     {
@@ -103,33 +95,66 @@ pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Io {
             EitherError::E2(e) => EitherError::E1(e),
         })?;
 
-        write.complete(request).map_err(EitherError::E1)
+        write.complete().map_err(EitherError::E1)
     }
 
     fn into_writer(self) -> Result<Self::Write, Self::Error>
     where
         Self: Sized;
 
-    fn submit<R>(self, request: R) -> Result<Completion, Self::Error>
+    fn submit(self) -> Result<Completion, Self::Error>
     where
-        R: Request,
         Self: Sized,
     {
-        self.send_bytes(request, &[0_u8; 0])
+        self.send_bytes(&[0_u8; 0])
     }
 
-    fn redirect<R>(self, request: R, location: &str) -> Result<Completion, Self::Error>
+    fn redirect(self, location: &str) -> Result<Completion, Self::Error>
     where
-        R: Request,
         Self: Sized,
     {
-        self.header("location", location).submit(request)
+        self.header("location", location).submit()
     }
 }
 
-pub trait Context: Io {
-    type Request: Request<Error = Self::Error>;
-    type Response: Response<Error = Self::Error>;
+pub struct HandlerError(heapless::String<128>);
+
+impl<E> From<E> for HandlerError
+where
+    E: Debug,
+{
+    fn from(e: E) -> Self {
+        let mut string: heapless::String<128> = "(Unknown)".into();
+
+        let _ = write!(&mut string, "{:?}", e);
+
+        Self(string)
+    }
+}
+
+impl Display for HandlerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+pub trait Handler<R, S>: Send
+where
+    R: Request,
+    S: Response,
+{
+    fn handle(&self, req: R, resp: S) -> Result<Completion, HandlerError>;
+}
+
+impl<R, S, H> Handler<R, S> for H
+where
+    R: Request,
+    S: Response,
+    H: Fn(R, S) -> Result<Completion, HandlerError> + Send + 'static,
+{
+    fn handle(&self, req: R, resp: S) -> Result<Completion, HandlerError> {
+        (self)(req, resp)
+    }
 }
 
 #[cfg(feature = "alloc")]

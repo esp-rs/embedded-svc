@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
@@ -13,7 +14,6 @@ use heapless;
 
 use log::info;
 
-use crate::io::{self, Io};
 use crate::mutex::*;
 use crate::unblocker::asynch::Unblocker;
 use crate::ws::{server::*, *};
@@ -23,9 +23,9 @@ pub struct AsyncSender<U, S> {
     sender: S,
 }
 
-impl<U, S> Io for AsyncSender<U, S>
+impl<U, S> ErrorType for AsyncSender<U, S>
 where
-    S: Io,
+    S: ErrorType,
 {
     type Error = S::Error;
 }
@@ -152,10 +152,10 @@ where
     condvar: Arc<C>,
 }
 
-impl<C, E> Io for AsyncReceiver<C, E>
+impl<C, E> ErrorType for AsyncReceiver<C, E>
 where
     C: Condvar,
-    E: io::Error,
+    E: Debug,
 {
     type Error = E;
 }
@@ -164,7 +164,7 @@ impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
 where
     C: Condvar + Send + Sync,
     <C as MutexFamily>::Mutex<SharedReceiverState>: Send + Sync,
-    E: io::Error,
+    E: Debug,
 {
     type ReceiveFuture<'a>
     where
@@ -202,14 +202,14 @@ where
     condvar: Arc<C>,
 }
 
-impl<U, C, S> Io for AsyncAcceptor<U, C, S>
+impl<U, C, S> ErrorType for AsyncAcceptor<U, C, S>
 where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Send + Io,
+    S: Send + ErrorType,
 {
-    type Error = <S as Io>::Error;
+    type Error = <S as ErrorType>::Error;
 }
 
 impl<'a, U, C, S> Future for &'a mut AsyncAcceptor<U, C, S>
@@ -218,10 +218,12 @@ where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + Io + Send + Clone + 'static,
+    S: Sender + Send + Clone + 'static,
 {
-    type Output =
-        Result<Option<(AsyncSender<U, S>, AsyncReceiver<C, <S as Io>::Error>)>, <S as Io>::Error>;
+    type Output = Result<
+        Option<(AsyncSender<U, S>, AsyncReceiver<C, <S as ErrorType>::Error>)>,
+        <S as ErrorType>::Error,
+    >;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut accept = self.accept.lock();
@@ -261,12 +263,12 @@ where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + SessionProvider + Io + Send + Clone + 'static,
+    S: Sender + SessionProvider + Send + Clone + 'static,
     S::Error: Send + Sync + 'static,
 {
     type Sender = AsyncSender<U, S>;
 
-    type Receiver = AsyncReceiver<C, <S as Io>::Error>;
+    type Receiver = AsyncReceiver<C, <S as ErrorType>::Error>;
 
     type AcceptFuture<'a>
     where
@@ -283,11 +285,11 @@ where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + SessionProvider + Io + Send + Clone + 'static,
+    S: Sender + SessionProvider + Send + Clone + 'static,
 {
     type Sender = AsyncSender<(), S>;
 
-    type Receiver = AsyncReceiver<C, <S as Io>::Error>;
+    type Receiver = AsyncReceiver<C, <S as ErrorType>::Error>;
 
     type AcceptFuture<'a>
     where

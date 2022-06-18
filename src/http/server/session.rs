@@ -20,7 +20,7 @@ impl fmt::Display for SessionError {
 #[cfg(feature = "std")]
 impl std::error::Error for SessionError {}
 
-pub trait Session {
+pub trait Session: Send {
     type SessionData;
 
     fn is_existing(&self, req: &impl Request) -> bool;
@@ -43,7 +43,7 @@ pub trait Session {
 
 #[derive(Debug, Default)]
 pub struct SessionData<S> {
-    id: heapless::String<64>,
+    id: heapless::String<32>,
     last_accessed: Duration,
     timeout: Duration,
     data: S,
@@ -82,9 +82,9 @@ where
 
 impl<M, S, T, const N: usize> Session for SessionImpl<M, S, T, N>
 where
-    M: Mutex<Data = [SessionData<S>; N]>,
+    M: Mutex<Data = [SessionData<S>; N]> + Send,
     S: Default,
-    T: Fn() -> Duration,
+    T: Fn() -> Duration + Send,
 {
     type SessionData = S;
 
