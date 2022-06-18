@@ -87,6 +87,10 @@ pub trait SendHeaders {
         self.set_header("content-encoding", encoding)
     }
 
+    fn set_redirect(&mut self, location: &str) -> &mut Self {
+        self.set_header("location", location)
+    }
+
     fn header<H, V>(mut self, name: H, value: V) -> Self
     where
         H: AsRef<str>,
@@ -120,6 +124,15 @@ pub trait SendHeaders {
         Self: Sized,
     {
         self.set_content_encoding(encoding.as_ref());
+        self
+    }
+
+    fn redirect<V>(mut self, location: V) -> Self
+    where
+        V: AsRef<str>,
+        Self: Sized,
+    {
+        self.set_header("location", location.as_ref());
         self
     }
 }

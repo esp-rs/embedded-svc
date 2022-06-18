@@ -3,9 +3,9 @@ use core::cmp::min;
 use crate::errors::wrap::WrapError;
 use crate::http::server::registry::Registry;
 use crate::http::server::*;
-use crate::io::read_max;
 use crate::mutex::*;
 use crate::ota::{self, OtaRead, OtaSlot, OtaUpdate};
+use crate::utils::json_io;
 
 pub fn register<R, MO, MS, MP, O, S>(
     registry: &mut R,
@@ -52,62 +52,64 @@ pub fn get_status(
     _req: impl Request,
     resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,
-) -> Result<Completion, HandlerError> {
+) -> Result<(), HandlerError> {
     let ota = ota.lock();
 
     let slot = ota.get_running_slot()?;
 
     let info = slot.get_firmware_info()?;
 
-    Ok(resp.send_json(&info)?)
+    json_io::resp_write::<512, _, _>(resp, &info)?;
+
+    Ok(())
 }
 
 pub fn get_updates(
     _req: impl Request,
     resp: impl Response,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
-) -> Result<Completion, HandlerError> {
+) -> Result<(), HandlerError> {
     let mut ota_server = ota_server.lock();
 
     let updates = ota_server.get_releases()?;
 
-    Ok(resp.send_json(&updates)?)
+    json_io::resp_write::<512, _, _>(resp, &updates)?;
+
+    Ok(())
 }
 
 pub fn get_latest_update(
     _req: impl Request,
     resp: impl Response,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
-) -> Result<Completion, HandlerError> {
+) -> Result<(), HandlerError> {
     let mut ota_server = ota_server.lock();
 
     let update = ota_server.get_latest_release()?;
 
-    Ok(resp.send_json(&update)?)
+    json_io::resp_write::<512, _, _>(resp, &update)?;
+
+    Ok(())
 }
 
 pub fn factory_reset(
     _req: impl Request,
-    resp: impl Response,
+    _resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,
-) -> Result<Completion, HandlerError> {
+) -> Result<(), HandlerError> {
     ota.lock().factory_reset()?;
 
-    Ok(resp.submit()?)
+    Ok(())
 }
 
 pub fn update(
     mut req: impl Request,
-    resp: impl Response,
+    _resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
     progress: &impl Mutex<Data = Option<usize>>,
-) -> Result<Completion, HandlerError> {
-    let mut buf = [0_u8; 1000]; // TODO
-
-    let (buf, _) = read_max(req.reader(), &mut buf)?;
-
-    let download_id: Option<heapless::String<128>> = serde_json::from_slice(buf)?;
+) -> Result<(), HandlerError> {
+    let download_id: Option<heapless::String<128>> = json_io::read::<1024, _, _>(req.reader())?;
 
     let mut ota_server = ota_server.lock();
 
@@ -135,13 +137,15 @@ pub fn update(
             *progress.lock() = size.map(|size| copied as usize * 100 / size as usize)
         })?; // TODO: Take the progress mutex more rarely
 
-    Ok(resp.submit()?)
+    Ok(())
 }
 
 pub fn get_update_progress(
     _req: impl Request,
     resp: impl Response,
     progress: &impl Mutex<Data = Option<usize>>,
-) -> Result<Completion, HandlerError> {
-    Ok(resp.send_json(&*progress.lock())?)
+) -> Result<(), HandlerError> {
+    json_io::resp_write::<512, _, _>(resp, &*progress.lock())?;
+
+    Ok(())
 }

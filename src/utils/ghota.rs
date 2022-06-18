@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::http::{client::*, Headers};
 use crate::io::{self, ErrorKind, Io, Read};
 use crate::ota::*;
+use crate::utils::json_io;
 
 #[derive(Debug)]
 pub enum Error<E> {
@@ -135,11 +136,10 @@ where
             .submit()
             .map_err(Error::Http)?;
 
-        let mut read = response.reader();
+        let read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, &mut self.buf).map_err(Error::Http)?;
-
-        let releases = serde_json::from_slice::<heapless::Vec<Release<'_>, N>>(buf).unwrap(); // TODO
+        let releases =
+            json_io::read_buf::<_, heapless::Vec<Release<'_>, N>>(read, &mut self.buf).unwrap(); // TODO
 
         Ok((releases, self.label))
     }
@@ -153,11 +153,10 @@ where
             .submit()
             .map_err(Error::Http)?;
 
-        let mut read = response.reader();
+        let read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, &mut self.buf).map_err(Error::Http)?;
-
-        let releases = serde_json::from_slice::<alloc::vec::Vec<Release<'_>>>(buf).unwrap(); // TODO
+        let releases =
+            json_io::read_buf::<_, alloc::vec::Vec<Release<'_>>>(read, &mut self.buf).unwrap(); // TODO
 
         Ok((releases, self.label))
     }
@@ -173,11 +172,9 @@ where
             .submit()
             .map_err(Error::Http)?;
 
-        let mut read = response.reader();
+        let read = response.reader();
 
-        let (buf, _) = io::read_max(&mut read, &mut self.buf).map_err(Error::Http)?;
-
-        let release = serde_json::from_slice::<Option<Release<'_>>>(buf).unwrap(); // TODO
+        let release = json_io::read_buf::<_, Option<Release<'_>>>(read, &mut self.buf).unwrap(); // TODO
 
         Ok(release)
     }
@@ -329,8 +326,9 @@ pub mod asynch {
     use core::future::Future;
 
     use crate::http::{client::asynch::*, Headers};
-    use crate::io::{self, asynch::Read, Io};
+    use crate::io::{asynch::Read, Io};
     use crate::ota::asynch::*;
+    use crate::utils::json_io::asynch as json_io;
 
     use super::{join, Release};
 
@@ -389,13 +387,12 @@ pub mod asynch {
                 .await
                 .map_err(Error::Http)?;
 
-            let mut read = response.reader();
+            let read = response.reader();
 
-            let (buf, _) = io::asynch::read_max(&mut read, &mut self.buf)
-                .await
-                .map_err(Error::Http)?;
-
-            let releases = serde_json::from_slice::<heapless::Vec<Release<'_>, N>>(buf).unwrap(); // TODO
+            let releases =
+                json_io::read_buf::<_, heapless::Vec<Release<'_>, N>>(read, &mut self.buf)
+                    .await
+                    .unwrap(); // TODO
 
             Ok((releases, self.label))
         }
@@ -413,13 +410,12 @@ pub mod asynch {
                 .await
                 .map_err(Error::Http)?;
 
-            let mut read = response.reader();
+            let read = response.reader();
 
-            let (buf, _) = io::asynch::read_max(&mut read, &mut self.buf)
-                .await
-                .map_err(Error::Http)?;
-
-            let releases = serde_json::from_slice::<alloc::vec::Vec<Release<'_>>>(buf).unwrap(); // TODO
+            let releases =
+                json_io::read_buf::<_, alloc::vec::Vec<Release<'_>>>(read, &mut self.buf)
+                    .await
+                    .unwrap(); // TODO
 
             Ok((releases, self.label))
         }
@@ -437,13 +433,11 @@ pub mod asynch {
                 .await
                 .map_err(Error::Http)?;
 
-            let mut read = response.reader();
+            let read = response.reader();
 
-            let (buf, _) = io::asynch::read_max(&mut read, &mut self.buf)
+            let release = json_io::read_buf::<_, Option<Release<'_>>>(read, &mut self.buf)
                 .await
-                .map_err(Error::Http)?;
-
-            let release = serde_json::from_slice::<Option<Release<'_>>>(buf).unwrap(); // TODO
+                .unwrap(); // TODO
 
             Ok(release)
         }

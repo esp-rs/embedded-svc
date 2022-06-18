@@ -2,7 +2,7 @@ use core::fmt::Write;
 
 use crate::http::server::middleware::Middleware;
 use crate::http::server::registry::Registry;
-use crate::http::server::{Completion, Response};
+use crate::http::server::Response;
 use crate::http::server::{Handler, HandlerError, Request};
 use crate::mutex::*;
 
@@ -33,7 +33,7 @@ where
     M: Mutex<Data = bool> + Send,
     F: Fn(&str) -> bool + Send,
 {
-    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<Completion, HandlerError>
+    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<(), HandlerError>
     where
         H: Handler<R, P>,
     {
@@ -48,12 +48,9 @@ where
         if allow {
             handler.handle(req, resp)
         } else {
-            let completion = resp
-                .status(307)
-                .header("Location", self.portal_uri)
-                .submit()?;
+            resp.status(307).header("Location", self.portal_uri);
 
-            Ok(completion)
+            Ok(())
         }
     }
 }
@@ -79,7 +76,7 @@ pub fn get_status<R, P, M, const N: usize>(
     resp: P,
     portal_uri: &str,
     captive: &M,
-) -> Result<Completion, HandlerError>
+) -> Result<(), HandlerError>
 where
     R: Request,
     P: Response,

@@ -4,7 +4,6 @@ use core::fmt::Write;
 use crate::http::Method;
 use crate::io::Error;
 
-use super::Completion;
 use super::HandlerError;
 use super::{middleware::Middleware, Handler, Request, Response};
 
@@ -17,7 +16,7 @@ pub trait Registry {
 
     fn handle_get<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, HandlerError>
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<(), HandlerError>
             + Send
             + 'static,
     {
@@ -26,7 +25,7 @@ pub trait Registry {
 
     fn handle_post<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, HandlerError>
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<(), HandlerError>
             + Send
             + 'static,
     {
@@ -35,7 +34,7 @@ pub trait Registry {
 
     fn handle_put<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, HandlerError>
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<(), HandlerError>
             + Send
             + 'static,
     {
@@ -44,7 +43,7 @@ pub trait Registry {
 
     fn handle_delete<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, HandlerError>
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<(), HandlerError>
             + Send
             + 'static,
     {
@@ -53,7 +52,7 @@ pub trait Registry {
 
     fn handle<H>(&mut self, uri: &str, method: Method, handler: H) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, HandlerError>
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<(), HandlerError>
             + Send
             + 'static,
     {

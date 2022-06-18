@@ -6,8 +6,8 @@ use crate::http::server::middleware::Middleware;
 use crate::http::server::registry::Registry;
 use crate::http::server::session::Session;
 use crate::http::server::*;
-use crate::io::read_max;
 
+use crate::utils::json_io;
 use crate::utils::role::*;
 
 pub trait RoleSessionData {
@@ -39,7 +39,7 @@ where
     S: Session<SessionData = D>,
     D: RoleSessionData,
 {
-    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<Completion, HandlerError>
+    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<(), HandlerError>
     where
         H: Handler<R, P>,
     {
@@ -63,12 +63,10 @@ where
             }
         }
 
-        let completion = resp
-            .status(401)
-            .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
-            .submit()?;
+        resp.status(401)
+            .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"");
 
-        Ok(completion)
+        Ok(())
     }
 }
 
@@ -96,32 +94,28 @@ pub fn login(
     mut resp: impl Response,
     session: &impl Session<SessionData = impl RoleSessionData>,
     auth: impl Fn(&str, &str) -> Option<Role>,
-) -> Result<Completion, HandlerError> {
+) -> Result<(), HandlerError> {
     if session
         .with_existing(&req, |sd| sd.get_role())
         .flatten()
         .is_some()
     {
-        Ok(resp.submit()?)
+        Ok(())
     } else {
-        let mut buf = [0_u8; 1000];
-
-        let (buf, _) = read_max(req.reader(), &mut buf)?;
-
         #[derive(Clone, Debug, Serialize, Deserialize)]
-        struct Credentials<'a> {
-            username: &'a str,
-            password: &'a str,
+        struct Credentials {
+            username: heapless::String<32>,
+            password: heapless::String<32>,
         }
 
-        let credentials: Credentials = serde_json::from_slice(&buf)?;
+        let credentials: Credentials = json_io::read::<512, _, _>(req.reader())?;
 
-        if let Some(role) = auth(credentials.username, credentials.password) {
+        if let Some(role) = auth(&credentials.username, &credentials.password) {
             session.invalidate(&req);
 
             session.with(&req, &mut resp, |sd| sd.set_role(role))?;
 
-            Ok(resp.submit()?)
+            Ok(())
         } else {
             Ok(resp.status(401).send_str("Invalid username or password")?)
         }
@@ -130,10 +124,10 @@ pub fn login(
 
 pub fn logout(
     req: impl Request,
-    resp: impl Response,
+    _resp: impl Response,
     session: &impl Session,
-) -> Result<Completion, HandlerError> {
+) -> Result<(), HandlerError> {
     session.invalidate(&req);
 
-    Ok(resp.submit()?)
+    Ok(())
 }

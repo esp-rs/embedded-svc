@@ -1,11 +1,11 @@
-use super::{Completion, Handler, HandlerError, Request, Response};
+use super::{Handler, HandlerError, Request, Response};
 
 pub trait Middleware<R, S>: Send
 where
     R: Request,
     S: Response,
 {
-    fn handle<H>(&self, req: R, resp: S, handler: &H) -> Result<Completion, HandlerError>
+    fn handle<H>(&self, req: R, resp: S, handler: &H) -> Result<(), HandlerError>
     where
         H: Handler<R, S>;
 
@@ -20,12 +20,12 @@ where
 
 // impl<M, R, S, H> Middleware<R, S> for M
 // where
-//     M: Fn(R, S, H) -> Result<Completion, HandlerError> + Clone + Send + Sync + 'static,
+//     M: Fn(R, S, H) -> Result<(), HandlerError> + Clone + Send + Sync + 'static,
 //     R: Request,
 //     S: Response,
 //     H: Handler<R, S> + Send + Sync + 'static,
 // {
-//     fn handle<H2>(&self, req: R, resp: S, handler: H2) -> Result<Completion, HandlerError> {
+//     fn handle<H2>(&self, req: R, resp: S, handler: H2) -> Result<(), HandlerError> {
 //         (self)(req, resp, handler)
 //     }
 // }
@@ -51,7 +51,7 @@ where
     R: Request,
     S: Response,
 {
-    fn handle(&self, req: R, resp: S) -> Result<Completion, HandlerError> {
+    fn handle(&self, req: R, resp: S) -> Result<(), HandlerError> {
         self.middleware.handle(req, resp, &self.handler)
     }
 }
