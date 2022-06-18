@@ -19,7 +19,7 @@ default = ["std", "use_serde", "use_strum", "use_numenum", "experimental"]
 #experimental = ["futures", "embedded-io/futures"]
 experimental = ["futures", "embedded-io/async"]
 
-std = ["alloc", "embedded-io/std", "anyhow/std", "serde/std", "serde_json/std", "strum/std", "num_enum/std", "http-auth-basic"]
+std = ["alloc", "embedded-io/std", "anyhow/std", "serde/std", "serde_json/std", "strum/std", "num_enum/std"]
 alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "serde_json/alloc"]
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
@@ -41,5 +41,4 @@ futures = { version = "0.3", default-features = false, optional = true }
 # Uncomment once 0.6.2 which has no_std support is released
 #domain = { version = "0.6", optional = true, default-features = false }
 async-task = { version = "4", default-features = false, optional = true }
-http-auth-basic = { version = "0.1", optional = true }
 anyhow = { version = "1", default-features = false, optional = true } # Only used by the deprecated httpd module
