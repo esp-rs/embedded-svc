@@ -78,9 +78,11 @@ where
     E: Debug,
 {
     fn from(e: E) -> Self {
-        let mut string: heapless::String<128> = "(Unknown)".into();
+        let mut string: heapless::String<128> = "".into();
 
-        let _ = write!(&mut string, "{:?}", e);
+        if let Err(_) = write!(&mut string, "{:?}", e) {
+            string = "(Error string too big to serve)".into();
+        }
 
         Self(string)
     }
