@@ -1,7 +1,7 @@
 use crate::errors::wrap::EitherError;
 use crate::io::{self, Io, Read, Write};
 
-use super::{Headers, Method, SendHeaders, Status};
+pub use super::{Headers, Method, SendHeaders, Status};
 
 pub trait Client: Io {
     type Request<'a>: Request<Error = Self::Error>
@@ -55,12 +55,13 @@ pub trait Request: SendHeaders + Io {
     }
 
     #[allow(clippy::type_complexity)]
-    fn send_reader<R: Read>(
+    fn send_reader<R>(
         self,
         size: usize,
         read: R,
     ) -> Result<Self::Write, EitherError<Self::Error, R::Error>>
     where
+        R: Read,
         Self: Sized,
     {
         let mut write = self.into_writer(size).map_err(EitherError::E1)?;
@@ -95,9 +96,10 @@ pub trait Response: Status + Headers + Io {
 pub mod asynch {
     use core::future::Future;
 
-    use crate::io::{self, asynch::Read, asynch::Write, Io};
+    use crate::errors::wrap::EitherError;
+    use crate::io::{asynch::Read, asynch::Write, Io};
 
-    use super::{Headers, Method, SendHeaders, Status};
+    pub use crate::http::{Headers, Method, SendHeaders, Status};
 
     pub trait Client: Io {
         type Request<'a>: Request<Error = Self::Error>
@@ -138,23 +140,15 @@ pub mod asynch {
     pub trait Request: SendHeaders + Io {
         type Write: RequestWrite<Error = Self::Error>;
 
-        type SendFuture<'a>: Future<
-            Output = Result<<Self::Write as RequestWrite>::Response, Self::Error>,
-        >;
+        type SendFuture<'a>: Future<Output = Result<Self::Write, Self::Error>>;
 
-        type SendBytesFuture<'a>: Future<
-            Output = Result<<Self::Write as RequestWrite>::Response, Self::Error>,
-        >
+        type SendBytesFuture<'a>: Future<Output = Result<Self::Write, Self::Error>>
         where
             Self: 'a;
 
-        type SendReaderFuture: Future<
-            Output = Result<<Self::Write as RequestWrite>::Response, Self::Error>,
-        >;
+        type SendReaderFuture<E>: Future<Output = Result<Self::Write, EitherError<Self::Error, E>>>;
 
-        type IntoWriterFuture: Future<
-            Output = Result<<Self::Write as RequestWrite>::Response, Self::Error>,
-        >;
+        type IntoWriterFuture: Future<Output = Result<Self::Write, Self::Error>>;
 
         type SubmitFuture: Future<
             Output = Result<<Self::Write as RequestWrite>::Response, Self::Error>,
@@ -172,8 +166,9 @@ pub mod asynch {
         }
 
         #[allow(clippy::type_complexity)]
-        fn send_reader<R: Read>(self, size: usize, read: R) -> Self::SendReaderFuture
+        fn send_reader<R>(self, size: usize, read: R) -> Self::SendReaderFuture<R::Error>
         where
+            R: Read,
             Self: Sized;
 
         fn into_writer(self, size: usize) -> Self::IntoWriterFuture
@@ -186,7 +181,7 @@ pub mod asynch {
     }
 
     pub trait Response: Status + Headers + Io {
-        type Read<'a>: io::asynch::Read<Error = Self::Error>
+        type Read<'a>: Read<Error = Self::Error>
         where
             Self: 'a;
 

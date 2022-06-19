@@ -3,7 +3,7 @@ use core::fmt::{self, Debug, Display, Write as _};
 use crate::errors::wrap::EitherError;
 use crate::io::{self, Io, Read, Write};
 
-use super::{Headers, SendHeaders, SendStatus};
+pub use super::{Headers, SendHeaders, SendStatus};
 
 pub mod middleware;
 pub mod registry;
@@ -94,21 +94,105 @@ impl Display for HandlerError {
     }
 }
 
+pub type HandlerResult = Result<(), HandlerError>;
+
 pub trait Handler<R, S>: Send
 where
     R: Request,
     S: Response,
 {
-    fn handle(&self, req: R, resp: S) -> Result<(), HandlerError>;
+    fn handle(&self, req: R, resp: S) -> HandlerResult;
 }
 
 impl<R, S, H> Handler<R, S> for H
 where
     R: Request,
     S: Response,
-    H: Fn(R, S) -> Result<(), HandlerError> + Send + 'static,
+    H: Fn(R, S) -> HandlerResult + Send + 'static,
 {
-    fn handle(&self, req: R, resp: S) -> Result<(), HandlerError> {
+    fn handle(&self, req: R, resp: S) -> HandlerResult {
         (self)(req, resp)
     }
+}
+
+#[cfg(feature = "experimental")]
+pub mod asynch {
+    use core::future::Future;
+
+    use crate::errors::wrap::EitherError;
+    use crate::io::{asynch::Read, asynch::Write, Io};
+
+    pub use crate::http::{Headers, SendHeaders, SendStatus};
+
+    pub use super::{HandlerError, HandlerResult};
+
+    pub trait Request: Headers + Io {
+        type Read<'b>: Read<Error = Self::Error>
+        where
+            Self: 'b;
+
+        fn get_request_id(&self) -> &'_ str;
+
+        fn query_string(&self) -> &'_ str;
+
+        fn reader(&mut self) -> Self::Read<'_>;
+    }
+
+    pub trait Response<const B: usize = 64>: SendStatus + SendHeaders + Io {
+        type Write: Write<Error = Self::Error>;
+
+        type SendFuture<'a>: Future<Output = Result<Self::Write, Self::Error>>;
+
+        type SendBytesFuture<'a>: Future<Output = Result<Self::Write, Self::Error>>
+        where
+            Self: 'a;
+
+        type SendReaderFuture<E>: Future<Output = Result<Self::Write, EitherError<Self::Error, E>>>;
+
+        type IntoWriterFuture: Future<Output = Result<Self::Write, Self::Error>>;
+
+        fn send_bytes<'a>(self, bytes: &'a [u8]) -> Self::SendBytesFuture<'a>
+        where
+            Self: Sized;
+
+        fn send_str<'a>(self, s: &'a str) -> Self::SendBytesFuture<'a>
+        where
+            Self: Sized;
+
+        fn send_reader<I>(self, size: Option<usize>, read: I) -> Self::SendReaderFuture<I::Error>
+        where
+            I: Read,
+            Self: Sized;
+
+        fn into_writer(self) -> Self::IntoWriterFuture
+        where
+            Self: Sized;
+    }
+
+    pub trait Handler<R, S>: Send
+    where
+        R: Request,
+        S: Response,
+    {
+        type HandleFuture<'a>: Future<Output = HandlerResult>
+        where
+            Self: 'a;
+
+        fn handle(&self, req: R, resp: S) -> Self::HandleFuture<'_>;
+    }
+
+    // type HFuture = impl Future<Output = HandlerResult;
+
+    // impl<R, S, H> Handler<R, S> for H
+    // where
+    //     R: Request,
+    //     S: Response,
+    //     H: Fn(R, S) -> HFuture + 'static,
+    // {
+    //     type HandleFuture<'a> where Self: 'a = HFuture;
+
+    //     fn handle(&mut self, req: R, resp: S) -> Self::HandleFuture<'_> {
+    //         (self)(req, resp)
+    //     }
+    // }
 }
