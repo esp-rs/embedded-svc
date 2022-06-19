@@ -1,12 +1,9 @@
 pub mod adapt {
-    use core::convert::Infallible;
     use core::future::{pending, ready, Future, Pending, Ready};
     use core::marker::PhantomData;
 
-    use crate::errors::{EitherError, Errors};
-
-    use crate::channel::asyncs::{Receiver, Sender};
-    use crate::utils::asyncs::select::{select, Either};
+    use crate::channel::asynch::{Receiver, Sender};
+    use crate::utils::asynch::select::{select, Either};
 
     pub fn adapt<C, T, F>(channel: C, adapter: F) -> AdapterChannel<C, F, T> {
         AdapterChannel::new(channel, adapter)
@@ -36,13 +33,6 @@ pub mod adapt {
         }
     }
 
-    impl<C, F, T> Errors for AdapterChannel<C, F, T>
-    where
-        C: Errors,
-    {
-        type Error = C::Error;
-    }
-
     impl<C, F, T> Sender for AdapterChannel<C, F, T>
     where
         C: Sender + Send + 'static,
@@ -54,7 +44,7 @@ pub mod adapt {
         type SendFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>> + Send;
+        = impl Future<Output = ()> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
             let inner = &mut self.inner;
@@ -75,7 +65,7 @@ pub mod adapt {
         type RecvFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Result<Self::Data, Self::Error>> + Send;
+        = impl Future<Output = Self::Data> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             let inner = &mut self.inner;
@@ -100,14 +90,6 @@ pub mod adapt {
         }
     }
 
-    impl<A, B> Errors for MergedChannel<A, B>
-    where
-        A: Errors,
-        B: Errors,
-    {
-        type Error = EitherError<A::Error, B::Error>;
-    }
-
     impl<A, B> Sender for MergedChannel<A, B>
     where
         A: Sender + Send + 'static,
@@ -119,7 +101,7 @@ pub mod adapt {
         type SendFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>> + Send;
+        = impl Future<Output = ()> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
             async move { send_both(&mut self.first, &mut self.second, value).await }
@@ -129,16 +111,14 @@ pub mod adapt {
     impl<A, B> Receiver for MergedChannel<A, B>
     where
         A: Receiver + Send + 'static,
-        A: Errors,
         B: Receiver<Data = A::Data> + Send + 'static,
-        B: Errors<Error = A::Error>,
     {
         type Data = A::Data;
 
         type RecvFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Result<Self::Data, Self::Error>> + Send;
+        = impl Future<Output = Self::Data> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             async move { recv_both(&mut self.first, &mut self.second).await }
@@ -159,10 +139,6 @@ pub mod adapt {
         }
     }
 
-    impl<T> Errors for DummyChannel<T> {
-        type Error = Infallible;
-    }
-
     impl<T> Sender for DummyChannel<T>
     where
         T: Send,
@@ -172,10 +148,10 @@ pub mod adapt {
         type SendFuture<'a>
         where
             Self: 'a,
-        = Ready<Result<(), Self::Error>>;
+        = Ready<()>;
 
         fn send(&mut self, _value: Self::Data) -> Self::SendFuture<'_> {
-            ready(Ok(()))
+            ready(())
         }
     }
 
@@ -188,68 +164,47 @@ pub mod adapt {
         type RecvFuture<'a>
         where
             Self: 'a,
-        = Pending<Result<Self::Data, Self::Error>>;
+        = Pending<Self::Data>;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             pending()
         }
     }
 
-    pub async fn send<S, P>(
-        sender: &mut S,
-        value: P,
-        adapter: &impl Fn(P) -> Option<S::Data>,
-    ) -> Result<(), S::Error>
+    pub async fn send<S, P>(sender: &mut S, value: P, adapter: &impl Fn(P) -> Option<S::Data>)
     where
-        S: Sender + Errors,
+        S: Sender,
     {
         if let Some(value) = adapter(value) {
-            sender.send(value).await
-        } else {
-            Ok(())
+            sender.send(value).await;
         }
     }
 
-    pub async fn recv<R, P>(
-        receiver: &mut R,
-        adapter: &impl Fn(R::Data) -> Option<P>,
-    ) -> Result<P, R::Error>
+    pub async fn recv<R, P>(receiver: &mut R, adapter: &impl Fn(R::Data) -> Option<P>) -> P
     where
-        R: Receiver + Errors,
+        R: Receiver,
     {
         loop {
-            if let Some(value) = adapter(receiver.recv().await?) {
-                return Ok(value);
+            if let Some(value) = adapter(receiver.recv().await) {
+                return value;
             }
         }
     }
 
-    pub async fn send_both<S1, S2>(
-        sender1: &mut S1,
-        sender2: &mut S2,
-        value: S1::Data,
-    ) -> Result<(), EitherError<S1::Error, S2::Error>>
+    pub async fn send_both<S1, S2>(sender1: &mut S1, sender2: &mut S2, value: S1::Data)
     where
-        S1: Sender + Errors,
+        S1: Sender,
         S1::Data: Send + Clone,
-        S2: Sender<Data = S1::Data> + Errors,
+        S2: Sender<Data = S1::Data>,
     {
-        sender1
-            .send(value.clone())
-            .await
-            .map_err(EitherError::First)?;
-        sender2.send(value).await.map_err(EitherError::Second)?;
-
-        Ok(())
+        sender1.send(value.clone()).await;
+        sender2.send(value).await;
     }
 
-    pub async fn recv_both<R1, R2>(
-        receiver1: &mut R1,
-        receiver2: &mut R2,
-    ) -> Result<R1::Data, EitherError<R1::Error, R2::Error>>
+    pub async fn recv_both<R1, R2>(receiver1: &mut R1, receiver2: &mut R2) -> R1::Data
     where
-        R1: Receiver + Errors,
-        R2: Receiver<Data = R1::Data> + Errors,
+        R1: Receiver,
+        R2: Receiver<Data = R1::Data>,
     {
         let receiver1 = receiver1.recv();
         let receiver2 = receiver2.recv();
@@ -257,8 +212,8 @@ pub mod adapt {
         //pin_mut!(receiver1, receiver2);
 
         match select(receiver1, receiver2).await {
-            Either::First(r) => r.map_err(EitherError::First),
-            Either::Second(r) => r.map_err(EitherError::Second),
+            Either::First(r) => r,
+            Either::Second(r) => r,
         }
     }
 }

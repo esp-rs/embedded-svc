@@ -1,163 +1,190 @@
-use core::fmt;
+use crate::errors::wrap::EitherError;
+use crate::io::{self, Io, Read, Write};
 
-use serde::Serialize;
+pub use super::{Headers, Method, SendHeaders, Status};
 
-use crate::errors::Errors;
-use crate::io::{self, Write};
-
-use super::{Headers, Method, SendHeaders, Status};
-
-pub trait Client: Errors {
-    type Request<'a>: Request<'a, Error = Self::Error>
+pub trait Client: Io {
+    type Request<'a>: Request<Error = Self::Error>
     where
         Self: 'a;
 
-    fn get(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
+    fn get(&mut self, url: &str) -> Result<Self::Request<'_>, Self::Error> {
         self.request(Method::Get, url)
     }
 
-    fn post(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
+    fn post(&mut self, url: &str) -> Result<Self::Request<'_>, Self::Error> {
         self.request(Method::Post, url)
     }
 
-    fn put(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
+    fn put(&mut self, url: &str) -> Result<Self::Request<'_>, Self::Error> {
         self.request(Method::Put, url)
     }
 
-    fn delete(&mut self, url: impl AsRef<str>) -> Result<Self::Request<'_>, Self::Error> {
+    fn delete(&mut self, url: &str) -> Result<Self::Request<'_>, Self::Error> {
         self.request(Method::Delete, url)
     }
 
-    fn request(
-        &mut self,
-        method: Method,
-        url: impl AsRef<str>,
-    ) -> Result<Self::Request<'_>, Self::Error>;
+    fn request(&mut self, method: Method, url: &str) -> Result<Self::Request<'_>, Self::Error>;
 }
 
-#[derive(Debug)]
-pub enum SendError<S, W>
-where
-    S: fmt::Display + fmt::Debug,
-    W: fmt::Display + fmt::Debug,
-{
-    SendError(S),
-    WriteError(W),
-}
-
-impl<S, W> fmt::Display for SendError<S, W>
-where
-    S: fmt::Display + fmt::Debug,
-    W: fmt::Display + fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SendError::SendError(s) => write!(f, "Send Error {}", s),
-            SendError::WriteError(w) => write!(f, "Write Error {}", w),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl<S, W> std::error::Error for SendError<S, W>
-where
-    S: fmt::Display + fmt::Debug,
-    W: fmt::Display + fmt::Debug,
-    // TODO
-    // where
-    //     S: std::error::Error + 'static,
-    //     W: std::error::Error + 'static,
-{
-    // TODO
-    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    //     match self {
-    //         SendError::SendError(s) => Some(s),
-    //         SendError::WriteError(w) => Some(w),
-    //     }
-    // }
-}
-
-pub trait RequestWrite<'a>: io::Write {
+pub trait RequestWrite: Write {
     type Response: Response<Error = Self::Error>;
 
-    fn into_response(self) -> Result<Self::Response, Self::Error>;
+    fn submit(self) -> Result<Self::Response, Self::Error>;
 }
 
-pub trait Request<'a>: SendHeaders<'a> + Errors {
-    type Write<'b>: RequestWrite<'b, Error = Self::Error>;
+pub trait Request: SendHeaders + Io {
+    type Write: RequestWrite<Error = Self::Error>;
 
-    fn send_bytes(
-        self,
-        bytes: impl AsRef<[u8]>,
-    ) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, Self::Error>
+    fn send_bytes(self, bytes: &[u8]) -> Result<Self::Write, Self::Error>
     where
         Self: Sized,
     {
         let mut write = self.into_writer(bytes.as_ref().len())?;
 
-        write.do_write_all(bytes.as_ref())?;
+        write.write_all(bytes)?;
 
-        write.into_response()
+        Ok(write)
     }
 
-    fn send_str(
-        self,
-        s: impl AsRef<str>,
-    ) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, Self::Error>
+    fn send_str(self, s: &str) -> Result<Self::Write, Self::Error>
     where
         Self: Sized,
     {
-        self.send_bytes(s.as_ref().as_bytes())
-    }
-
-    fn send_json<T: Serialize>(
-        self,
-        o: impl AsRef<T>,
-    ) -> Result<
-        <Self::Write<'a> as RequestWrite<'a>>::Response,
-        SendError<Self::Error, serde_json::Error>,
-    >
-    where
-        Self: Sized,
-    {
-        let s = serde_json::to_string(o.as_ref()).map_err(SendError::WriteError)?;
-
-        self.send_str(s).map_err(SendError::SendError)
+        self.send_bytes(s.as_bytes())
     }
 
     #[allow(clippy::type_complexity)]
-    fn send_reader<R: io::Read>(
+    fn send_reader<R>(
         self,
         size: usize,
         read: R,
-    ) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, SendError<Self::Error, R::Error>>
+    ) -> Result<Self::Write, EitherError<Self::Error, R::Error>>
     where
+        R: Read,
         Self: Sized,
     {
-        let mut write = self.into_writer(size).map_err(SendError::SendError)?;
+        let mut write = self.into_writer(size).map_err(EitherError::E1)?;
 
-        io::copy_len(read, &mut write, size as u64).map_err(|e| match e {
-            io::CopyError::ReadError(e) => SendError::WriteError(e),
-            io::CopyError::WriteError(e) => SendError::SendError(e),
+        io::copy_len::<64, _, _>(read, &mut write, size as u64).map_err(|e| match e {
+            EitherError::E1(e) => EitherError::E2(e),
+            EitherError::E2(e) => EitherError::E1(e),
         })?;
 
-        write.into_response().map_err(SendError::SendError)
+        Ok(write)
     }
 
-    fn into_writer(self, size: usize) -> Result<Self::Write<'a>, Self::Error>;
+    fn into_writer(self, size: usize) -> Result<Self::Write, Self::Error>;
 
-    fn submit(self) -> Result<<Self::Write<'a> as RequestWrite<'a>>::Response, Self::Error>
+    fn submit(self) -> Result<<Self::Write as RequestWrite>::Response, Self::Error>
     where
         Self: Sized,
     {
-        self.send_bytes(&[0_u8; 0])
+        self.into_writer(0)?.submit()
     }
 }
 
-pub trait Response: Status + Headers + Errors {
+pub trait Response: Status + Headers + Io {
     type Read<'a>: io::Read<Error = Self::Error>
     where
         Self: 'a;
 
-    fn reader(&self) -> Self::Read<'_>;
+    fn reader(&mut self) -> Self::Read<'_>;
+}
+
+#[cfg(feature = "experimental")]
+pub mod asynch {
+    use core::future::Future;
+
+    use crate::errors::wrap::EitherError;
+    use crate::io::{asynch::Read, asynch::Write, Io};
+
+    pub use crate::http::{Headers, Method, SendHeaders, Status};
+
+    pub trait Client: Io {
+        type Request<'a>: Request<Error = Self::Error>
+        where
+            Self: 'a;
+
+        type RequestFuture<'a>: Future<Output = Result<Self::Request<'a>, Self::Error>>
+        where
+            Self: 'a;
+
+        fn get(&mut self, url: &str) -> Self::RequestFuture<'_> {
+            self.request(Method::Get, url)
+        }
+
+        fn post(&mut self, url: &str) -> Self::RequestFuture<'_> {
+            self.request(Method::Post, url)
+        }
+
+        fn put(&mut self, url: &str) -> Self::RequestFuture<'_> {
+            self.request(Method::Put, url)
+        }
+
+        fn delete(&mut self, url: &str) -> Self::RequestFuture<'_> {
+            self.request(Method::Delete, url)
+        }
+
+        fn request(&mut self, method: Method, url: &str) -> Self::RequestFuture<'_>;
+    }
+
+    pub trait RequestWrite: Write {
+        type Response: Response<Error = Self::Error>;
+
+        type IntoResponseFuture: Future<Output = Result<Self::Response, Self::Error>>;
+
+        fn into_response(self) -> Self::IntoResponseFuture;
+    }
+
+    pub trait Request: SendHeaders + Io {
+        type Write: RequestWrite<Error = Self::Error>;
+
+        type SendFuture<'a>: Future<Output = Result<Self::Write, Self::Error>>;
+
+        type SendBytesFuture<'a>: Future<Output = Result<Self::Write, Self::Error>>
+        where
+            Self: 'a;
+
+        type SendReaderFuture<E>: Future<Output = Result<Self::Write, EitherError<Self::Error, E>>>;
+
+        type IntoWriterFuture: Future<Output = Result<Self::Write, Self::Error>>;
+
+        type SubmitFuture: Future<
+            Output = Result<<Self::Write as RequestWrite>::Response, Self::Error>,
+        >;
+
+        fn send_bytes<'a>(self, bytes: &'a [u8]) -> Self::SendBytesFuture<'a>
+        where
+            Self: Sized + 'a;
+
+        fn send_str<'a>(self, s: &'a str) -> Self::SendBytesFuture<'a>
+        where
+            Self: Sized + 'a,
+        {
+            self.send_bytes(s.as_bytes())
+        }
+
+        #[allow(clippy::type_complexity)]
+        fn send_reader<R>(self, size: usize, read: R) -> Self::SendReaderFuture<R::Error>
+        where
+            R: Read,
+            Self: Sized;
+
+        fn into_writer(self, size: usize) -> Self::IntoWriterFuture
+        where
+            Self: Sized;
+
+        fn submit(self) -> Self::SubmitFuture
+        where
+            Self: Sized;
+    }
+
+    pub trait Response: Status + Headers + Io {
+        type Read<'a>: Read<Error = Self::Error>
+        where
+            Self: 'a;
+
+        fn reader(&mut self) -> Self::Read<'_>;
+    }
 }

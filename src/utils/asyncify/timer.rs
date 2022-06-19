@@ -9,10 +9,9 @@ use core::time::Duration;
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::channel::asyncs::Receiver;
-use crate::errors::Errors;
-use crate::signal::asyncs::Signal;
-use crate::timer::asyncs::{OnceTimer, PeriodicTimer, TimerService};
+use crate::channel::asynch::Receiver;
+use crate::signal::asynch::Signal;
+use crate::timer::asynch::{ErrorType, OnceTimer, PeriodicTimer, TimerService};
 
 pub struct AsyncTimer<T, S> {
     timer: T,
@@ -20,9 +19,9 @@ pub struct AsyncTimer<T, S> {
     duration: Option<Duration>,
 }
 
-impl<T, S> Errors for AsyncTimer<T, S>
+impl<T, S> ErrorType for AsyncTimer<T, S>
 where
-    T: Errors,
+    T: ErrorType,
 {
     type Error = T::Error;
 }
@@ -79,17 +78,14 @@ where
     T: crate::timer::OnceTimer + 'static,
     S: Signal<Data = ()>,
 {
-    type Output = Result<(), T::Error>;
+    type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if let Some(duration) = mem::replace(&mut self.1, None) {
-            match self.0.timer.after(duration) {
-                Ok(_) => (),
-                Err(error) => return Poll::Ready(Err(error)),
-            }
+            self.0.timer.after(duration).unwrap();
         }
 
-        self.0.signal.poll_wait(cx).map(Ok)
+        self.0.signal.poll_wait(cx)
     }
 }
 
@@ -135,9 +131,9 @@ impl<T, S> super::AsyncWrapper<T> for AsyncTimerService<T, S> {
     }
 }
 
-impl<T, S> Errors for AsyncTimerService<T, S>
+impl<T, S> ErrorType for AsyncTimerService<T, S>
 where
-    T: Errors,
+    T: ErrorType,
 {
     type Error = T::Error;
 }

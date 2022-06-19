@@ -4,7 +4,7 @@ use core::mem;
 use core::task::{Context, Poll, Waker};
 
 use crate::mutex::Mutex;
-use crate::signal::asyncs::Signal;
+use crate::signal::asynch::Signal;
 
 #[cfg(target_has_atomic = "ptr")]
 pub use atomic_signal::*;
@@ -124,7 +124,7 @@ mod atomic_signal {
 
     use futures::task::AtomicWaker;
 
-    use crate::signal::asyncs::Signal;
+    use crate::signal::asynch::Signal;
 
     pub struct AtomicSignal<T> {
         waker: AtomicWaker,
@@ -221,12 +221,10 @@ mod atomic_signal {
 }
 
 pub mod adapt {
-    use core::convert::Infallible;
     use core::future::Future;
 
-    use crate::channel::asyncs::{Receiver, Sender};
-    use crate::errors::Errors;
-    use crate::signal::asyncs::Signal;
+    use crate::channel::asynch::{Receiver, Sender};
+    use crate::signal::asynch::Signal;
 
     pub fn as_channel<S, T>(signal: &'static S) -> SignalChannel<'static, S, T>
     where
@@ -249,13 +247,6 @@ pub mod adapt {
         }
     }
 
-    impl<'a, S, T> Errors for SignalChannel<'a, S, T>
-    where
-        S: Signal<Data = T> + 'a,
-    {
-        type Error = Infallible;
-    }
-
     impl<'s, S, T> Sender for SignalChannel<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync + 's,
@@ -268,7 +259,7 @@ pub mod adapt {
             T: 'a,
             S: 'a,
             Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>> + Send;
+        = impl Future<Output = ()> + Send;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
             #[allow(clippy::clone_double_ref)]
@@ -276,8 +267,6 @@ pub mod adapt {
 
             async move {
                 signal.signal(value);
-
-                Ok(())
             }
         }
     }
@@ -294,25 +283,25 @@ pub mod adapt {
             T: 'a,
             S: 'a,
             Self: 'a,
-        = impl Future<Output = Result<T, Self::Error>> + Send;
+        = impl Future<Output = T> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             async move {
                 let value = futures::future::poll_fn(move |cx| self.0.poll_wait(cx)).await;
 
-                Ok(value)
+                value
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl crate::signal::asyncs::SignalFamily for std::sync::Condvar {
+impl crate::signal::asynch::SignalFamily for std::sync::Condvar {
     type Signal<T> = MutexSignal<std::sync::Mutex<State<T>>, T>;
 }
 
 #[cfg(feature = "std")]
-impl crate::signal::asyncs::SendSyncSignalFamily for std::sync::Condvar {
+impl crate::signal::asynch::SendSyncSignalFamily for std::sync::Condvar {
     type Signal<T>
     where
         T: Send,

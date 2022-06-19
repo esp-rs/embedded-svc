@@ -15,7 +15,6 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::errors::Errors;
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
@@ -137,10 +136,10 @@ impl Default for SecondaryChannel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointInfo {
-    pub ssid: alloc::string::String,
+    pub ssid: heapless::String<30>,
     pub bssid: [u8; 6],
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
@@ -152,13 +151,13 @@ pub struct AccessPointInfo {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointConfiguration {
-    pub ssid: alloc::string::String,
+    pub ssid: heapless::String<30>,
     pub ssid_hidden: bool,
     pub channel: u8,
     pub secondary_channel: Option<u8>,
     pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
-    pub password: alloc::string::String,
+    pub password: heapless::String<64>,
     pub max_connections: u16,
     pub ip_conf: Option<ipv4::RouterConfiguration>,
 }
@@ -203,11 +202,11 @@ impl Default for AccessPointConfiguration {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
-    pub ssid: alloc::string::String,
+    pub ssid: heapless::String<30>,
     pub bssid: Option<[u8; 6]>,
     //pub protocol: Protocol,
     pub auth_method: AuthMethod,
-    pub password: alloc::string::String,
+    pub password: heapless::String<64>,
     pub channel: Option<u8>,
     pub ip_conf: Option<ipv4::ClientConfiguration>,
 }
@@ -537,30 +536,21 @@ impl Status {
     }
 }
 
-pub trait Wifi: Errors {
+pub trait Wifi {
+    type Error: Debug;
+
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
     fn get_status(&self) -> Status;
 
-    //fn scan_n<const N: usize = 20>(&mut self) -> Result<([AccessPointInfo; N], usize), Self::Error>;
-
-    #[cfg(not(feature = "alloc"))]
-    fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error>;
-
-    #[cfg(feature = "alloc")]
-    fn scan_fill(&mut self, access_points: &mut [AccessPointInfo]) -> Result<usize, Self::Error> {
-        let result = self.scan()?;
-
-        let len = usize::min(access_points.len(), result.len());
-
-        access_points[0..len].clone_from_slice(&result[0..len]);
-
-        Ok(result.len())
-    }
+    fn scan_n<const N: usize>(
+        &mut self,
+    ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error>;
 
     #[cfg(feature = "alloc")]
     fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
 
     fn get_configuration(&self) -> Result<Configuration, Self::Error>;
+
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }

@@ -11,7 +11,6 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::errors::Errors;
 use crate::ipv4;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
@@ -130,11 +129,14 @@ impl TransitionalState<ConnectionStatus> for Status {
     }
 }
 
-pub trait Eth: Errors {
+pub trait Eth {
+    type Error: Debug;
+
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
     fn get_status(&self) -> Status;
 
     fn get_configuration(&self) -> Result<Configuration, Self::Error>;
+
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }

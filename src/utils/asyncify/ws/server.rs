@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
@@ -13,9 +14,8 @@ use heapless;
 
 use log::info;
 
-use crate::errors::*;
 use crate::mutex::*;
-use crate::unblocker::asyncs::Unblocker;
+use crate::unblocker::asynch::Unblocker;
 use crate::ws::{server::*, *};
 
 pub struct AsyncSender<U, S> {
@@ -23,22 +23,23 @@ pub struct AsyncSender<U, S> {
     sender: S,
 }
 
-impl<U, S> Errors for AsyncSender<U, S>
+impl<U, S> ErrorType for AsyncSender<U, S>
 where
-    S: Errors,
+    S: ErrorType,
 {
     type Error = S::Error;
 }
 
-impl<U, S> asyncs::Sender for AsyncSender<U, S>
+impl<U, S> asynch::Sender for AsyncSender<U, S>
 where
     U: Unblocker,
     S: Sender + SessionProvider + Send + Clone + 'static,
+    S::Error: Send + Sync + 'static,
 {
     type SendFuture<'a>
     where
         Self: 'a,
-    = U::UnblockFuture<Result<(), Self::Error>>;
+    = U::UnblockFuture<Result<(), S::Error>>;
 
     fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>) -> Self::SendFuture<'_> {
         info!(
@@ -56,7 +57,7 @@ where
     }
 }
 
-impl<S> asyncs::Sender for AsyncSender<(), S>
+impl<S> asynch::Sender for AsyncSender<(), S>
 where
     S: Sender + SessionProvider + Send + Clone + 'static,
 {
@@ -151,19 +152,19 @@ where
     condvar: Arc<C>,
 }
 
-impl<C, E> Errors for AsyncReceiver<C, E>
+impl<C, E> ErrorType for AsyncReceiver<C, E>
 where
     C: Condvar,
-    E: Error,
+    E: Debug,
 {
     type Error = E;
 }
 
-impl<C, E> asyncs::Receiver for AsyncReceiver<C, E>
+impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
 where
     C: Condvar + Send + Sync,
     <C as MutexFamily>::Mutex<SharedReceiverState>: Send + Sync,
-    E: Error,
+    E: Debug,
 {
     type ReceiveFuture<'a>
     where
@@ -201,14 +202,14 @@ where
     condvar: Arc<C>,
 }
 
-impl<U, C, S> Errors for AsyncAcceptor<U, C, S>
+impl<U, C, S> ErrorType for AsyncAcceptor<U, C, S>
 where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Send + Errors,
+    S: Send + ErrorType,
 {
-    type Error = <S as Errors>::Error;
+    type Error = <S as ErrorType>::Error;
 }
 
 impl<'a, U, C, S> Future for &'a mut AsyncAcceptor<U, C, S>
@@ -217,11 +218,11 @@ where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + Errors + Send + Clone + 'static,
+    S: Sender + Send + Clone + 'static,
 {
     type Output = Result<
-        Option<(AsyncSender<U, S>, AsyncReceiver<C, <S as Errors>::Error>)>,
-        <S as Errors>::Error,
+        Option<(AsyncSender<U, S>, AsyncReceiver<C, <S as ErrorType>::Error>)>,
+        <S as ErrorType>::Error,
     >;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -256,17 +257,18 @@ where
     }
 }
 
-impl<U, C, S> asyncs::Acceptor for AsyncAcceptor<U, C, S>
+impl<U, C, S> asynch::Acceptor for AsyncAcceptor<U, C, S>
 where
     U: Unblocker + Clone + Send,
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + SessionProvider + Errors + Send + Clone + 'static,
+    S: Sender + SessionProvider + Send + Clone + 'static,
+    S::Error: Send + Sync + 'static,
 {
     type Sender = AsyncSender<U, S>;
 
-    type Receiver = AsyncReceiver<C, <S as Errors>::Error>;
+    type Receiver = AsyncReceiver<C, <S as ErrorType>::Error>;
 
     type AcceptFuture<'a>
     where
@@ -278,16 +280,16 @@ where
     }
 }
 
-impl<C, S> asyncs::Acceptor for AsyncAcceptor<(), C, S>
+impl<C, S> asynch::Acceptor for AsyncAcceptor<(), C, S>
 where
     C: Condvar + Send + Sync,
     C::Mutex<SharedReceiverState>: Send + Sync,
     C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
-    S: Sender + SessionProvider + Errors + Send + Clone + 'static,
+    S: Sender + SessionProvider + Send + Clone + 'static,
 {
     type Sender = AsyncSender<(), S>;
 
-    type Receiver = AsyncReceiver<C, <S as Errors>::Error>;
+    type Receiver = AsyncReceiver<C, <S as ErrorType>::Error>;
 
     type AcceptFuture<'a>
     where
@@ -379,10 +381,13 @@ where
                 frame_type, len, session
             );
 
-            self.connections
+            if let Some(receiver) = self
+                .connections
                 .iter()
                 .find(|receiver| receiver.session == session)
-                .map(|receiver| self.process_receive(&receiver.receiver_state, frame_type, len));
+            {
+                self.process_receive(&receiver.receiver_state, frame_type, len)
+            }
         }
 
         Ok(())

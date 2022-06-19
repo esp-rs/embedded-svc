@@ -1,113 +1,103 @@
-use core::fmt;
+use core::fmt::Write;
 
-extern crate alloc;
-use alloc::borrow::ToOwned;
-use alloc::sync::Arc;
+use crate::http::server::middleware::Middleware;
+use crate::http::server::registry::Registry;
+use crate::http::server::Response;
+use crate::http::server::{Handler, HandlerError, Request};
+use crate::mutex::*;
 
-use anyhow::Result;
+pub struct WithCaptivePortalMiddleware<M, F> {
+    captive: M,
+    portal_uri: &'static str,
+    allowed_hosts: F,
+}
 
-use crate::{
-    http::server::*,
-    http::{
-        server::{middleware::Middleware, registry::*},
-        Headers, SendHeaders, SendStatus,
-    },
-    mutex::*,
-};
+impl<M, F> WithCaptivePortalMiddleware<M, F>
+where
+    M: Mutex<Data = bool>,
+    F: Fn(&str) -> bool,
+{
+    pub fn new(captive: bool, portal_uri: &'static str, allowed_hosts: F) -> Self {
+        Self {
+            captive: M::new(captive),
+            portal_uri,
+            allowed_hosts,
+        }
+    }
+}
 
-pub fn register<R, M>(
+impl<R, P, M, F> Middleware<R, P> for WithCaptivePortalMiddleware<M, F>
+where
+    R: Request,
+    P: Response,
+    M: Mutex<Data = bool> + Send,
+    F: Fn(&str) -> bool + Send,
+{
+    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<(), HandlerError>
+    where
+        H: Handler<R, P>,
+    {
+        let captive = *self.captive.lock();
+
+        let allow = !captive
+            || req
+                .header("host")
+                .map(|host| (self.allowed_hosts)(host))
+                .unwrap_or(true);
+
+        if allow {
+            handler.handle(req, resp)
+        } else {
+            resp.status(307).header("Location", self.portal_uri);
+
+            Ok(())
+        }
+    }
+}
+
+pub fn register<R, M, const N: usize>(
     registry: &mut R,
-    pref: impl AsRef<str>,
-    portal_uri: impl AsRef<str> + 'static,
-    captive: Arc<M>,
-) -> Result<()>
+    portal_uri: &'static str,
+    captive: M,
+) -> Result<(), R::Error>
 where
     R: Registry,
-    M: Mutex<Data = bool> + 'static,
+    M: Mutex<Data = bool> + Send + Sync + 'static,
 {
-    let pref = pref.as_ref();
-
-    let prefix = |s| [pref, s].concat();
-
-    registry
-        .at(prefix(""))
-        .get(move |req| get_status(req, portal_uri.as_ref(), &*captive))
-        .map_err(|e| anyhow::anyhow!(e))?;
+    registry.handle_get("", move |req, resp| {
+        get_status::<_, _, _, N>(req, resp, portal_uri, &captive)
+    })?;
 
     Ok(())
 }
 
-fn get_status<'a, M>(
-    _req: &mut impl Request<'a>,
-    portal_uri: impl AsRef<str>,
+pub fn get_status<R, P, M, const N: usize>(
+    _req: R,
+    resp: P,
+    portal_uri: &str,
     captive: &M,
-) -> Result<ResponseData>
+) -> Result<(), HandlerError>
 where
+    R: Request,
+    P: Response,
     M: Mutex<Data = bool>,
 {
-    let data = format!(
+    let mut data = heapless::String::<N>::new();
+
+    write!(
+        &mut data,
         r#"
         {{
             "captive": {},
             "user-portal-url": "{}"
         }}"#,
         *captive.lock(),
-        portal_uri.as_ref(),
-    );
+        portal_uri,
+    )
+    .unwrap();
 
-    ResponseData::ok()
-        .content_type("application/captive+json")
-        .body(data.into())
-        .into()
-}
+    resp.content_type("application/captive+json")
+        .send_str(&data)?;
 
-#[derive(Clone)]
-pub struct WithCaptivePortalMiddleware<M, F: Clone> {
-    pub portal_uri: &'static str,
-    pub captive: Arc<M>,
-    pub allowed_hosts: Option<F>,
-}
-
-impl<M, F, R> Middleware<R> for WithCaptivePortalMiddleware<M, F>
-where
-    M: Mutex<Data = bool>,
-    F: Fn(&str) -> bool + Clone,
-    R: Registry,
-{
-    type Error = anyhow::Error;
-
-    fn handle<'a, H, E>(
-        &self,
-        req: R::Request<'a>,
-        resp: R::Response<'a>,
-        handler: H,
-    ) -> Result<Completion, Self::Error>
-    where
-        R: Registry,
-        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
-        E: fmt::Display + fmt::Debug,
-    {
-        let captive = *self.captive.lock();
-
-        let allow = !captive
-            || self
-                .allowed_hosts
-                .as_ref()
-                .and_then(|allowed_hosts| {
-                    req.header("host").map(|host| allowed_hosts(host.as_ref()))
-                })
-                .unwrap_or(true);
-
-        if allow {
-            handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e))
-        } else {
-            let completion = resp
-                .status(307)
-                .header("Location", self.portal_uri.to_owned())
-                .submit(req)
-                .map_err(|e| anyhow::anyhow!(e))?;
-
-            Ok(completion)
-        }
-    }
+    Ok(())
 }

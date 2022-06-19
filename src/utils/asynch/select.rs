@@ -5,7 +5,6 @@ use core::task::{Context, Poll};
 #[cfg(feature = "alloc")]
 pub use select_all_vec::*;
 
-#[cfg(feature = "heapless")]
 pub use select_all_hvec::*;
 
 #[derive(Debug, Clone)]
@@ -278,7 +277,6 @@ mod select_all_vec {
     }
 }
 
-#[cfg(feature = "heapless")]
 mod select_all_hvec {
     use core::future::Future;
     use core::pin::Pin;

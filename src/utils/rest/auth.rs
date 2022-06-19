@@ -1,254 +1,135 @@
-extern crate alloc;
-use alloc::borrow::{Cow, ToOwned};
-use alloc::rc::Rc;
-use alloc::string::String;
-use alloc::vec::Vec;
+use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use anyhow::Result;
+use crate::http::server::middleware::Middleware;
+use crate::http::server::registry::Registry;
+use crate::http::server::session::Session;
+use crate::http::server::*;
 
-use crate::{
-    http::server::middleware::Middleware, http::server::registry::*, http::server::*, http::*, io,
-};
-
+use crate::utils::json_io;
 use crate::utils::role::*;
 
-pub trait Authenticator {
-    fn authenticate(&self, username: impl AsRef<str>, password: impl AsRef<str>) -> Option<Role>;
+pub trait RoleSessionData {
+    fn get_role(&self) -> Option<Role>;
+    fn set_role(&mut self, role: Role);
 }
 
-#[derive(Clone)]
-pub struct WithRoleMiddleware {
-    pub role: Role,
-    pub default_role: Option<Role>,
+pub struct WithRoleMiddleware<A, S> {
+    auth: A,
+    session: Option<S>,
+    min_role: Role,
 }
 
-impl<R> Middleware<R> for WithRoleMiddleware
-where
-    R: Registry,
-{
-    type Error = anyhow::Error;
-
-    fn handle<'a, H, E>(
-        &self,
-        mut req: R::Request<'a>,
-        resp: R::Response<'a>,
-        handler: H,
-    ) -> Result<Completion, Self::Error>
-    where
-        R: Registry,
-        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
-        E: HandlerError,
-    {
-        let current_role = get_role(&mut req, self.default_role);
-
-        if let Some(current_role) = current_role {
-            if current_role >= self.role {
-                return handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e));
-            }
+impl<A, S> WithRoleMiddleware<A, S> {
+    pub fn new(auth: A, session: Option<S>, min_role: Role) -> Self {
+        Self {
+            auth,
+            session,
+            min_role,
         }
-
-        let completion = resp
-            .status(400)
-            .submit(req)
-            .map_err(|e| anyhow::anyhow!(e))?;
-
-        Ok(completion)
     }
 }
 
-#[cfg(feature = "std")]
-#[derive(Clone)]
-pub struct WithBasicAuthMiddleware<A> {
-    pub authenticator: A,
-    pub min_role: Role,
-}
-
-#[cfg(feature = "std")]
-impl<A, R> Middleware<R> for WithBasicAuthMiddleware<A>
+impl<R, P, A, S, D> Middleware<R, P> for WithRoleMiddleware<A, S>
 where
-    A: Authenticator + Clone,
-    R: Registry,
+    R: Request,
+    P: Response,
+    A: Fn(&R) -> Option<Role> + Send,
+    S: Session<SessionData = D>,
+    D: RoleSessionData,
 {
-    type Error = anyhow::Error;
-
-    fn handle<'a, H, E>(
-        &self,
-        mut req: R::Request<'a>,
-        resp: R::Response<'a>,
-        handler: H,
-    ) -> Result<Completion, Self::Error>
+    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<(), HandlerError>
     where
-        R: Registry,
-        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
-        E: HandlerError,
+        H: Handler<R, P>,
     {
-        if let Some(role) = get_role(&mut req, None) {
+        let role = (self.auth)(&req);
+
+        if let Some(role) = role {
             if role >= self.min_role {
-                return handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e));
+                return handler.handle(req, resp);
             }
-        }
+        } else {
+            let role = self
+                .session
+                .as_ref()
+                .and_then(|session| session.with_existing(&req, |sd| sd.get_role()))
+                .flatten();
 
-        let authorization = req.header("Authorization");
-        if let Some(authorization) = authorization {
-            if let Ok(credentials) =
-                http_auth_basic::Credentials::from_header(authorization.into_owned())
-            {
-                if let Some(role) = self
-                    .authenticator
-                    .authenticate(credentials.user_id, credentials.password)
-                {
-                    if role >= self.min_role {
-                        set_request_role(&mut req, Some(Role::Admin));
-
-                        return handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e));
-                    }
+            if let Some(role) = role {
+                if role >= self.min_role {
+                    return handler.handle(req, resp);
                 }
             }
         }
 
-        let completion = resp
-            .status(401)
-            .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
-            .submit(req)
-            .map_err(|e| anyhow::anyhow!(e))?;
+        resp.status(401)
+            .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"");
 
-        Ok(completion)
+        Ok(())
     }
 }
 
-#[derive(Clone)]
-pub struct WithSessionAuthMiddleware<'l> {
-    pub login: Cow<'l, str>,
-    pub min_role: Role,
-}
-
-impl<'l, R> Middleware<R> for WithSessionAuthMiddleware<'l>
-where
-    R: Registry,
-{
-    type Error = anyhow::Error;
-
-    fn handle<'a, H, E>(
-        &self,
-        mut req: R::Request<'a>,
-        resp: R::Response<'a>,
-        handler: H,
-    ) -> Result<Completion, Self::Error>
-    where
-        R: Registry,
-        H: FnOnce(R::Request<'a>, R::Response<'a>) -> Result<Completion, E>,
-        E: HandlerError,
-    {
-        if let Some(role) = get_role(&mut req, None) {
-            if role >= self.min_role {
-                return handler(req, resp).map_err(|e| anyhow::format_err!("ERROR {}", e));
-            }
-        }
-
-        let completion = resp
-            .redirect(req, self.login.as_ref().to_owned())
-            .map_err(|e| anyhow::anyhow!(e))?;
-
-        Ok(completion)
-    }
-}
-
-pub fn get_role<'a>(req: &mut impl Request<'a>, default_role: Option<Role>) -> Option<Role> {
-    if let Some(role) = req.attrs().get("role") {
-        role.downcast_ref::<Role>().map(Clone::clone)
-    } else if let Some(role) = req.session().get("role").ok().flatten() {
-        Some(role)
-    } else {
-        default_role
-    }
-}
-
-pub fn set_request_role<'a>(req: &mut impl Request<'a>, role: Option<Role>) {
-    if let Some(role) = role {
-        req.attrs().set("role", Rc::new(role));
-    } else {
-        req.attrs().remove("role");
-    }
-}
-
-pub fn set_session_role<'a>(
-    req: &mut impl Request<'a>,
-    role: Option<Role>,
-) -> Result<(), SessionError> {
-    if let Some(role) = role {
-        req.session().set("role", &role)?;
-    } else {
-        req.session().remove("role")?;
-    }
-
-    Ok(())
-}
-
-pub fn register<R, A>(
+pub fn register<R>(
     registry: &mut R,
-    pref: impl AsRef<str>,
-    authenticator: A,
+    session: impl Session<SessionData = impl RoleSessionData> + Clone + 'static,
+    auth: impl Fn(&str, &str) -> Option<Role> + Send + Sync + 'static,
 ) -> Result<(), R::Error>
 where
     R: Registry,
-    A: Authenticator + 'static,
 {
-    let prefix = |s| [pref.as_ref(), s].concat();
+    let session1 = session.clone();
 
     registry
-        .at(prefix("login"))
-        .post(move |req| login(&authenticator, req))?
-        .at(prefix("/logout"))
-        .post(move |req| logout(req))?;
+        .handle_post("/login", move |req, resp| {
+            login(req, resp, &session1, &auth)
+        })?
+        .handle_post("/logout", move |req, resp| logout(req, resp, &session))?;
 
     Ok(())
 }
 
-pub fn login<'a, A>(authenticator: &A, req: &mut impl Request<'a>) -> Result<ResponseData>
-where
-    A: Authenticator,
-{
-    if req.session().is_valid() {
-        return Ok(().into());
-    }
-
-    let bytes: Result<Vec<_>, _> = io::Bytes::<_, 64>::new(req.reader()).take(3000).collect();
-
-    let bytes = bytes.map_err(|e| anyhow::anyhow!(e))?;
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    struct Credentials {
-        username: String,
-        password: String,
-    }
-
-    let credentials: Credentials =
-        serde_json::from_slice(&bytes).map_err(|e| anyhow::anyhow!(e))?;
-
-    if let Some(role) = authenticator.authenticate(credentials.username, credentials.password) {
-        {
-            let mut session = req.session();
-
-            session.invalidate().map_err(|e| anyhow::anyhow!(e))?;
-            session
-                .create_if_invalid()
-                .map_err(|e| anyhow::anyhow!(e))?;
+pub fn login(
+    mut req: impl Request,
+    mut resp: impl Response,
+    session: &impl Session<SessionData = impl RoleSessionData>,
+    auth: impl Fn(&str, &str) -> Option<Role>,
+) -> Result<(), HandlerError> {
+    if session
+        .with_existing(&req, |sd| sd.get_role())
+        .flatten()
+        .is_some()
+    {
+        Ok(())
+    } else {
+        #[derive(Clone, Debug, Serialize, Deserialize)]
+        struct Credentials {
+            username: heapless::String<32>,
+            password: heapless::String<32>,
         }
 
-        set_session_role(req, Some(role)).map_err(|e| anyhow::anyhow!(e))?;
+        let credentials: Credentials = json_io::read::<512, _, _>(req.reader())?;
 
-        return ResponseData::ok().into();
+        if let Some(role) = auth(&credentials.username, &credentials.password) {
+            session.invalidate(&req);
+
+            session.with(&req, &mut resp, |sd| sd.set_role(role))?;
+
+            Ok(())
+        } else {
+            resp.status(401).send_str("Invalid username or password")?;
+
+            Ok(())
+        }
     }
-
-    ResponseData::new(401)
-        .body("Invalid username or password".into())
-        .into()
 }
 
-pub fn logout<'a>(req: &mut impl Request<'a>) -> Result<ResponseData> {
-    req.session().invalidate().map_err(|e| anyhow::anyhow!(e))?;
+pub fn logout(
+    req: impl Request,
+    _resp: impl Response,
+    session: &impl Session,
+) -> Result<(), HandlerError> {
+    session.invalidate(&req);
 
-    ResponseData::ok().into()
+    Ok(())
 }

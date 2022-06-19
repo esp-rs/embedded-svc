@@ -1,227 +1,297 @@
-use core::fmt::{Debug, Display};
+use core::fmt::Debug;
+use core::fmt::Write;
 
-extern crate alloc;
-use alloc::string::{String, ToString};
+use crate::http::Method;
+use crate::io::Error;
 
-use super::{middleware, *};
-use crate::errors::Errors;
+use super::{middleware::Middleware, Handler, HandlerResult, Request, Response};
 
-pub trait HandlerError: Debug + Display + Send + Sync + 'static {}
+pub trait Registry {
+    type Error: Debug;
+    type IOError: Error;
 
-impl<E> HandlerError for E where E: Debug + Display + Send + Sync + 'static {}
+    type Request<'a>: Request<Error = Self::IOError>;
+    type Response<'a>: Response<Error = Self::IOError>;
 
-pub trait Registry: Errors {
-    type Request<'a>: Request<'a>;
-
-    type Response<'a>: Response<'a>;
-
-    type Root: for<'a> Registry<
-        Request<'a> = Self::Request<'a>,
-        Response<'a> = Self::Response<'a>,
-        Error = Self::Error,
-    >;
-
-    type MiddlewareRegistry<'q, M>: for<'a> Registry<
-        Request<'a> = Self::Request<'a>,
-        Response<'a> = Self::Response<'a>,
-        Error = Self::Error,
-    >
+    fn handle_get<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
     where
-        Self: 'q,
-        M: middleware::Middleware<Self::Root> + Clone + 'static + 'q;
-
-    fn with_middleware<M>(&mut self, middleware: M) -> Self::MiddlewareRegistry<'_, M>
-    // middleware::MiddlewareRegistry<'_, Self, M>
-    where
-        M: middleware::Middleware<Self::Root> + Clone + 'static,
-        M::Error: 'static,
-        Self: Sized;
-    // {
-    //     middleware::MiddlewareRegistry::new(self, middleware)
-    // }
-
-    fn at(&mut self, uri: impl ToString) -> HandlerRegistrationBuilder<Self>
-    where
-        Self: Sized,
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> HandlerResult + Send + 'static,
     {
-        HandlerRegistrationBuilder {
-            uri: uri.to_string(),
-            registry: self,
-        }
+        self.handle(uri, Method::Get, handler)
     }
 
-    fn set_inline_handler<H, E>(
+    fn handle_post<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
+    where
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> HandlerResult + Send + 'static,
+    {
+        self.handle(uri, Method::Post, handler)
+    }
+
+    fn handle_put<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
+    where
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> HandlerResult + Send + 'static,
+    {
+        self.handle(uri, Method::Put, handler)
+    }
+
+    fn handle_delete<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
+    where
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> HandlerResult + Send + 'static,
+    {
+        self.handle(uri, Method::Delete, handler)
+    }
+
+    fn handle<H>(&mut self, uri: &str, method: Method, handler: H) -> Result<&mut Self, Self::Error>
+    where
+        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> HandlerResult + Send + 'static,
+    {
+        self.set_handler(uri, method, handler)
+    }
+
+    fn set_handler<H>(
         &mut self,
         uri: &str,
         method: Method,
         handler: H,
     ) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> Result<Completion, E> + 'static,
-        E: HandlerError;
+        H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static;
+}
 
-    fn set_handler<H, E>(
+pub struct PrefixedRegistry<'r, R, const N: usize = 128> {
+    registry: &'r mut R,
+    prefix: &'r str,
+}
+
+impl<'r, R, const N: usize> PrefixedRegistry<'r, R, N> {
+    pub fn new(registry: &'r mut R, prefix: &'r str) -> Self {
+        Self { registry, prefix }
+    }
+}
+
+impl<'r, R, const N: usize> Registry for PrefixedRegistry<'r, R, N>
+where
+    R: Registry,
+{
+    type Error = R::Error;
+
+    type IOError = R::IOError;
+
+    type Request<'a> = R::Request<'a>;
+
+    type Response<'a> = R::Response<'a>;
+
+    fn set_handler<H>(
         &mut self,
         uri: &str,
         method: Method,
         handler: H,
     ) -> Result<&mut Self, Self::Error>
     where
-        Self: Sized,
-        H: for<'a, 'c> Fn(&'c mut Self::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: HandlerError,
+        H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
     {
-        self.set_inline_handler(uri, method, move |req, resp| {
-            handle::<Self, _, _>(req, resp, &handler)
-        })
+        let mut prefixed_uri = heapless::String::<N>::new();
+
+        write!(&mut prefixed_uri, "{}{}", self.prefix, uri).unwrap();
+
+        self.registry.set_handler(&prefixed_uri, method, handler)?;
+
+        Ok(self)
     }
 }
 
-pub struct InlineHandlerRegistrationBuilder<'r, R> {
-    uri: String,
+pub struct MiddlewareRegistry<'r, R, M> {
     registry: &'r mut R,
+    middleware: M,
 }
 
-impl<'r, R> InlineHandlerRegistrationBuilder<'r, R>
+impl<'r, R, M> MiddlewareRegistry<'r, R, M> {
+    pub fn new(registry: &'r mut R, middleware: M) -> Self {
+        Self {
+            registry,
+            middleware,
+        }
+    }
+}
+
+impl<'r, R, M> Registry for MiddlewareRegistry<'r, R, M>
 where
     R: Registry,
+    M: for<'a> Middleware<R::Request<'a>, R::Response<'a>> + Clone + 'static,
 {
-    pub fn get<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: HandlerError,
-    {
-        self.handler(Method::Get, handler)
-    }
+    type Error = R::Error;
 
-    pub fn put<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: HandlerError,
-    {
-        self.handler(Method::Put, handler)
-    }
+    type IOError = R::IOError;
 
-    pub fn post<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: HandlerError,
-    {
-        self.handler(Method::Post, handler)
-    }
+    type Request<'a> = R::Request<'a>;
 
-    pub fn delete<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
-    where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: HandlerError,
-    {
-        self.handler(Method::Delete, handler)
-    }
+    type Response<'a> = R::Response<'a>;
 
-    pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut R, R::Error>
+    fn set_handler<H>(
+        &mut self,
+        uri: &str,
+        method: Method,
+        handler: H,
+    ) -> Result<&mut Self, Self::Error>
     where
-        H: for<'a> Fn(R::Request<'a>, R::Response<'a>) -> Result<Completion, E> + 'static,
-        E: HandlerError,
+        H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
     {
         self.registry
-            .set_inline_handler(self.uri.as_str(), method, handler)
+            .set_handler(uri, method, self.middleware.clone().compose(handler))?;
+
+        Ok(self)
     }
 }
 
-pub struct HandlerRegistrationBuilder<'r, R> {
-    uri: String,
-    registry: &'r mut R,
-}
+#[cfg(feature = "experimental")]
+pub mod asynch {
+    use core::fmt::Debug;
 
-impl<'r, R> HandlerRegistrationBuilder<'r, R>
-where
-    R: Registry,
-{
-    pub fn inline(self) -> InlineHandlerRegistrationBuilder<'r, R> {
-        InlineHandlerRegistrationBuilder {
-            uri: self.uri,
-            registry: self.registry,
+    use crate::http::server::asynch::{Handler, Request, Response};
+    use crate::http::*;
+    use crate::io::Error;
+
+    use crate::http::server::middleware::asynch::*;
+
+    pub trait Registry {
+        type Error: Debug;
+        type IOError: Error;
+
+        type Request<'a>: Request<Error = Self::IOError>;
+        type Response<'a>: Response<Error = Self::IOError>;
+
+        fn handle_get<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
+        where
+            H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
+        {
+            self.handle(uri, Method::Get, handler)
+        }
+
+        fn handle_post<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
+        where
+            H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
+        {
+            self.handle(uri, Method::Post, handler)
+        }
+
+        fn handle_put<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
+        where
+            H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
+        {
+            self.handle(uri, Method::Put, handler)
+        }
+
+        fn handle_delete<H>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
+        where
+            H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
+        {
+            self.handle(uri, Method::Delete, handler)
+        }
+
+        fn handle<H>(
+            &mut self,
+            uri: &str,
+            method: Method,
+            handler: H,
+        ) -> Result<&mut Self, Self::Error>
+        where
+            H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
+        {
+            self.set_handler(uri, method, handler)
+        }
+
+        fn set_handler<H>(
+            &mut self,
+            uri: &str,
+            method: Method,
+            handler: H,
+        ) -> Result<&mut Self, Self::Error>
+        where
+            H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static;
+    }
+
+    pub struct PrefixedRegistry<'r, R, const N: usize = 128> {
+        registry: &'r mut R,
+        prefix: &'r str,
+    }
+
+    impl<'r, R, const N: usize> PrefixedRegistry<'r, R, N> {
+        pub fn new(registry: &'r mut R, prefix: &'r str) -> Self {
+            Self { registry, prefix }
         }
     }
 
-    pub fn get<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
+    impl<'r, R, const N: usize> Registry for PrefixedRegistry<'r, R, N>
     where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: HandlerError,
+        R: Registry,
     {
-        self.handler(Method::Get, handler)
+        type Error = R::Error;
+
+        type IOError = R::IOError;
+
+        type Request<'a> = R::Request<'a>;
+
+        type Response<'a> = R::Response<'a>;
+
+        fn set_handler<H>(
+            &mut self,
+            uri: &str,
+            method: Method,
+            handler: H,
+        ) -> Result<&mut Self, Self::Error>
+        where
+            H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
+        {
+            let mut prefixed_uri = heapless::String::<N>::new();
+
+            write!(&mut prefixed_uri, "{}{}", self.prefix, uri).unwrap();
+
+            self.registry.set_handler(&prefixed_uri, method, handler)?;
+
+            Ok(self)
+        }
     }
 
-    pub fn put<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
+    pub struct MiddlewareRegistry<'r, R, M> {
+        registry: &'r mut R,
+        middleware: M,
+    }
+
+    impl<'r, R, M> MiddlewareRegistry<'r, R, M> {
+        pub fn new(registry: &'r mut R, middleware: M) -> Self {
+            Self {
+                registry,
+                middleware,
+            }
+        }
+    }
+
+    impl<'r, R, M> Registry for MiddlewareRegistry<'r, R, M>
     where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: HandlerError,
+        R: Registry,
+        M: for<'a> Middleware<R::Request<'a>, R::Response<'a>> + Clone + 'static,
     {
-        self.handler(Method::Put, handler)
-    }
+        type Error = R::Error;
 
-    pub fn post<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: HandlerError,
-    {
-        self.handler(Method::Post, handler)
-    }
+        type IOError = R::IOError;
 
-    pub fn delete<H, E>(self, handler: H) -> Result<&'r mut R, R::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: HandlerError,
-    {
-        self.handler(Method::Delete, handler)
-    }
+        type Request<'a> = R::Request<'a>;
 
-    pub fn handler<H, E>(self, method: Method, handler: H) -> Result<&'r mut R, R::Error>
-    where
-        H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E> + 'static,
-        E: HandlerError,
-    {
-        self.registry
-            .set_handler(self.uri.as_str(), method, handler)?;
+        type Response<'a> = R::Response<'a>;
 
-        Ok(self.registry)
-    }
-}
+        fn set_handler<H>(
+            &mut self,
+            uri: &str,
+            method: Method,
+            handler: H,
+        ) -> Result<&mut Self, Self::Error>
+        where
+            H: for<'a> Handler<Self::Request<'a>, Self::Response<'a>> + 'static,
+        {
+            self.registry
+                .set_handler(uri, method, self.middleware.clone().compose(handler))?;
 
-fn handle<'b, R, H, E>(
-    mut req: R::Request<'b>,
-    mut inline_resp: R::Response<'b>,
-    handler: &H,
-) -> Result<Completion, anyhow::Error>
-where
-    R: Registry,
-    H: for<'a, 'c> Fn(&'c mut R::Request<'a>) -> Result<ResponseData, E>,
-    E: HandlerError,
-{
-    let resp = handler(&mut req).map_err(|e| anyhow::anyhow!(e))?;
-
-    inline_resp.set_status(resp.status);
-
-    if let Some(status_message) = resp.status_message {
-        inline_resp.set_status_message(status_message);
-    }
-
-    for (key, value) in resp.headers {
-        inline_resp.set_header(key, value);
-    }
-
-    match resp.body {
-        Body::Empty => inline_resp.submit(req).map_err(|e| anyhow::anyhow!(e)),
-        Body::Bytes(bytes) => inline_resp
-            .send_bytes(req, &bytes)
-            .map_err(|e| anyhow::anyhow!(e)),
-        Body::Read(size, reader) => {
-            inline_resp
-                .send_reader(req, size, reader)
-                .map_err(|e| match e {
-                    SendError::SendError(e) => anyhow::anyhow!(e),
-                    SendError::WriteError(e) => anyhow::anyhow!(e),
-                })
+            Ok(self)
         }
     }
 }

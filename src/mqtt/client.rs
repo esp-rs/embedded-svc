@@ -1,13 +1,27 @@
 use core::fmt::{self, Debug, Display, Formatter};
 
+#[cfg(feature = "alloc")]
 extern crate alloc;
-use alloc::borrow::Cow;
-use alloc::string::String;
-use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
-use crate::errors::Errors;
+pub trait ErrorType {
+    type Error: Debug;
+}
+
+impl<E> ErrorType for &E
+where
+    E: ErrorType,
+{
+    type Error = E::Error;
+}
+
+impl<E> ErrorType for &mut E
+where
+    E: ErrorType,
+{
+    type Error = E::Error;
+}
 
 /// Quality of service
 #[repr(u8)]
@@ -71,21 +85,23 @@ where
 pub trait Message {
     fn id(&self) -> MessageId;
 
-    fn topic(&self) -> Option<Cow<'_, str>>;
+    fn topic(&self) -> Option<&'_ str>;
 
-    fn data(&self) -> Cow<'_, [u8]>;
+    fn data(&self) -> &'_ [u8];
 
     fn details(&self) -> &Details;
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageImpl {
     id: MessageId,
-    topic: Option<String>,
+    topic: Option<alloc::string::String>,
     details: Details,
-    data: Vec<u8>,
+    data: alloc::vec::Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl MessageImpl {
     pub fn new<M>(message: &M) -> Self
     where
@@ -94,25 +110,24 @@ impl MessageImpl {
         Self {
             id: message.id(),
             data: message.data().to_vec(),
-            topic: message.topic().map(|topic| topic.into_owned()),
+            topic: message.topic().map(alloc::string::String::from),
             details: message.details().clone(),
         }
     }
 }
 
+#[cfg(feature = "alloc")]
 impl Message for MessageImpl {
     fn id(&self) -> MessageId {
         self.id
     }
 
-    fn topic(&self) -> Option<Cow<'_, str>> {
-        self.topic
-            .as_ref()
-            .map(|topic| Cow::Borrowed(topic.as_str()))
+    fn topic(&self) -> Option<&'_ str> {
+        self.topic.as_deref()
     }
 
-    fn data(&self) -> Cow<'_, [u8]> {
-        Cow::Borrowed(&self.data)
+    fn data(&self) -> &'_ [u8] {
+        &self.data
     }
 
     fn details(&self) -> &Details {
@@ -138,100 +153,76 @@ pub struct SubsequentChunkData {
     pub total_data_size: usize,
 }
 
-pub trait Client: Errors {
-    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>;
+pub trait Client: ErrorType {
+    fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error>;
 
-    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>;
+    fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error>;
 }
 
 impl<'b, C> Client for &'b mut C
 where
     C: Client,
 {
-    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>,
-    {
+    fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error> {
         (*self).subscribe(topic, qos)
     }
 
-    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>,
-    {
+    fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error> {
         (*self).unsubscribe(topic)
     }
 }
 
-pub trait Publish: Errors {
-    fn publish<'a, S, V>(
+pub trait Publish: ErrorType {
+    fn publish<'a>(
         &'a mut self,
-        topic: S,
+        topic: &'a str,
         qos: QoS,
         retain: bool,
-        payload: V,
-    ) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, [u8]>>;
+        payload: &'a [u8],
+    ) -> Result<MessageId, Self::Error>;
 }
 
 impl<'b, P> Publish for &'b mut P
 where
     P: Publish,
 {
-    fn publish<'a, S, V>(
+    fn publish<'a>(
         &'a mut self,
-        topic: S,
+        topic: &'a str,
         qos: QoS,
         retain: bool,
-        payload: V,
-    ) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, [u8]>>,
-    {
+        payload: &'a [u8],
+    ) -> Result<MessageId, Self::Error> {
         (*self).publish(topic, qos, retain, payload)
     }
 }
 
-pub trait Enqueue: Errors {
-    fn enqueue<'a, S, V>(
+pub trait Enqueue: ErrorType {
+    fn enqueue<'a>(
         &'a mut self,
-        topic: S,
+        topic: &'a str,
         qos: QoS,
         retain: bool,
-        payload: V,
-    ) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, [u8]>>;
+        payload: &'a [u8],
+    ) -> Result<MessageId, Self::Error>;
 }
 
 impl<'b, E> Enqueue for &'b mut E
 where
     E: Enqueue,
 {
-    fn enqueue<'a, S, V>(
+    fn enqueue<'a>(
         &'a mut self,
-        topic: S,
+        topic: &'a str,
         qos: QoS,
         retain: bool,
-        payload: V,
-    ) -> Result<MessageId, Self::Error>
-    where
-        S: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, [u8]>>,
-    {
+        payload: &'a [u8],
+    ) -> Result<MessageId, Self::Error> {
         (*self).enqueue(topic, qos, retain, payload)
     }
 }
 
-pub trait Connection: Errors {
+pub trait Connection: ErrorType {
     type Message;
 
     fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>>;
@@ -250,16 +241,14 @@ where
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod utils {
+    use core::fmt::Debug;
     use core::mem;
 
     use alloc::sync::Arc;
 
-    use crate::{
-        errors,
-        mutex::{Condvar, Mutex},
-    };
+    use crate::mutex::{Condvar, Mutex};
 
-    use super::Event;
+    use super::{ErrorType, Event};
 
     pub struct ConnStateGuard<CV, S>
     where
@@ -360,17 +349,17 @@ pub mod utils {
     impl<CV, M, E> Connection<CV, M, E>
     where
         CV: Condvar,
-        E: errors::Error,
+        E: Debug,
     {
         pub fn new(connection_state: Arc<ConnStateGuard<CV, ConnState<M, E>>>) -> Self {
             Self(connection_state)
         }
     }
 
-    impl<CV, M, E> errors::Errors for Connection<CV, M, E>
+    impl<CV, M, E> ErrorType for Connection<CV, M, E>
     where
         CV: Condvar,
-        E: errors::Error,
+        E: Debug,
     {
         type Error = E;
     }
@@ -378,7 +367,7 @@ pub mod utils {
     impl<CV, M, E> super::Connection for Connection<CV, M, E>
     where
         CV: Condvar,
-        E: errors::Error,
+        E: Debug,
     {
         type Message = M;
 
@@ -405,53 +394,42 @@ pub mod utils {
 }
 
 #[cfg(feature = "experimental")]
-pub mod asyncs {
+pub mod asynch {
     use core::future::Future;
 
-    extern crate alloc;
-    use alloc::borrow::Cow;
+    pub use super::{Details, ErrorType, Event, Message, MessageId, QoS};
 
-    pub use super::{Details, Event, Message, MessageId, QoS};
-
-    use crate::errors::Errors;
-
-    pub trait Client: Errors {
+    pub trait Client: ErrorType {
         type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
+
         type UnsubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
 
-        fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Self::SubscribeFuture<'a>
-        where
-            S: Into<Cow<'a, str>>;
+        fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a>;
 
-        fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
-        where
-            S: Into<Cow<'a, str>>;
+        fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a>;
     }
 
-    pub trait Publish: Errors {
+    pub trait Publish: ErrorType {
         type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
         where
             Self: 'a;
 
-        fn publish<'a, S, V>(
+        fn publish<'a>(
             &'a mut self,
-            topic: S,
+            topic: &'a str,
             qos: QoS,
             retain: bool,
-            payload: V,
-        ) -> Self::PublishFuture<'a>
-        where
-            S: Into<Cow<'a, str>>,
-            V: Into<Cow<'a, [u8]>>;
+            payload: &'a [u8],
+        ) -> Self::PublishFuture<'a>;
     }
 
     /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
     /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
-    pub trait Connection: Errors {
+    pub trait Connection: ErrorType {
         type Message;
 
         type NextFuture<'a>: Future<Output = Option<Result<Event<Self::Message>, Self::Error>>>

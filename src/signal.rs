@@ -1,5 +1,5 @@
 #[cfg(feature = "experimental")]
-pub mod asyncs {
+pub mod asynch {
     use core::task::{Context, Poll};
 
     pub trait SignalFamily {

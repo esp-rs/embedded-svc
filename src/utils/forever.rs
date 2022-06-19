@@ -86,6 +86,7 @@ impl<T> Forever<T> {
 
     #[inline(always)]
     #[allow(clippy::mut_from_ref)]
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn steal(&'static self) -> &'static mut T {
         let p = self.t.get();
         let p = (&mut *p).as_mut_ptr();

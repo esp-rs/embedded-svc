@@ -12,19 +12,10 @@ impl fmt::Display for SpawnError {
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for SpawnError {
-    // TODO
-    // fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    //     match self {
-    //         Self::ReadError(r) => Some(r),
-    //         CopyError::WriteError(w) => Some(w),
-    //     }
-    // }
-}
+impl std::error::Error for SpawnError {}
 
 #[cfg(all(
     feature = "isr-async-executor",
-    feature = "heapless",
     feature = "alloc",
     target_has_atomic = "ptr"
 ))]
@@ -39,8 +30,7 @@ pub mod isr {
 
     use heapless::mpmc::MpMcQueue;
 
-    use crate::errors::Errors;
-    use crate::executor::asyncs::{Executor, LocalSpawner, Spawner, WaitableExecutor};
+    use crate::executor::asynch::{Executor, LocalSpawner, Spawner, WaitableExecutor};
 
     use super::SpawnError;
 
@@ -145,14 +135,12 @@ pub mod isr {
         }
     }
 
-    impl<'a, const C: usize, N, W, S> Errors for ISRExecutor<'a, C, N, W, S> {
-        type Error = SpawnError;
-    }
-
     impl<'a, const C: usize, N, W, S> Spawner<'a> for ISRExecutor<'a, C, N, W, S>
     where
         N: NotifyFactory,
     {
+        type Error = SpawnError;
+
         type Task<T>
         where
             T: 'a,
@@ -221,11 +209,10 @@ pub mod isr {
     }
 }
 
-#[cfg(feature = "heapless")]
 pub mod spawn {
     use core::future::Future;
 
-    use crate::executor::asyncs::{LocalSpawner, Spawner};
+    use crate::executor::asynch::{LocalSpawner, Spawner};
 
     use super::SpawnError;
 

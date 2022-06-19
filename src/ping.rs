@@ -1,9 +1,9 @@
+use core::fmt::Debug;
 use core::time::Duration;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::errors::Errors;
 use crate::ipv4;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -53,7 +53,9 @@ pub struct Summary {
     pub time: Duration,
 }
 
-pub trait Ping: Errors {
+pub trait Ping {
+    type Error: Debug;
+
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
 
     fn ping_details<F: Fn(&Summary, &Reply)>(
@@ -62,4 +64,31 @@ pub trait Ping: Errors {
         conf: &Configuration,
         reply_callback: &F,
     ) -> Result<Summary, Self::Error>;
+}
+
+#[cfg(feature = "experimental")]
+pub mod asynch {
+    use core::fmt::Debug;
+    use core::future::Future;
+
+    use crate::ipv4;
+
+    pub use super::{Configuration, Reply, Summary};
+
+    pub trait Ping {
+        type Error: Debug;
+
+        type PingFuture<'a>: Future<Output = Result<Summary, Self::Error>>
+        where
+            Self: 'a;
+
+        fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Self::PingFuture<'_>;
+
+        fn ping_details<F: Fn(&Summary, &Reply)>(
+            &mut self,
+            ip: ipv4::Ipv4Addr,
+            conf: &Configuration,
+            reply_callback: &F,
+        ) -> Self::PingFuture<'_>;
+    }
 }

@@ -1,33 +1,26 @@
+use core::fmt::Debug;
 use core::future::Future;
 use core::mem;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
 extern crate alloc;
-use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use crate::errors::{self, Errors};
-use crate::mqtt::client::asyncs::{Client, Connection, Event, MessageId, Publish, QoS};
+use crate::mqtt::client::asynch::{Client, Connection, Event, MessageId, Publish, QoS};
 use crate::mqtt::client::utils::ConnStateGuard;
+use crate::mqtt::client::ErrorType;
 use crate::mutex::{Condvar, Mutex, MutexFamily};
-use crate::unblocker::asyncs::Unblocker;
-
-pub trait PublishPolicy {}
-
-pub struct Enqueueing;
-
-impl PublishPolicy for () {}
-impl PublishPolicy for Enqueueing {}
+use crate::unblocker::asynch::Unblocker;
 
 async fn enqueue_publish<'a, E>(
     enqueue: &'a mut E,
-    topic: Cow<'a, str>,
+    topic: &'a str,
     qos: QoS,
     retain: bool,
-    payload: Cow<'a, [u8]>,
+    payload: &'a [u8],
 ) -> Result<MessageId, E::Error>
 where
     E: crate::mqtt::client::Enqueue + 'a,
@@ -37,10 +30,10 @@ where
 
 async fn publish_publish<'a, P>(
     publish: &'a mut P,
-    topic: Cow<'a, str>,
+    topic: &'a str,
     qos: QoS,
     retain: bool,
-    payload: Cow<'a, [u8]>,
+    payload: &'a [u8],
 ) -> Result<MessageId, P::Error>
 where
     P: crate::mqtt::client::Publish + 'a,
@@ -50,7 +43,7 @@ where
 
 async fn client_subscribe<'a, C>(
     client: &'a mut C,
-    topic: Cow<'a, str>,
+    topic: &'a str,
     qos: QoS,
 ) -> Result<MessageId, C::Error>
 where
@@ -59,10 +52,7 @@ where
     client.subscribe(topic, qos)
 }
 
-async fn client_unsubscribe<'a, C>(
-    client: &'a mut C,
-    topic: Cow<'a, str>,
-) -> Result<MessageId, C::Error>
+async fn client_unsubscribe<'a, C>(client: &'a mut C, topic: &'a str) -> Result<MessageId, C::Error>
 where
     C: crate::mqtt::client::Client + 'a,
 {
@@ -77,10 +67,10 @@ impl<U, W> AsyncClient<U, W> {
     }
 }
 
-impl<U, M, C> Errors for AsyncClient<U, Arc<M>>
+impl<U, M, C> ErrorType for AsyncClient<U, Arc<M>>
 where
     M: Mutex<Data = C>,
-    C: Errors,
+    C: ErrorType,
 {
     type Error = C::Error;
 }
@@ -103,21 +93,15 @@ where
         Self: 'a,
     = U::UnblockFuture<Result<MessageId, C::Error>>;
 
-    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Self::SubscribeFuture<'a>
-    where
-        S: Into<Cow<'a, str>>,
-    {
-        let topic: String = topic.into().into_owned();
+    fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a> {
+        let topic: String = topic.to_owned();
         let client = self.0.clone();
 
         self.1.unblock(move || client.lock().subscribe(&topic, qos))
     }
 
-    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
-    where
-        S: Into<Cow<'a, str>>,
-    {
-        let topic: String = topic.into().into_owned();
+    fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a> {
+        let topic: String = topic.to_owned();
         let client = self.0.clone();
 
         self.1.unblock(move || client.lock().unsubscribe(&topic))
@@ -137,19 +121,15 @@ where
         Self: 'a,
     = U::UnblockFuture<Result<MessageId, C::Error>>;
 
-    fn publish<'a, S, V>(
+    fn publish<'a>(
         &'a mut self,
-        topic: S,
+        topic: &'a str,
         qos: QoS,
         retain: bool,
-        payload: V,
-    ) -> Self::PublishFuture<'a>
-    where
-        S: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, [u8]>>,
-    {
-        let topic: String = topic.into().into_owned();
-        let payload: Vec<u8> = payload.into().into_owned();
+        payload: &'a [u8],
+    ) -> Self::PublishFuture<'a> {
+        let topic: String = topic.to_owned();
+        let payload: Vec<u8> = payload.to_owned();
         let client = self.0.clone();
 
         self.1
@@ -166,14 +146,22 @@ where
     }
 }
 
-impl<U, E> Errors for AsyncClient<U, E>
+pub struct Enqueueing;
+pub struct Publishing;
+
+pub struct Blocking<C, P> {
+    client: C,
+    _policy: P,
+}
+
+impl<E, P> ErrorType for AsyncClient<(), Blocking<E, P>>
 where
-    E: Errors,
+    E: ErrorType,
 {
     type Error = E::Error;
 }
 
-impl<E> Publish for AsyncClient<Enqueueing, E>
+impl<E> Publish for AsyncClient<(), Blocking<E, Enqueueing>>
 where
     E: crate::mqtt::client::Enqueue + Send,
 {
@@ -182,22 +170,18 @@ where
         Self: 'a,
     = impl Future<Output = Result<MessageId, E::Error>> + Send + 'a;
 
-    fn publish<'a, S, V>(
+    fn publish<'a>(
         &'a mut self,
-        topic: S,
+        topic: &'a str,
         qos: QoS,
         retain: bool,
-        payload: V,
-    ) -> Self::PublishFuture<'a>
-    where
-        S: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, [u8]>>,
-    {
-        enqueue_publish(&mut self.0, topic.into(), qos, retain, payload.into())
+        payload: &'a [u8],
+    ) -> Self::PublishFuture<'a> {
+        enqueue_publish(&mut self.0.client, topic, qos, retain, payload)
     }
 }
 
-impl<P> Publish for AsyncClient<(), P>
+impl<P> Publish for AsyncClient<(), Blocking<P, Publishing>>
 where
     P: crate::mqtt::client::Publish + Send,
 {
@@ -206,24 +190,19 @@ where
         Self: 'a,
     = impl Future<Output = Result<MessageId, P::Error>> + Send + 'a;
 
-    fn publish<'a, S, V>(
+    fn publish<'a>(
         &'a mut self,
-        topic: S,
+        topic: &'a str,
         qos: QoS,
         retain: bool,
-        payload: V,
-    ) -> Self::PublishFuture<'a>
-    where
-        S: Into<Cow<'a, str>>,
-        V: Into<Cow<'a, [u8]>>,
-    {
-        publish_publish(&mut self.0, topic.into(), qos, retain, payload.into())
+        payload: &'a [u8],
+    ) -> Self::PublishFuture<'a> {
+        publish_publish(&mut self.0.client, topic, qos, retain, payload)
     }
 }
 
-impl<U, C> Client for AsyncClient<U, C>
+impl<C, P> Client for AsyncClient<(), Blocking<C, P>>
 where
-    U: PublishPolicy,
     C: crate::mqtt::client::Client + Send,
 {
     type SubscribeFuture<'a>
@@ -236,36 +215,48 @@ where
         Self: 'a,
     = impl Future<Output = Result<MessageId, C::Error>> + Send + 'a;
 
-    fn subscribe<'a, S>(&'a mut self, topic: S, qos: QoS) -> Self::SubscribeFuture<'a>
-    where
-        S: Into<Cow<'a, str>>,
-    {
-        client_subscribe(&mut self.0, topic.into(), qos)
+    fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a> {
+        client_subscribe(&mut self.0.client, topic, qos)
     }
 
-    fn unsubscribe<'a, S>(&'a mut self, topic: S) -> Self::UnsubscribeFuture<'a>
-    where
-        S: Into<Cow<'a, str>>,
-    {
-        client_unsubscribe(&mut self.0, topic.into())
+    fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a> {
+        client_unsubscribe(&mut self.0.client, topic)
     }
 }
 
-impl<C> AsyncClient<(), C> {
-    pub fn into_enqueueing(self) -> AsyncClient<Enqueueing, C> {
-        AsyncClient::new(Enqueueing, self.0)
+impl<C> AsyncClient<(), Blocking<C, Publishing>> {
+    pub fn into_enqueueing(self) -> AsyncClient<(), Blocking<C, Enqueueing>> {
+        AsyncClient::new(
+            (),
+            Blocking {
+                client: self.0.client,
+                _policy: Enqueueing,
+            },
+        )
     }
 }
 
-impl<C> AsyncClient<Enqueueing, C> {
-    pub fn into_publishing(self) -> AsyncClient<(), C> {
-        AsyncClient::new((), self.0)
+impl<C> AsyncClient<(), Blocking<C, Enqueueing>> {
+    pub fn into_publishing(self) -> AsyncClient<(), Blocking<C, Publishing>> {
+        AsyncClient::new(
+            (),
+            Blocking {
+                client: self.0.client,
+                _policy: Publishing,
+            },
+        )
     }
 }
 
-impl<C> crate::utils::asyncify::AsyncWrapper<C> for AsyncClient<(), C> {
+impl<C> crate::utils::asyncify::AsyncWrapper<C> for AsyncClient<(), Blocking<C, Publishing>> {
     fn new(sync: C) -> Self {
-        AsyncClient::new((), sync)
+        AsyncClient::new(
+            (),
+            Blocking {
+                client: sync,
+                _policy: Publishing,
+            },
+        )
     }
 }
 
@@ -383,10 +374,10 @@ where
     }
 }
 
-impl<CV, M, E> Errors for AsyncConnection<CV, M, E>
+impl<CV, M, E> ErrorType for AsyncConnection<CV, M, E>
 where
     CV: Condvar,
-    E: errors::Error,
+    E: Debug,
 {
     type Error = E;
 }
@@ -395,7 +386,7 @@ impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
     CV: Condvar + Send + Sync + 'static,
     <CV as MutexFamily>::Mutex<Option<AsyncConnState<M, E>>>: Sync + 'static,
-    E: errors::Error,
+    E: Debug,
 {
     type Message = M;
 

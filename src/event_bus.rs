@@ -1,26 +1,43 @@
+use core::fmt::Debug;
 use core::result::Result;
 use core::time::Duration;
 
-use crate::errors::Errors;
+pub trait ErrorType {
+    type Error: Debug;
+}
 
-pub trait Spin: Errors {
+impl<E> ErrorType for &E
+where
+    E: ErrorType,
+{
+    type Error = E::Error;
+}
+
+impl<E> ErrorType for &mut E
+where
+    E: ErrorType,
+{
+    type Error = E::Error;
+}
+
+pub trait Spin: ErrorType {
     fn spin(&mut self, duration: Option<Duration>) -> Result<(), Self::Error>;
 }
 
-pub trait Postbox<P>: Errors {
+pub trait Postbox<P>: ErrorType {
     fn post(&mut self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error>;
 }
 
 impl<'a, P, PB> Postbox<P> for &'a mut PB
 where
-    PB: Postbox<P> + Errors,
+    PB: Postbox<P> + ErrorType,
 {
     fn post(&mut self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error> {
         (*self).post(payload, wait)
     }
 }
 
-pub trait EventBus<P>: Errors {
+pub trait EventBus<P>: ErrorType {
     type Subscription;
 
     fn subscribe(
@@ -43,7 +60,7 @@ where
     }
 }
 
-pub trait PostboxProvider<P>: Errors {
+pub trait PostboxProvider<P>: ErrorType {
     type Postbox: Postbox<P, Error = Self::Error>;
 
     fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
@@ -60,7 +77,7 @@ where
     }
 }
 
-pub trait PinnedEventBus<P>: Errors {
+pub trait PinnedEventBus<P>: ErrorType {
     type Subscription;
 
     fn subscribe(
@@ -84,20 +101,19 @@ where
 }
 
 #[cfg(feature = "experimental")]
-pub mod asyncs {
-    use crate::channel::asyncs::{Receiver, Sender};
-    use crate::errors::Errors;
+pub mod asynch {
+    use crate::channel::asynch::{Receiver, Sender};
 
-    pub use super::Spin;
+    pub use super::{ErrorType, Spin};
 
-    pub trait EventBus<P>: Errors {
-        type Subscription: Receiver<Data = P, Error = Self::Error>;
+    pub trait EventBus<P>: ErrorType {
+        type Subscription: Receiver<Data = P>;
 
         fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error>;
     }
 
-    pub trait PostboxProvider<P>: Errors {
-        type Postbox: Sender<Data = P, Error = Self::Error>;
+    pub trait PostboxProvider<P>: ErrorType {
+        type Postbox: Sender<Data = P>;
 
         fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
     }

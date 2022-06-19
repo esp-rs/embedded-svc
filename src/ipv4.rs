@@ -1,15 +1,12 @@
+use core::convert::TryFrom;
+use core::fmt::Display;
+use core::str::FromStr;
+
 #[cfg(feature = "std")]
 pub use std::net::Ipv4Addr;
 
 #[cfg(not(feature = "std"))]
 pub use no_std_net::Ipv4Addr;
-
-use core::{convert::TryFrom, str::FromStr};
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
-#[cfg(feature = "alloc")]
-use alloc::string::ToString;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
@@ -35,10 +32,9 @@ impl FromStr for Mask {
     }
 }
 
-#[cfg(feature = "alloc")]
-impl ToString for Mask {
-    fn to_string(&self) -> alloc::string::String {
-        self.0.to_string()
+impl Display for Mask {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -83,14 +79,9 @@ pub struct Subnet {
     pub mask: Mask,
 }
 
-#[cfg(feature = "alloc")]
-impl ToString for Subnet {
-    fn to_string(&self) -> alloc::string::String {
-        let mut s = self.gateway.to_string();
-        s.push('/');
-        s.push_str(self.mask.0.to_string().as_str());
-
-        s
+impl Display for Subnet {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}/{}", self.gateway, self.mask)
     }
 }
 
@@ -138,14 +129,10 @@ impl Default for ClientSettings {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Default, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct DHCPClientSettings {
-    #[cfg(feature = "alloc")]
-    pub hostname: Option<alloc::string::String>,
-
-    #[cfg(not(feature = "alloc"))]
-    pub hostname: Option<&'static str>,
+    pub hostname: Option<heapless::String<30>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

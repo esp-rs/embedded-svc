@@ -1,34 +1,43 @@
-use core::mem;
+use core::convert::TryInto;
+use core::fmt::Debug;
 
-extern crate alloc;
-use alloc::borrow::{Cow, ToOwned};
-use alloc::boxed::Box;
-use alloc::string::String;
-use alloc::vec::Vec;
-
-#[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::errors::Errors;
-use crate::{
-    http::{client::*, Headers},
-    io,
-    ota::*,
-};
+use crate::http::{client::*, Headers};
+use crate::io::{self, ErrorKind, Io, Read};
+use crate::ota::*;
+use crate::utils::json_io;
+
+#[derive(Debug)]
+pub enum Error<E> {
+    UrlOverflow,
+    BufferOverflow,
+    FirmwareInfoOverflow,
+    Http(E),
+}
+
+impl<E> io::Error for Error<E>
+where
+    E: io::Error,
+{
+    fn kind(&self) -> ErrorKind {
+        ErrorKind::Other
+    }
+}
 
 // Copied from here:
 // https://github.com/XAMPPRocky/octocrab/blob/master/src/models/repos.rs
 // To conserve memory, unly the utilized fields are mapped
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Release {
-    pub tag_name: String,
-    pub body: Option<String>,
+struct Release<'a, const N: usize = 32> {
+    pub tag_name: &'a str,
+    pub body: Option<&'a str>,
     pub draft: bool,
     pub prerelease: bool,
     // pub created_at: Option<DateTime<Utc>>,
     // pub published_at: Option<DateTime<Utc>>,
-    pub assets: Vec<Asset>,
+    pub assets: heapless::Vec<Asset<'a>, N>,
 }
 
 // Copied from here:
@@ -36,148 +45,138 @@ pub struct Release {
 // To conserve memory, unly the utilized fields are mapped
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Asset {
-    pub browser_download_url: String,
-    pub name: String,
-    pub label: Option<String>,
+struct Asset<'a> {
+    pub browser_download_url: &'a str,
+    pub name: &'a str,
+    pub label: Option<&'a str>,
     // pub state: String,
     // pub content_type: String,
     // pub size: i64,
-    pub updated_at: String,
+    pub updated_at: &'a str,
     // pub created_at: DateTime<Utc>,
 }
 
-impl From<(Release, Asset)> for FirmwareInfo {
-    fn from((release, asset): (Release, Asset)) -> Self {
-        Self {
-            version: release.tag_name,
-            released: asset.updated_at,
-            description: release.body.unwrap_or_else(|| "".into()),
+impl<'a> Asset<'a> {
+    fn as_firmware_info<E>(&'a self, release: &'a Release<'a>) -> Result<FirmwareInfo, Error<E>>
+    where
+        E: io::Error,
+    {
+        Ok(FirmwareInfo {
+            version: release
+                .tag_name
+                .try_into()
+                .map_err(|_| Error::FirmwareInfoOverflow)?,
+            released: self
+                .updated_at
+                .try_into()
+                .map_err(|_| Error::FirmwareInfoOverflow)?,
+            description: if let Some(body) = release.body {
+                Some(body.try_into().map_err(|_| Error::FirmwareInfoOverflow)?)
+            } else {
+                None
+            },
             signature: None,
-            download_id: Some(asset.browser_download_url),
-        }
+            download_id: Some(
+                self.browser_download_url
+                    .try_into()
+                    .map_err(|_| Error::FirmwareInfoOverflow)?,
+            ),
+        })
     }
 }
 
-pub struct GitHubOtaService<'a, C> {
-    base_url: Cow<'a, str>,
-    label: Cow<'a, str>,
+pub struct GitHubOtaService<'a, C, const B: usize = 1024, const U: usize = 256> {
+    base_url: heapless::String<U>,
+    label: &'a str,
     client: C,
+    buf: [u8; B],
 }
 
-impl<'a, C> GitHubOtaService<'a, C>
+impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
 where
-    C: Client,
+    C: Io,
 {
-    pub fn new(
-        base_url: impl Into<Cow<'a, str>>,
-        label: impl Into<Cow<'a, str>>,
-        client: C,
-    ) -> Self {
-        Self {
-            base_url: base_url.into(),
-            label: label.into(),
+    pub fn new(base_url: &str, label: &'a str, client: C) -> Result<Self, Error<C::Error>> {
+        Ok(Self {
+            base_url: base_url.try_into().map_err(|_| Error::UrlOverflow)?,
+            label,
             client,
-        }
+            buf: [0_u8; B],
+        })
     }
 
     pub fn new_with_repo(
-        repo: impl AsRef<str>,
-        project: impl AsRef<str>,
-        label: impl Into<Cow<'a, str>>,
+        repo: &str,
+        project: &str,
+        label: &'a str,
         client: C,
-    ) -> Self {
+    ) -> Result<Self, Error<C::Error>> {
         Self::new(
-            join(join("https://api.github.com/repos", repo), project),
+            &join::<U, _>(
+                &join::<U, _>("https://api.github.com/repos", repo)?,
+                project,
+            )?,
             label,
             client,
         )
     }
-
-    fn get_gh_releases(&mut self) -> Result<impl Iterator<Item = Release>, C::Error> {
-        let response = self
-            .client
-            .get(join(self.base_url.as_ref(), "releases"))?
-            .submit()?;
-
-        let mut read = response.reader();
-
-        // TODO: Deserialization code below is not efficient
-        // See this for a common workaround: https://github.com/serde-rs/json/issues/404#issuecomment-892957228
-
-        // TODO: Need to implement our own error type
-        #[cfg(feature = "std")]
-        let releases = serde_json::from_reader::<_, Vec<Release>>(io::StdRead(&mut read)).unwrap();
-
-        #[cfg(not(feature = "std"))]
-        let releases = {
-            let body: Result<Vec<u8>, _> = io::Bytes::<_, 64>::new(&mut read).collect();
-
-            let bytes = body?;
-
-            serde_json::from_slice::<Vec<Release>>(&bytes).unwrap()
-        };
-
-        Ok(releases.into_iter())
-    }
-
-    fn get_gh_latest_release(&mut self) -> Result<Option<Release>, C::Error> {
-        let response = self
-            .client
-            .get(join(join(self.base_url.as_ref(), "release"), "latest"))?
-            .submit()?;
-
-        let mut read = response.reader();
-
-        // TODO: Need to implement our own error type
-        #[cfg(feature = "std")]
-        let release =
-            serde_json::from_reader::<_, Option<Release>>(io::StdRead(&mut read)).unwrap();
-
-        #[cfg(not(feature = "std"))]
-        let release = {
-            let body: Result<Vec<u8>, _> = io::Bytes::<_, 64>::new(&mut read).collect();
-
-            let bytes = body?;
-
-            serde_json::from_slice::<Option<Release>>(&bytes).unwrap()
-        };
-
-        Ok(release)
-    }
-
-    fn get_gh_assets(
-        &self,
-        releases: impl Iterator<Item = Release>,
-    ) -> impl Iterator<Item = (Release, Asset)> {
-        let label = self.label.as_ref().to_owned();
-
-        releases
-            .flat_map(|mut release| {
-                let mut assets = Vec::new();
-                mem::swap(&mut release.assets, &mut assets);
-
-                assets
-                    .into_iter()
-                    .map(move |asset| (release.clone(), asset))
-            })
-            .filter(move |(_release, asset)| {
-                asset
-                    .label
-                    .as_ref()
-                    .map(|l| l == label.as_str())
-                    .unwrap_or(false)
-            })
-    }
 }
 
-pub struct OtaServerIterator(Box<dyn Iterator<Item = FirmwareInfo>>);
+impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
+where
+    C: Client,
+{
+    fn get_gh_releases_n<const N: usize>(
+        &mut self,
+    ) -> Result<(heapless::Vec<Release<'_>, N>, &str), Error<C::Error>> {
+        let mut response = self
+            .client
+            .get(&join::<U, _>(&self.base_url, "releases")?)
+            .map_err(Error::Http)?
+            .submit()
+            .map_err(Error::Http)?;
 
-impl Iterator for OtaServerIterator {
-    type Item = FirmwareInfo;
+        let read = response.reader();
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+        let releases =
+            json_io::read_buf::<_, heapless::Vec<Release<'_>, N>>(read, &mut self.buf).unwrap(); // TODO
+
+        Ok((releases, self.label))
+    }
+
+    #[cfg(feature = "alloc")]
+    fn get_gh_releases(&mut self) -> Result<(alloc::vec::Vec<Release<'_>>, &str), Error<C::Error>> {
+        let mut response = self
+            .client
+            .get(&join::<U, _>(&self.base_url, "releases")?)
+            .map_err(Error::Http)?
+            .submit()
+            .map_err(Error::Http)?;
+
+        let read = response.reader();
+
+        let releases =
+            json_io::read_buf::<_, alloc::vec::Vec<Release<'_>>>(read, &mut self.buf).unwrap(); // TODO
+
+        Ok((releases, self.label))
+    }
+
+    fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, Error<C::Error>> {
+        let mut response = self
+            .client
+            .get(&join::<U, _>(
+                &join::<U, _>(&self.base_url, "release")?,
+                "latest",
+            )?)
+            .map_err(Error::Http)?
+            .submit()
+            .map_err(Error::Http)?;
+
+        let read = response.reader();
+
+        let release = json_io::read_buf::<_, Option<Release<'_>>>(read, &mut self.buf).unwrap(); // TODO
+
+        Ok(release)
     }
 }
 
@@ -186,11 +185,11 @@ pub struct GitHubOtaRead<R> {
     response: R,
 }
 
-impl<S> Errors for GitHubOtaRead<S>
+impl<S> Io for GitHubOtaRead<S>
 where
-    S: Errors,
+    S: Response,
 {
-    type Error = S::Error;
+    type Error = Error<S::Error>;
 }
 
 impl<R> OtaRead for GitHubOtaRead<R>
@@ -202,20 +201,20 @@ where
     }
 }
 
-impl<R> io::Read for GitHubOtaRead<R>
+impl<R> Read for GitHubOtaRead<R>
 where
     R: Response,
 {
-    fn do_read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.response.reader().do_read(buf)
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.response.reader().read(buf).map_err(Error::Http)
     }
 }
 
-impl<'a, C> Errors for GitHubOtaService<'a, C>
+impl<'a, C> Io for GitHubOtaService<'a, C>
 where
-    C: Errors,
+    C: Io,
 {
-    type Error = C::Error;
+    type Error = Error<C::Error>;
 }
 
 impl<'a, C> OtaServer for GitHubOtaService<'a, C>
@@ -225,27 +224,64 @@ where
     type OtaRead<'b>
     where
         Self: 'b,
-    = GitHubOtaRead<
-        <<<C as Client>::Request<'b> as Request<'b>>::Write<'b> as RequestWrite<'b>>::Response,
-    >;
-
-    type Iterator = OtaServerIterator;
+    = GitHubOtaRead<<<<C as Client>::Request<'b> as Request>::Write as RequestWrite>::Response>;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
-        // TODO: Need to implement our own error type
-        let releases = self.get_gh_latest_release().unwrap().into_iter();
-        Ok(self.get_gh_assets(releases).map(Into::into).next())
+        let label = self.label;
+
+        let release = self.get_gh_latest_release()?;
+
+        if let Some(release) = release.as_ref() {
+            for asset in &release.assets {
+                if asset.label == Some(label) {
+                    return Ok(Some(asset.as_firmware_info(release)?));
+                }
+            }
+        }
+
+        Ok(None)
     }
 
-    fn get_releases(&mut self) -> Result<Self::Iterator, Self::Error> {
-        let releases = self.get_gh_releases()?;
-        let assets = self.get_gh_assets(releases).map(Into::into);
+    #[cfg(feature = "alloc")]
+    fn get_releases(&mut self) -> Result<alloc::vec::Vec<FirmwareInfo>, Self::Error> {
+        let (releases, label) = self.get_gh_releases()?;
 
-        Ok(OtaServerIterator(Box::new(assets)))
+        releases
+            .iter()
+            .flat_map(|release| {
+                release
+                    .assets
+                    .iter()
+                    .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
+                    .map(move |asset| asset.as_firmware_info(release))
+            })
+            .collect::<Result<Vec<_>, _>>()
     }
 
-    fn open(&mut self, download_id: impl AsRef<str>) -> Result<Self::OtaRead<'_>, Self::Error> {
-        let response = self.client.get(download_id)?.submit()?;
+    fn get_releases_n<const N: usize>(
+        &mut self,
+    ) -> Result<heapless::Vec<FirmwareInfo, N>, Self::Error> {
+        let (releases, label) = self.get_gh_releases_n::<N>()?;
+
+        releases
+            .iter()
+            .flat_map(|release| {
+                release
+                    .assets
+                    .iter()
+                    .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
+                    .map(move |asset| asset.as_firmware_info(release))
+            })
+            .collect::<Result<heapless::Vec<_, N>, _>>()
+    }
+
+    fn open(&mut self, download_id: &str) -> Result<Self::OtaRead<'_>, Self::Error> {
+        let response = self
+            .client
+            .get(download_id)
+            .map_err(Error::Http)?
+            .submit()
+            .map_err(Error::Http)?;
 
         Ok(GitHubOtaRead {
             size: response.content_len(),
@@ -254,15 +290,15 @@ where
     }
 }
 
-fn join<'a>(uri: impl Into<Cow<'a, str>>, path: impl AsRef<str>) -> Cow<'a, str> {
-    let uri = uri.into();
-    let path = path.as_ref();
-
+fn join<const N: usize, E>(uri: &str, path: &str) -> Result<heapless::String<N>, Error<E>>
+where
+    E: io::Error,
+{
     let uri_slash = uri.ends_with('/');
     let path_slash = path.starts_with('/');
 
-    if path.is_empty() || path.len() == 1 && uri_slash && path_slash {
-        uri
+    let uri = if path.is_empty() || path.len() == 1 && uri_slash && path_slash {
+        uri.into()
     } else {
         let path = if uri_slash && path_slash {
             &path[1..]
@@ -270,14 +306,288 @@ fn join<'a>(uri: impl Into<Cow<'a, str>>, path: impl AsRef<str>) -> Cow<'a, str>
             path
         };
 
-        let mut result = uri.into_owned();
+        let mut result = heapless::String::from(uri);
 
         if !uri_slash && !path_slash {
-            result.push('/');
+            result.push('/').map_err(|_| Error::UrlOverflow)?;
         }
 
-        result.push_str(path);
+        result.push_str(path).map_err(|_| Error::UrlOverflow)?;
 
-        Cow::Owned(result)
+        result
+    };
+
+    Ok(uri)
+}
+
+#[cfg(feature = "experimental")]
+pub mod asynch {
+    use core::convert::TryInto;
+    use core::future::Future;
+
+    use crate::http::{client::asynch::*, Headers};
+    use crate::io::{asynch::Read, Io};
+    use crate::ota::asynch::*;
+    use crate::utils::json_io::asynch as json_io;
+
+    use super::{join, Release};
+
+    pub use super::Error;
+
+    pub struct GitHubOtaService<'a, C, const B: usize = 1024, const U: usize = 256> {
+        base_url: heapless::String<U>,
+        label: &'a str,
+        client: C,
+        buf: [u8; B],
+    }
+
+    impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
+    where
+        C: Io,
+    {
+        pub fn new(base_url: &str, label: &'a str, client: C) -> Result<Self, Error<C::Error>> {
+            Ok(Self {
+                base_url: base_url.try_into().map_err(|_| Error::UrlOverflow)?,
+                label,
+                client,
+                buf: [0_u8; B],
+            })
+        }
+
+        pub fn new_with_repo(
+            repo: &str,
+            project: &str,
+            label: &'a str,
+            client: C,
+        ) -> Result<Self, Error<C::Error>> {
+            Self::new(
+                &join::<U, _>(
+                    &join::<U, _>("https://api.github.com/repos", repo)?,
+                    project,
+                )?,
+                label,
+                client,
+            )
+        }
+    }
+
+    impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
+    where
+        C: Client,
+    {
+        async fn get_gh_releases_n<const N: usize>(
+            &mut self,
+        ) -> Result<(heapless::Vec<Release<'_>, N>, &str), Error<C::Error>> {
+            let mut response = self
+                .client
+                .get(&join::<U, _>(&self.base_url, "releases")?)
+                .await
+                .map_err(Error::Http)?
+                .submit()
+                .await
+                .map_err(Error::Http)?;
+
+            let read = response.reader();
+
+            let releases =
+                json_io::read_buf::<_, heapless::Vec<Release<'_>, N>>(read, &mut self.buf)
+                    .await
+                    .unwrap(); // TODO
+
+            Ok((releases, self.label))
+        }
+
+        #[cfg(feature = "alloc")]
+        async fn get_gh_releases(
+            &mut self,
+        ) -> Result<(alloc::vec::Vec<Release<'_>>, &str), Error<C::Error>> {
+            let mut response = self
+                .client
+                .get(&join::<U, _>(&self.base_url, "releases")?)
+                .await
+                .map_err(Error::Http)?
+                .submit()
+                .await
+                .map_err(Error::Http)?;
+
+            let read = response.reader();
+
+            let releases =
+                json_io::read_buf::<_, alloc::vec::Vec<Release<'_>>>(read, &mut self.buf)
+                    .await
+                    .unwrap(); // TODO
+
+            Ok((releases, self.label))
+        }
+
+        async fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, Error<C::Error>> {
+            let mut response = self
+                .client
+                .get(&join::<U, _>(
+                    &join::<U, _>(&self.base_url, "release")?,
+                    "latest",
+                )?)
+                .await
+                .map_err(Error::Http)?
+                .submit()
+                .await
+                .map_err(Error::Http)?;
+
+            let read = response.reader();
+
+            let release = json_io::read_buf::<_, Option<Release<'_>>>(read, &mut self.buf)
+                .await
+                .unwrap(); // TODO
+
+            Ok(release)
+        }
+    }
+
+    pub struct GitHubOtaRead<R> {
+        size: Option<usize>,
+        response: R,
+    }
+
+    impl<S> Io for GitHubOtaRead<S>
+    where
+        S: Response,
+    {
+        type Error = Error<S::Error>;
+    }
+
+    impl<R> OtaRead for GitHubOtaRead<R>
+    where
+        R: Response,
+    {
+        fn size(&self) -> Option<usize> {
+            self.size
+        }
+    }
+
+    impl<R> Read for GitHubOtaRead<R>
+    where
+        R: Response,
+    {
+        type ReadFuture<'a>
+        where
+            Self: 'a,
+        = impl Future<Output = Result<usize, Self::Error>>;
+
+        fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'_> {
+            async move { self.response.reader().read(buf).await.map_err(Error::Http) }
+        }
+    }
+
+    impl<'a, C> Io for GitHubOtaService<'a, C>
+    where
+        C: Io,
+    {
+        type Error = Error<C::Error>;
+    }
+
+    impl<'a, C> OtaServer for GitHubOtaService<'a, C>
+    where
+        C: Client + 'static,
+    {
+        type OtaRead<'b>
+        where
+            Self: 'b,
+        = GitHubOtaRead<<<<C as Client>::Request<'b> as Request>::Write as RequestWrite>::Response>;
+
+        type GetLatestReleaseFuture<'b>
+        where
+            Self: 'b,
+        = impl Future<Output = Result<Option<FirmwareInfo>, Self::Error>>;
+
+        #[cfg(feature = "alloc")]
+        type GetReleasesFuture<'b>
+        where
+            Self: 'b,
+        = impl Future<Output = Result<alloc::vec::Vec<FirmwareInfo>, Self::Error>>;
+
+        type GetReleasesNFuture<'b, const N: usize>
+        where
+            Self: 'b,
+        = impl Future<Output = Result<heapless::Vec<FirmwareInfo, N>, Self::Error>>;
+
+        type OpenFuture<'b>
+        where
+            Self: 'b,
+        = impl Future<Output = Result<Self::OtaRead<'b>, Self::Error>>;
+
+        fn get_latest_release(&mut self) -> Self::GetLatestReleaseFuture<'_> {
+            async move {
+                let label = self.label;
+
+                let release = self.get_gh_latest_release().await?;
+
+                if let Some(release) = release.as_ref() {
+                    for asset in &release.assets {
+                        if asset.label == Some(label) {
+                            return Ok(Some(asset.as_firmware_info(release)?));
+                        }
+                    }
+                }
+
+                Ok(None)
+            }
+        }
+
+        #[cfg(feature = "alloc")]
+        fn get_releases(&mut self) -> Self::GetReleasesFuture<'_> {
+            async move {
+                let (releases, label) = self.get_gh_releases().await?;
+
+                releases
+                    .iter()
+                    .flat_map(|release| {
+                        release
+                            .assets
+                            .iter()
+                            .filter(|asset| {
+                                asset.label.as_ref().map(|l| *l == label).unwrap_or(false)
+                            })
+                            .map(move |asset| asset.as_firmware_info(release))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            }
+        }
+
+        fn get_releases_n<const N: usize>(&mut self) -> Self::GetReleasesNFuture<'_, N> {
+            async move {
+                let (releases, label) = self.get_gh_releases_n::<N>().await?;
+
+                releases
+                    .iter()
+                    .flat_map(|release| {
+                        release
+                            .assets
+                            .iter()
+                            .filter(|asset| {
+                                asset.label.as_ref().map(|l| *l == label).unwrap_or(false)
+                            })
+                            .map(move |asset| asset.as_firmware_info(release))
+                    })
+                    .collect::<Result<heapless::Vec<_, N>, _>>()
+            }
+        }
+
+        fn open<'b>(&'b mut self, download_id: &'b str) -> Self::OpenFuture<'b> {
+            async move {
+                let response = self
+                    .client
+                    .get(download_id)
+                    .await
+                    .map_err(Error::Http)?
+                    .submit()
+                    .await
+                    .map_err(Error::Http)?;
+
+                Ok(GitHubOtaRead {
+                    size: response.content_len(),
+                    response,
+                })
+            }
+        }
     }
 }

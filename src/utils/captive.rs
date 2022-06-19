@@ -119,8 +119,6 @@ mod server {
         time::Duration,
     };
 
-    use anyhow::{anyhow, Result};
-
     use log::*;
 
     #[derive(Clone, Debug)]
@@ -248,7 +246,7 @@ mod server {
                 info!("Received {} bytes from {}", request.len(), source_addr);
 
                 let response = super::process_dns_request(request, &ip.octets(), ttl)
-                    .map_err(|_| io::Error::new(io::ErrorKind::Other, anyhow!("Buffer overrun")))?;
+                    .map_err(|_| io::Error::new(io::ErrorKind::Other))?;
 
                 socket.send_to(response.as_ref(), source_addr)?;
 
