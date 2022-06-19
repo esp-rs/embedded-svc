@@ -1,6 +1,6 @@
 [package]
 name = "embedded-svc"
-version = "0.21.3"
+version = "0.22.0"
 authors = ["Ivan Markov <ivan.markov@gmail.com>"]
 edition = "2018"
 resolver = "2"
@@ -12,14 +12,13 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [features]
-default = ["std", "use_serde", "use_strum", "use_numenum", "json_io", "experimental"]
+default = ["std", "use_serde", "use_strum", "use_numenum", "json_io"]
 
-# Uncomment once 0.6.2 which has no_std support is released
-#experimental = ["futures", "domain"]
-#experimental = ["futures", "embedded-io/futures"]
+# Uncomment once 0.7 which has no_std support is released
+#experimental = ["futures", "embedded-io/async", "domain"]
 experimental = ["futures", "embedded-io/async"]
 
-std = ["alloc", "embedded-io/std", "anyhow/std", "serde/std", "strum?/std", "num_enum?/std", "serde_json?/std"]
+std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std", "serde_json?/std"]
 alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "serde_json?/alloc"]
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
@@ -41,7 +40,7 @@ num_enum = { version = "0.5", default-features = false, optional = true }
 futures = { version = "0.3", default-features = false, optional = true }
 serde_json = { version = "1", default-features = true, optional = true }
 serde-json-core = { version = "0.4", optional = true }
-# Uncomment once 0.6.2 which has no_std support is released
-#domain = { version = "0.6", optional = true, default-features = false }
+# Uncomment once 0.7 which has no_std support is released
+#domain = { version = "0.7", optional = true, default-features = false }
 async-task = { version = "4", default-features = false, optional = true }
 anyhow = { version = "1", default-features = false, optional = true } # Only used by the deprecated httpd module
