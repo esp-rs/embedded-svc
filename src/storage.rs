@@ -87,8 +87,7 @@ impl<'a, const N: usize> DynStorage<'a> for DynStorageImpl<'a, N> {
                     .map(|entry| entry.name == name)
                     .unwrap_or(false)
             })
-            .map(|entry| entry.as_mut())
-            .flatten()
+            .and_then(|entry| entry.as_mut())
         {
             entry.value = value;
             Ok(true)

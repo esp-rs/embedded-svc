@@ -80,7 +80,7 @@ where
     fn from(e: E) -> Self {
         let mut string: heapless::String<128> = "".into();
 
-        if let Err(_) = write!(&mut string, "{:?}", e) {
+        if write!(&mut string, "{:?}", e).is_err() {
             string = "(Error string too big to serve)".into();
         }
 
@@ -151,11 +151,11 @@ pub mod asynch {
 
         type IntoWriterFuture: Future<Output = Result<Self::Write, Self::Error>>;
 
-        fn send_bytes<'a>(self, bytes: &'a [u8]) -> Self::SendBytesFuture<'a>
+        fn send_bytes(self, bytes: &[u8]) -> Self::SendBytesFuture<'_>
         where
             Self: Sized;
 
-        fn send_str<'a>(self, s: &'a str) -> Self::SendBytesFuture<'a>
+        fn send_str(self, s: &str) -> Self::SendBytesFuture<'_>
         where
             Self: Sized;
 

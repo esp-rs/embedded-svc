@@ -16,7 +16,7 @@ where
 {
     let (buf, _) = io::read_max(read, buf).map_err(SerdeError::IoError)?;
 
-    let result = serde_json::from_slice(&buf).map_err(|_| SerdeError::SerdeError)?;
+    let result = serde_json::from_slice(buf).map_err(|_| SerdeError::SerdeError)?;
 
     Ok(result)
 }
@@ -31,7 +31,7 @@ where
 
     let (buf, _) = io::read_max(read, &mut buf).map_err(SerdeError::IoError)?;
 
-    let result = serde_json::from_slice(&buf).map_err(|_| SerdeError::SerdeError)?;
+    let result = serde_json::from_slice(buf).map_err(|_| SerdeError::SerdeError)?;
 
     Ok(result)
 }
@@ -100,7 +100,7 @@ pub mod asynch {
             .await
             .map_err(SerdeError::IoError)?;
 
-        let result = serde_json::from_slice(&buf).map_err(|_| SerdeError::SerdeError)?;
+        let result = serde_json::from_slice(buf).map_err(|_| SerdeError::SerdeError)?;
 
         Ok(result)
     }
@@ -117,7 +117,7 @@ pub mod asynch {
             .await
             .map_err(SerdeError::IoError)?;
 
-        let result = serde_json::from_slice(&buf).map_err(|_| SerdeError::SerdeError)?;
+        let result = serde_json::from_slice(buf).map_err(|_| SerdeError::SerdeError)?;
 
         Ok(result)
     }

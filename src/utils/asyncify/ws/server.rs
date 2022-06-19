@@ -381,10 +381,13 @@ where
                 frame_type, len, session
             );
 
-            self.connections
+            if let Some(receiver) = self
+                .connections
                 .iter()
                 .find(|receiver| receiver.session == session)
-                .map(|receiver| self.process_receive(&receiver.receiver_state, frame_type, len));
+            {
+                self.process_receive(&receiver.receiver_state, frame_type, len)
+            }
         }
 
         Ok(())

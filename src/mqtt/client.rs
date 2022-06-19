@@ -110,9 +110,7 @@ impl MessageImpl {
         Self {
             id: message.id(),
             data: message.data().to_vec(),
-            topic: message
-                .topic()
-                .map(|topic| alloc::string::String::from(topic)),
+            topic: message.topic().map(alloc::string::String::from),
             details: message.details().clone(),
         }
     }
@@ -125,7 +123,7 @@ impl Message for MessageImpl {
     }
 
     fn topic(&self) -> Option<&'_ str> {
-        self.topic.as_ref().map(|topic| topic.as_str())
+        self.topic.as_deref()
     }
 
     fn data(&self) -> &'_ [u8] {

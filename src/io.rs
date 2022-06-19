@@ -4,10 +4,7 @@ pub use embedded_io::*;
 
 use crate::errors::wrap::EitherError;
 
-pub fn read_max<'a, R: Read>(
-    mut read: R,
-    buf: &'a mut [u8],
-) -> Result<(&'a [u8], usize), R::Error> {
+pub fn read_max<R: Read>(mut read: R, buf: &mut [u8]) -> Result<(&[u8], usize), R::Error> {
     let mut offset = 0;
     let mut size = 0;
 
@@ -89,10 +86,10 @@ pub mod asynch {
 
     use crate::errors::wrap::EitherError;
 
-    pub async fn read_max<'a, R: Read>(
+    pub async fn read_max<R: Read>(
         mut read: R,
-        buf: &'a mut [u8],
-    ) -> Result<(&'a [u8], usize), R::Error> {
+        buf: &mut [u8],
+    ) -> Result<(&[u8], usize), R::Error> {
         let mut offset = 0;
         let mut size = 0;
 

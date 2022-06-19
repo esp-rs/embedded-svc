@@ -120,7 +120,7 @@ pub fn update(
         some => some,
     };
 
-    let download_id = download_id.ok_or_else(|| WrapError("Missing update"))?;
+    let download_id = download_id.ok_or(WrapError("Missing update"))?;
 
     let mut download_id_arr = [0_u8; 64];
 

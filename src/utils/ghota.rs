@@ -246,7 +246,7 @@ where
     fn get_releases(&mut self) -> Result<alloc::vec::Vec<FirmwareInfo>, Self::Error> {
         let (releases, label) = self.get_gh_releases()?;
 
-        Ok(releases
+        releases
             .iter()
             .flat_map(|release| {
                 release
@@ -255,7 +255,7 @@ where
                     .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
                     .map(move |asset| asset.as_firmware_info(release))
             })
-            .collect::<Result<Vec<_>, _>>()?)
+            .collect::<Result<Vec<_>, _>>()
     }
 
     fn get_releases_n<const N: usize>(
@@ -263,7 +263,7 @@ where
     ) -> Result<heapless::Vec<FirmwareInfo, N>, Self::Error> {
         let (releases, label) = self.get_gh_releases_n::<N>()?;
 
-        Ok(releases
+        releases
             .iter()
             .flat_map(|release| {
                 release
@@ -272,7 +272,7 @@ where
                     .filter(|asset| asset.label.as_ref().map(|l| *l == label).unwrap_or(false))
                     .map(move |asset| asset.as_firmware_info(release))
             })
-            .collect::<Result<heapless::Vec<_, N>, _>>()?)
+            .collect::<Result<heapless::Vec<_, N>, _>>()
     }
 
     fn open(&mut self, download_id: &str) -> Result<Self::OtaRead<'_>, Self::Error> {
@@ -538,7 +538,7 @@ pub mod asynch {
             async move {
                 let (releases, label) = self.get_gh_releases().await?;
 
-                Ok(releases
+                releases
                     .iter()
                     .flat_map(|release| {
                         release
@@ -549,7 +549,7 @@ pub mod asynch {
                             })
                             .map(move |asset| asset.as_firmware_info(release))
                     })
-                    .collect::<Result<Vec<_>, _>>()?)
+                    .collect::<Result<Vec<_>, _>>()
             }
         }
 
@@ -557,7 +557,7 @@ pub mod asynch {
             async move {
                 let (releases, label) = self.get_gh_releases_n::<N>().await?;
 
-                Ok(releases
+                releases
                     .iter()
                     .flat_map(|release| {
                         release
@@ -568,7 +568,7 @@ pub mod asynch {
                             })
                             .map(move |asset| asset.as_firmware_info(release))
                     })
-                    .collect::<Result<heapless::Vec<_, N>, _>>()?)
+                    .collect::<Result<heapless::Vec<_, N>, _>>()
             }
         }
 

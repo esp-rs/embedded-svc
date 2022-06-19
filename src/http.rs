@@ -197,7 +197,7 @@ pub mod cookies {
             I: Iterator<Item = (&'b str, &'b str)> + 'b,
         {
             iter.filter(move |(key, _)| *key != name)
-                .chain(core::iter::once((name, value.as_ref())))
+                .chain(core::iter::once((name, value)))
         }
 
         pub fn remove<'b, I>(iter: I, name: &'b str) -> impl Iterator<Item = (&'b str, &'b str)>

@@ -129,18 +129,10 @@ impl Default for ClientSettings {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct DHCPClientSettings {
     pub hostname: Option<heapless::String<30>>,
-}
-
-impl Default for DHCPClientSettings {
-    fn default() -> Self {
-        Self {
-            hostname: Default::default(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
