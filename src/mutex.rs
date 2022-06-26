@@ -1,6 +1,114 @@
-use core::cell::{RefCell, RefMut};
+use core::cell::RefCell;
+use core::mem;
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
+
+/// A raw Mutex trait for no_std environments.
+/// An alternative to the Mutex trait that avoids usage of GATs and does not need a MutexFamily (which in turn uses non-lifetime GATs).
+pub trait RawMutex {
+    fn new() -> Self;
+
+    unsafe fn lock(&self);
+
+    unsafe fn unlock(&self);
+}
+
+/// A raw Condvar trait for no_std environments.
+/// An alternative to the Condvar trait that avoids usage of GATs.
+pub trait RawCondvar {
+    type RawMutex: RawMutex;
+
+    fn new() -> Self;
+
+    unsafe fn wait(&self, mutex: &Self::RawMutex);
+
+    unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool;
+
+    fn notify_one(&self);
+
+    fn notify_all(&self);
+}
+
+pub struct NoopRawMutex;
+
+impl RawMutex for NoopRawMutex {
+    fn new() -> Self {
+        Self
+    }
+
+    unsafe fn lock(&self) {}
+
+    unsafe fn unlock(&self) {}
+}
+
+#[cfg(feature = "std")]
+pub struct StdRawMutex(
+    std::sync::Mutex<()>,
+    RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
+);
+
+#[cfg(feature = "std")]
+impl RawMutex for StdRawMutex {
+    fn new() -> Self {
+        Self(std::sync::Mutex::new(()), RefCell::new(None))
+    }
+
+    unsafe fn lock(&self) {
+        let guard = mem::transmute(self.0.lock().unwrap());
+
+        *self.1.borrow_mut() = Some(guard);
+    }
+
+    unsafe fn unlock(&self) {
+        *self.1.borrow_mut() = None;
+    }
+}
+
+impl Drop for StdRawMutex {
+    fn drop(&mut self) {
+        unsafe {
+            self.unlock();
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+pub struct StdRawCondvar(std::sync::Condvar);
+
+#[cfg(feature = "std")]
+impl RawCondvar for StdRawCondvar {
+    type RawMutex = StdRawMutex;
+
+    fn new() -> Self {
+        Self(std::sync::Condvar::new())
+    }
+
+    unsafe fn wait(&self, mutex: &Self::RawMutex) {
+        let guard = mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+
+        let guard = self.0.wait(guard).unwrap();
+
+        *mutex.1.borrow_mut() = Some(guard);
+    }
+
+    unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool {
+        let guard = mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+
+        let (guard, wtr) = self.0.wait_timeout(guard, duration).unwrap();
+
+        *mutex.1.borrow_mut() = Some(guard);
+
+        wtr.timed_out()
+    }
+
+    fn notify_one(&self) {
+        self.0.notify_one();
+    }
+
+    fn notify_all(&self) {
+        self.0.notify_all();
+    }
+}
 
 /// A "std-like" Mutex trait for no_std environments.
 ///
@@ -49,63 +157,6 @@ pub trait Condvar: MutexFamily {
     fn notify_one(&self);
 
     fn notify_all(&self);
-}
-
-pub struct SingleThreadedMutexFamily;
-
-impl MutexFamily for SingleThreadedMutexFamily {
-    type Mutex<T> = SingleThreadedMutex<T>;
-}
-
-pub struct SingleThreadedMutex<T>(RefCell<T>);
-
-impl<T> SingleThreadedMutex<T> {
-    pub fn new(data: T) -> Self {
-        Self(RefCell::new(data))
-    }
-
-    #[inline(always)]
-    pub fn lock(&self) -> SingleThreadedMutexGuard<'_, T> {
-        SingleThreadedMutexGuard(self.0.borrow_mut())
-    }
-}
-
-impl<T> Mutex for SingleThreadedMutex<T> {
-    type Data = T;
-
-    type Guard<'a>
-    where
-        T: 'a,
-        Self: 'a,
-    = SingleThreadedMutexGuard<'a, T>;
-
-    #[inline(always)]
-    fn new(data: Self::Data) -> Self {
-        SingleThreadedMutex::new(data)
-    }
-
-    #[inline(always)]
-    fn lock(&self) -> Self::Guard<'_> {
-        SingleThreadedMutex::lock(self)
-    }
-}
-
-pub struct SingleThreadedMutexGuard<'a, T>(RefMut<'a, T>);
-
-#[allow(clippy::explicit_auto_deref)]
-impl<'a, T> Deref for SingleThreadedMutexGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
-#[allow(clippy::explicit_auto_deref)]
-impl<'a, T> DerefMut for SingleThreadedMutexGuard<'a, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.0
-    }
 }
 
 #[cfg(feature = "std")]
