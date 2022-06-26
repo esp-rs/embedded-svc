@@ -3,8 +3,9 @@
 use core::mem;
 use core::task::{Context, Poll, Waker};
 
-use crate::mutex::Mutex;
+use crate::mutex::{RawMutex, StdRawMutex};
 use crate::signal::asynch::Signal;
+use crate::utils::mutex::Mutex;
 
 #[cfg(target_has_atomic = "ptr")]
 pub use atomic_signal::*;
@@ -12,31 +13,20 @@ pub use atomic_signal::*;
 /// Synchronization primitive. Allows creating awaitable signals that may be passed between tasks.
 /// For a simple use-case where the receiver is only ever interested in the latest value of
 /// something, Signals work well.
-pub struct MutexSignal<M, T>(M)
-where
-    M: Mutex<Data = State<T>>;
+pub struct MutexSignal<R, T>(Mutex<R, State<T>>);
 
-impl<M, T> Clone for MutexSignal<M, T>
-where
-    M: Mutex<Data = State<T>> + Clone,
-{
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-pub enum State<T> {
+enum State<T> {
     None,
     Waiting(Waker),
     Signaled(T),
 }
 
-impl<M, T> MutexSignal<M, T>
+impl<R, T> MutexSignal<R, T>
 where
-    M: Mutex<Data = State<T>>,
+    R: RawMutex,
 {
     pub fn new() -> Self {
-        Self(M::new(State::None))
+        Self(Mutex::new(State::None))
     }
 
     pub fn signaled(&self) -> bool {
@@ -46,18 +36,18 @@ where
     }
 }
 
-impl<M, T> Default for MutexSignal<M, T>
+impl<R, T> Default for MutexSignal<R, T>
 where
-    M: Mutex<Data = State<T>>,
+    R: RawMutex,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<M, T> Signal for MutexSignal<M, T>
+impl<R, T> Signal for MutexSignal<R, T>
 where
-    M: Mutex<Data = State<T>>,
+    R: RawMutex,
 {
     type Data = T;
 
@@ -297,7 +287,7 @@ pub mod adapt {
 
 #[cfg(feature = "std")]
 impl crate::signal::asynch::SignalFamily for std::sync::Condvar {
-    type Signal<T> = MutexSignal<std::sync::Mutex<State<T>>, T>;
+    type Signal<T> = MutexSignal<StdRawMutex, T>;
 }
 
 #[cfg(feature = "std")]
@@ -305,5 +295,5 @@ impl crate::signal::asynch::SendSyncSignalFamily for std::sync::Condvar {
     type Signal<T>
     where
         T: Send,
-    = MutexSignal<std::sync::Mutex<State<T>>, T>;
+    = MutexSignal<StdRawMutex, T>;
 }
