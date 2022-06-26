@@ -9,8 +9,9 @@ use alloc::sync::Arc;
 
 use crate::channel::asynch::{Receiver, Sender};
 use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider};
-use crate::mutex::{Condvar, Mutex, MutexFamily};
+use crate::mutex::RawCondvar;
 use crate::unblocker::asynch::Unblocker;
+use crate::utils::mutex::{Condvar, Mutex};
 
 pub struct AsyncPostbox<U, P, PB> {
     unblocker: U,
@@ -105,16 +106,18 @@ pub struct SubscriptionState<P, S> {
 }
 
 #[allow(clippy::type_complexity)]
-pub struct AsyncSubscription<CV, P, S>(Arc<(CV::Mutex<SubscriptionState<P, S>>, CV)>)
+pub struct AsyncSubscription<CV, P, S>(
+    Arc<(Mutex<CV::RawMutex, SubscriptionState<P, S>>, Condvar<CV>)>,
+)
 where
-    CV: Condvar,
+    CV: RawCondvar,
     P: Send,
     S: Send;
 
 impl<CV, P, S> Receiver for AsyncSubscription<CV, P, S>
 where
-    CV: Condvar + Send + Sync,
-    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
+    CV: RawCondvar + Send + Sync,
+    CV::RawMutex: Send + Sync,
     S: Send,
     P: Clone + Send,
 {
@@ -132,15 +135,15 @@ where
 
 pub struct NextFuture<'a, CV, P, S>(&'a AsyncSubscription<CV, P, S>)
 where
-    CV: Condvar + Send + Sync,
-    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
+    CV: RawCondvar + Send + Sync,
+    CV::RawMutex: Send + Sync,
     P: Clone + Send,
     S: Send;
 
 impl<'a, CV, P, S> Drop for NextFuture<'a, CV, P, S>
 where
-    CV: Condvar + Send + Sync,
-    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
+    CV: RawCondvar + Send + Sync,
+    CV::RawMutex: Send + Sync,
     P: Clone + Send,
     S: Send,
 {
@@ -152,8 +155,8 @@ where
 
 impl<'a, CV, P, S> Future for NextFuture<'a, CV, P, S>
 where
-    CV: Condvar + Send + Sync,
-    <CV as MutexFamily>::Mutex<SubscriptionState<P, S>>: Send + Sync,
+    CV: RawCondvar + Send + Sync,
+    CV::RawMutex: Send + Sync,
     P: Clone + Send,
     S: Send,
 {
@@ -229,29 +232,29 @@ where
 
 impl<U, CV, P, E> EventBus<P> for AsyncEventBus<U, CV, E>
 where
-    CV: Condvar + Send + Sync + 'static,
-    CV::Mutex<SubscriptionState<P, E::Subscription>>: Send + Sync + 'static,
-    P: Clone + Send,
+    CV: RawCondvar + Send + Sync + 'static,
+    CV::RawMutex: Send + Sync + 'static,
+    P: Clone + Send + 'static,
     E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send,
+    E::Subscription: Send + 'static,
 {
     type Subscription = AsyncSubscription<CV, P, E::Subscription>;
 
     fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error> {
         let state = Arc::new((
-            CV::Mutex::new(SubscriptionState {
+            Mutex::new(SubscriptionState {
                 subscription: None,
                 value: None,
                 waker: None,
             }),
-            CV::new(),
+            Condvar::new(),
         ));
 
         let subscription_state = Arc::downgrade(&state);
 
         let subscription = self.event_bus.subscribe(move |payload| {
             if let Some(state) = subscription_state.upgrade() {
-                let pair: &(CV::Mutex<_>, CV) = &state;
+                let pair: &(Mutex<CV::RawMutex, _>, Condvar<CV>) = &state;
 
                 let (mut state, condvar) = (pair.0.lock(), &pair.1);
 
@@ -280,7 +283,7 @@ where
 impl<U, CV, P, E> PostboxProvider<P> for AsyncEventBus<U, CV, E>
 where
     U: Unblocker + Clone,
-    CV: Condvar + Send + Sync + 'static,
+    CV: RawCondvar + Send + Sync + 'static,
     P: Clone + Send + 'static,
     E::Postbox: Clone + Send + 'static,
     E: crate::event_bus::PostboxProvider<P>,
@@ -297,7 +300,7 @@ where
 
 impl<CV, P, E> PostboxProvider<P> for AsyncEventBus<(), CV, E>
 where
-    CV: Condvar + Send + Sync + 'static,
+    CV: RawCondvar + Send + Sync + 'static,
     P: Clone + Send + 'static,
     E::Postbox: Clone + Send + 'static,
     E: crate::event_bus::PostboxProvider<P>,
