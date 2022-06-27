@@ -12,8 +12,9 @@ use alloc::vec::Vec;
 use crate::mqtt::client::asynch::{Client, Connection, Event, MessageId, Publish, QoS};
 use crate::mqtt::client::utils::ConnStateGuard;
 use crate::mqtt::client::ErrorType;
-use crate::mutex::{Condvar, Mutex, MutexFamily};
+use crate::mutex::{RawCondvar, RawMutex};
 use crate::unblocker::asynch::Unblocker;
+use crate::utils::mutex::Mutex;
 
 async fn enqueue_publish<'a, E>(
     enqueue: &'a mut E,
@@ -67,19 +68,19 @@ impl<U, W> AsyncClient<U, W> {
     }
 }
 
-impl<U, M, C> ErrorType for AsyncClient<U, Arc<M>>
+impl<U, R, C> ErrorType for AsyncClient<U, Arc<Mutex<R, C>>>
 where
-    M: Mutex<Data = C>,
+    R: RawMutex,
     C: ErrorType,
 {
     type Error = C::Error;
 }
 
-impl<U, M, C> Client for AsyncClient<U, Arc<M>>
+impl<U, R, C> Client for AsyncClient<U, Arc<Mutex<R, C>>>
 where
     U: Unblocker,
-    M: Mutex<Data = C> + Send + Sync + 'static,
-    C: crate::mqtt::client::Client,
+    R: RawMutex + Send + Sync + 'static,
+    C: crate::mqtt::client::Client + Send + 'static,
     C::Error: Clone,
     Self::Error: Send + Sync + 'static,
 {
@@ -108,11 +109,11 @@ where
     }
 }
 
-impl<U, M, C> Publish for AsyncClient<U, Arc<M>>
+impl<U, R, C> Publish for AsyncClient<U, Arc<Mutex<R, C>>>
 where
     U: Unblocker,
-    M: Mutex<Data = C> + Send + Sync + 'static,
-    C: crate::mqtt::client::Publish,
+    R: RawMutex + Send + Sync + 'static,
+    C: crate::mqtt::client::Publish + Send + 'static,
     C::Error: Clone,
     Self::Error: Send + Sync + 'static,
 {
@@ -137,12 +138,13 @@ where
     }
 }
 
-impl<U, M, C> crate::utils::asyncify::UnblockingAsyncWrapper<U, C> for AsyncClient<U, Arc<M>>
+impl<U, R, C> crate::utils::asyncify::UnblockingAsyncWrapper<U, C>
+    for AsyncClient<U, Arc<Mutex<R, C>>>
 where
-    M: Mutex<Data = C>,
+    R: RawMutex,
 {
     fn new(unblocker: U, sync: C) -> Self {
-        AsyncClient::new(unblocker, Arc::new(M::new(sync)))
+        AsyncClient::new(unblocker, Arc::new(Mutex::new(sync)))
     }
 }
 
@@ -280,13 +282,13 @@ impl<M, E> Default for AsyncConnState<M, E> {
 
 pub struct NextFuture<'a, CV, M, E>(&'a ConnStateGuard<CV, AsyncConnState<M, E>>)
 where
-    CV: Condvar + 'a,
+    CV: RawCondvar + 'a,
     M: 'a,
     E: 'a;
 
 impl<'a, CV, M, E> Future for NextFuture<'a, CV, M, E>
 where
-    CV: Condvar + 'a,
+    CV: RawCondvar + 'a,
     M: 'a,
     E: 'a,
 {
@@ -319,11 +321,11 @@ where
 
 pub struct AsyncPostbox<CV, M, E>(Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>)
 where
-    CV: Condvar;
+    CV: RawCondvar;
 
 impl<CV, M, E> AsyncPostbox<CV, M, E>
 where
-    CV: Condvar,
+    CV: RawCondvar,
     M: Send,
     E: Send,
 {
@@ -354,11 +356,11 @@ where
 
 pub struct AsyncConnection<CV, M, E>(Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>)
 where
-    CV: Condvar;
+    CV: RawCondvar;
 
 impl<CV, M, E> AsyncConnection<CV, M, E>
 where
-    CV: Condvar,
+    CV: RawCondvar,
 {
     pub fn new(connection_state: Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>) -> Self {
         Self(connection_state)
@@ -367,7 +369,7 @@ where
 
 impl<CV, M, E> Drop for AsyncConnection<CV, M, E>
 where
-    CV: Condvar,
+    CV: RawCondvar,
 {
     fn drop(&mut self) {
         self.0.close();
@@ -376,7 +378,7 @@ where
 
 impl<CV, M, E> ErrorType for AsyncConnection<CV, M, E>
 where
-    CV: Condvar,
+    CV: RawCondvar,
     E: Debug,
 {
     type Error = E;
@@ -384,9 +386,10 @@ where
 
 impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
 where
-    CV: Condvar + Send + Sync + 'static,
-    <CV as MutexFamily>::Mutex<Option<AsyncConnState<M, E>>>: Sync + 'static,
-    E: Debug,
+    CV: RawCondvar + Send + Sync + 'static,
+    CV::RawMutex: Sync + 'static,
+    M: Send,
+    E: Debug + Send + 'static,
 {
     type Message = M;
 

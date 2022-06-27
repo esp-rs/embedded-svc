@@ -14,8 +14,9 @@ use heapless;
 
 use log::info;
 
-use crate::mutex::*;
+use crate::mutex::RawCondvar;
 use crate::unblocker::asynch::Unblocker;
+use crate::utils::mutex::{Condvar, Mutex};
 use crate::ws::{server::*, *};
 
 pub struct AsyncSender<U, S> {
@@ -103,7 +104,7 @@ pub struct ConnectionState<M, S> {
 
 pub struct AsyncReceiverFuture<'a, C, E>
 where
-    C: Condvar,
+    C: RawCondvar,
 {
     receiver: &'a mut AsyncReceiver<C, E>,
     frame_data_buf: &'a mut [u8],
@@ -111,7 +112,7 @@ where
 
 impl<'a, C, E> Future for AsyncReceiverFuture<'a, C, E>
 where
-    C: Condvar,
+    C: RawCondvar,
 {
     type Output = Result<(FrameType, usize), E>;
 
@@ -145,16 +146,16 @@ where
 
 pub struct AsyncReceiver<C, E>
 where
-    C: Condvar,
+    C: RawCondvar,
 {
     _error: PhantomData<fn() -> E>,
-    shared: Arc<C::Mutex<SharedReceiverState>>,
-    condvar: Arc<C>,
+    shared: Arc<Mutex<C::RawMutex, SharedReceiverState>>,
+    condvar: Arc<Condvar<C>>,
 }
 
 impl<C, E> ErrorType for AsyncReceiver<C, E>
 where
-    C: Condvar,
+    C: RawCondvar,
     E: Debug,
 {
     type Error = E;
@@ -162,8 +163,8 @@ where
 
 impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
 where
-    C: Condvar + Send + Sync,
-    <C as MutexFamily>::Mutex<SharedReceiverState>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     E: Debug,
 {
     type ReceiveFuture<'a>
@@ -182,31 +183,29 @@ where
 #[allow(clippy::type_complexity)]
 pub struct SharedAcceptorState<C, S>
 where
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: Send,
 {
     waker: Option<Waker>,
-    data: Option<Option<(Arc<C::Mutex<SharedReceiverState>>, S)>>,
+    data: Option<Option<(Arc<Mutex<C::RawMutex, SharedReceiverState>>, S)>>,
 }
 
 pub struct AsyncAcceptor<U, C, S>
 where
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
-    C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: Send,
 {
     unblocker: U,
-    accept: Arc<C::Mutex<SharedAcceptorState<C, S>>>,
-    condvar: Arc<C>,
+    accept: Arc<Mutex<C::RawMutex, SharedAcceptorState<C, S>>>,
+    condvar: Arc<Condvar<C>>,
 }
 
 impl<U, C, S> ErrorType for AsyncAcceptor<U, C, S>
 where
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
-    C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: Send + ErrorType,
 {
     type Error = <S as ErrorType>::Error;
@@ -215,9 +214,8 @@ where
 impl<'a, U, C, S> Future for &'a mut AsyncAcceptor<U, C, S>
 where
     U: Clone,
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
-    C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: Sender + Send + Clone + 'static,
 {
     type Output = Result<
@@ -260,9 +258,8 @@ where
 impl<U, C, S> asynch::Acceptor for AsyncAcceptor<U, C, S>
 where
     U: Unblocker + Clone + Send,
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
-    C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: Sender + SessionProvider + Send + Clone + 'static,
     S::Error: Send + Sync + 'static,
 {
@@ -282,9 +279,8 @@ where
 
 impl<C, S> asynch::Acceptor for AsyncAcceptor<(), C, S>
 where
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
-    C::Mutex<SharedAcceptorState<C, S>>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: Sender + SessionProvider + Send + Clone + 'static,
 {
     type Sender = AsyncSender<(), S>;
@@ -303,24 +299,23 @@ where
 
 pub struct Processor<C, S, R, const N: usize, const F: usize>
 where
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
-    C::Mutex<SharedAcceptorState<C, S::Sender>>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: SenderFactory,
     S::Sender: Send,
     R: SessionProvider,
 {
-    connections: heapless::Vec<ConnectionState<C::Mutex<SharedReceiverState>, R::Session>, N>,
+    connections:
+        heapless::Vec<ConnectionState<Mutex<C::RawMutex, SharedReceiverState>, R::Session>, N>,
     frame_data_buf: [u8; F],
-    accept: Arc<C::Mutex<SharedAcceptorState<C, S::Sender>>>,
-    condvar: Arc<C>,
+    accept: Arc<Mutex<C::RawMutex, SharedAcceptorState<C, S::Sender>>>,
+    condvar: Arc<Condvar<C>>,
 }
 
 impl<C, S, R, const N: usize, const F: usize> Processor<C, S, R, N, F>
 where
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
-    C::Mutex<SharedAcceptorState<C, S::Sender>>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: SenderFactory,
     S::Sender: Send,
     R: SessionProvider,
@@ -329,11 +324,11 @@ where
         let this = Self {
             connections: heapless::Vec::new(),
             frame_data_buf: [0_u8; F],
-            accept: Arc::new(C::Mutex::new(SharedAcceptorState {
+            accept: Arc::new(Mutex::new(SharedAcceptorState {
                 waker: None,
                 data: None,
             })),
-            condvar: Arc::new(C::new()),
+            condvar: Arc::new(Condvar::new()),
         };
 
         let acceptor = AsyncAcceptor {
@@ -395,7 +390,7 @@ where
 
     fn process_accept<'a>(&'a mut self, session: R::Session, sender: &'a mut S) -> bool {
         if self.connections.len() < F {
-            let receiver_state = Arc::new(C::Mutex::new(SharedReceiverState {
+            let receiver_state = Arc::new(Mutex::new(SharedReceiverState {
                 waker: None,
                 data: ReceiverData::None,
             }));
@@ -429,7 +424,7 @@ where
 
     fn process_receive(
         &self,
-        state: &C::Mutex<SharedReceiverState>,
+        state: &Mutex<C::RawMutex, SharedReceiverState>,
         frame_type: FrameType,
         len: usize,
     ) {
@@ -469,7 +464,7 @@ where
         }
     }
 
-    fn process_receive_close(state: &C::Mutex<SharedReceiverState>) {
+    fn process_receive_close(state: &Mutex<C::RawMutex, SharedReceiverState>) {
         let mut shared = state.lock();
 
         shared.data = ReceiverData::Closed;
@@ -482,9 +477,8 @@ where
 
 impl<C, S, R, const N: usize, const F: usize> Drop for Processor<C, S, R, N, F>
 where
-    C: Condvar + Send + Sync,
-    C::Mutex<SharedReceiverState>: Send + Sync,
-    C::Mutex<SharedAcceptorState<C, S::Sender>>: Send + Sync,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
     S: SenderFactory,
     S::Sender: Send,
     R: SessionProvider,

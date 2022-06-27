@@ -267,33 +267,36 @@ pub mod utils {
 
     use alloc::sync::Arc;
 
-    use crate::mutex::{Condvar, Mutex};
+    use crate::{
+        mutex::RawCondvar,
+        utils::mutex::{Condvar, Mutex},
+    };
 
     use super::{ErrorType, Event};
 
     pub struct ConnStateGuard<CV, S>
     where
-        CV: Condvar,
+        CV: RawCondvar,
     {
-        pub state: CV::Mutex<Option<S>>,
-        pub state_changed: CV,
+        pub state: Mutex<CV::RawMutex, Option<S>>,
+        pub state_changed: Condvar<CV>,
     }
 
     impl<CV, S> ConnStateGuard<CV, S>
     where
-        CV: Condvar,
+        CV: RawCondvar,
     {
         pub fn new(state: S) -> Self {
             Self {
-                state: CV::Mutex::new(Some(state)),
-                state_changed: CV::new(),
+                state: Mutex::new(Some(state)),
+                state_changed: Condvar::new(),
             }
         }
     }
 
     impl<CV, S> ConnStateGuard<CV, S>
     where
-        CV: Condvar,
+        CV: RawCondvar,
         S: Default,
     {
         pub fn new_default() -> Self {
@@ -303,7 +306,7 @@ pub mod utils {
 
     impl<CV, S> ConnStateGuard<CV, S>
     where
-        CV: Condvar,
+        CV: RawCondvar,
     {
         pub fn close(&self) {
             let mut state = self.state.lock();
@@ -315,7 +318,7 @@ pub mod utils {
 
     impl<CV, S> Default for ConnStateGuard<CV, S>
     where
-        CV: Condvar,
+        CV: RawCondvar,
         S: Default,
     {
         fn default() -> Self {
@@ -333,11 +336,11 @@ pub mod utils {
 
     pub struct Postbox<CV, M, E>(Arc<ConnStateGuard<CV, ConnState<M, E>>>)
     where
-        CV: Condvar;
+        CV: RawCondvar;
 
     impl<CV, M, E> Postbox<CV, M, E>
     where
-        CV: Condvar,
+        CV: RawCondvar,
     {
         pub fn new(connection_state: Arc<ConnStateGuard<CV, ConnState<M, E>>>) -> Self {
             Self(connection_state)
@@ -365,11 +368,11 @@ pub mod utils {
 
     pub struct Connection<CV, M, E>(Arc<ConnStateGuard<CV, ConnState<M, E>>>)
     where
-        CV: Condvar;
+        CV: RawCondvar;
 
     impl<CV, M, E> Connection<CV, M, E>
     where
-        CV: Condvar,
+        CV: RawCondvar,
         E: Debug,
     {
         pub fn new(connection_state: Arc<ConnStateGuard<CV, ConnState<M, E>>>) -> Self {
@@ -379,7 +382,7 @@ pub mod utils {
 
     impl<CV, M, E> ErrorType for Connection<CV, M, E>
     where
-        CV: Condvar,
+        CV: RawCondvar,
         E: Debug,
     {
         type Error = E;
@@ -387,7 +390,7 @@ pub mod utils {
 
     impl<CV, M, E> super::Connection for Connection<CV, M, E>
     where
-        CV: Condvar,
+        CV: RawCondvar,
         E: Debug,
     {
         type Message = M;
