@@ -226,10 +226,10 @@ pub mod adapt {
     use crate::channel::asynch::{Receiver, Sender};
     use crate::signal::asynch::Signal;
 
-    pub fn as_channel<S, T>(signal: &'static S) -> SignalChannel<'static, S, T>
+    pub fn as_channel<'a, S, T>(signal: &'a S) -> SignalChannel<'a, S, T>
     where
-        S: Signal<Data = T> + Send + Sync,
-        T: Send + 'static,
+        S: Signal<Data = T> + Send + Sync + 'a,
+        T: Send + 'a,
     {
         SignalChannel::new(signal)
     }
@@ -250,7 +250,7 @@ pub mod adapt {
     impl<'s, S, T> Sender for SignalChannel<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync + 's,
-        T: Send,
+        T: Send + 's,
     {
         type Data = T;
 
@@ -274,7 +274,7 @@ pub mod adapt {
     impl<'s, S, T> Receiver for SignalChannel<'s, S, T>
     where
         S: Signal<Data = T> + Send + Sync + 's,
-        T: Send,
+        T: Send + 's,
     {
         type Data = T;
 
