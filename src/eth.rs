@@ -26,7 +26,7 @@ pub enum Capability {
     Router,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Configuration {
     None,
@@ -41,7 +41,7 @@ pub trait TransitionalState<T> {
     fn get_operating(&self) -> Option<&T>;
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum IpStatus {
     Disabled,
@@ -67,7 +67,7 @@ impl TransitionalState<Option<ipv4::ClientSettings>> for IpStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ConnectionStatus {
     Disconnected,
@@ -98,7 +98,7 @@ impl TransitionalState<IpStatus> for ConnectionStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Status {
     Stopped,

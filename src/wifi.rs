@@ -136,7 +136,7 @@ impl Default for SecondaryChannel {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointInfo {
     pub ssid: heapless::String<30>,
@@ -148,7 +148,7 @@ pub struct AccessPointInfo {
     pub auth_method: AuthMethod,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointConfiguration {
     pub ssid: heapless::String<30>,
@@ -199,7 +199,7 @@ impl Default for AccessPointConfiguration {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
     pub ssid: heapless::String<30>,
@@ -268,7 +268,7 @@ pub enum Capability {
     Mixed,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Configuration {
     None,
@@ -377,7 +377,7 @@ pub trait TransitionalState<T> {
     fn get_operating(&self) -> Option<&T>;
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientIpStatus {
     Disabled,
@@ -403,7 +403,7 @@ impl TransitionalState<ipv4::ClientSettings> for ClientIpStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientConnectionStatus {
     Disconnected,
@@ -434,7 +434,7 @@ impl TransitionalState<ClientIpStatus> for ClientConnectionStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientStatus {
     Stopped,
@@ -465,7 +465,7 @@ impl TransitionalState<ClientConnectionStatus> for ClientStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ApIpStatus {
     Disabled,
@@ -491,7 +491,7 @@ impl TransitionalState<()> for ApIpStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ApStatus {
     Stopped,
@@ -522,7 +522,7 @@ impl TransitionalState<ApIpStatus> for ApStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Status(pub ClientStatus, pub ApStatus);
 
