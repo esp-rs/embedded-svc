@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ipv4;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Configuration {
     pub count: u32,
@@ -28,7 +28,7 @@ impl Default for Configuration {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Info {
     pub addr: ipv4::Ipv4Addr,
@@ -38,14 +38,14 @@ pub struct Info {
     pub recv_len: u32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Reply {
     Timeout,
     Success(Info),
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Summary {
     pub transmitted: u32,

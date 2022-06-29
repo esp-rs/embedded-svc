@@ -72,11 +72,11 @@ where
     type Error = EitherError<R::Error, S::Error>;
 
     fn contains(&self, name: &str) -> Result<bool, Self::Error> {
-        Ok(self.raw_storage.contains(name).map_err(EitherError::E1)?)
+        self.raw_storage.contains(name).map_err(EitherError::E1)
     }
 
     fn remove(&mut self, name: &str) -> Result<bool, Self::Error> {
-        Ok(self.raw_storage.remove(name).map_err(EitherError::E1)?)
+        self.raw_storage.remove(name).map_err(EitherError::E1)
     }
 }
 
@@ -113,10 +113,7 @@ where
             .serialize(&mut buf, value)
             .map_err(EitherError::E2)?;
 
-        Ok(self
-            .raw_storage
-            .put_raw(name, buf)
-            .map_err(EitherError::E1)?)
+        self.raw_storage.put_raw(name, buf).map_err(EitherError::E1)
     }
 }
 
