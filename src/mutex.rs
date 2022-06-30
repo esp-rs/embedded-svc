@@ -1,5 +1,3 @@
-use core::cell::RefCell;
-use core::mem;
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
@@ -8,8 +6,13 @@ use core::time::Duration;
 pub trait RawMutex {
     fn new() -> Self;
 
+    /// # Safety
+    /// - This method should NOT be called while the mutex is being waited on in a condvar
     unsafe fn lock(&self);
 
+    /// # Safety
+    /// - This method should NOT be called while the mutex is being waited on in a condvar
+    /// - This method should only be called by the entity currently holding the mutex (i.e. the entity which successfully called `lock` earlier)
     unsafe fn unlock(&self);
 }
 
@@ -20,8 +23,12 @@ pub trait RawCondvar {
 
     fn new() -> Self;
 
+    /// # Safety
+    /// - This method should be called only when the mutex is already locked, and by the entity which locked the mutex
     unsafe fn wait(&self, mutex: &Self::RawMutex);
 
+    /// # Safety
+    /// - This method should be called only when the mutex is already locked, and by the entity which locked the mutex
     unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool;
 
     fn notify_one(&self);
@@ -44,17 +51,17 @@ impl RawMutex for NoopRawMutex {
 #[cfg(feature = "std")]
 pub struct StdRawMutex(
     std::sync::Mutex<()>,
-    RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
+    core::cell::RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
 );
 
 #[cfg(feature = "std")]
 impl RawMutex for StdRawMutex {
     fn new() -> Self {
-        Self(std::sync::Mutex::new(()), RefCell::new(None))
+        Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None))
     }
 
     unsafe fn lock(&self) {
-        let guard = mem::transmute(self.0.lock().unwrap());
+        let guard = core::mem::transmute(self.0.lock().unwrap());
 
         *self.1.borrow_mut() = Some(guard);
     }
@@ -64,6 +71,7 @@ impl RawMutex for StdRawMutex {
     }
 }
 
+#[cfg(feature = "std")]
 impl Drop for StdRawMutex {
     fn drop(&mut self) {
         unsafe {
@@ -84,7 +92,7 @@ impl RawCondvar for StdRawCondvar {
     }
 
     unsafe fn wait(&self, mutex: &Self::RawMutex) {
-        let guard = mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+        let guard = core::mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
 
         let guard = self.0.wait(guard).unwrap();
 
@@ -92,7 +100,7 @@ impl RawCondvar for StdRawCondvar {
     }
 
     unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool {
-        let guard = mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+        let guard = core::mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
 
         let (guard, wtr) = self.0.wait_timeout(guard, duration).unwrap();
 
