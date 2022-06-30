@@ -8,11 +8,11 @@ use core::time::Duration;
 pub trait RawMutex {
     fn new() -> Self;
 
-    // # Safety:
+    // # Safety
     // - This method should NOT be called while the mutex is being waited on in a condvar
     unsafe fn lock(&self);
 
-    // # Safety:
+    // # Safety
     // - This method should NOT be called while the mutex is being waited on in a condvar
     // - This method should only be called by the entity currently holding the mutex (i.e. the entity which successfully called `lock` earlier)
     unsafe fn unlock(&self);
@@ -25,11 +25,11 @@ pub trait RawCondvar {
 
     fn new() -> Self;
 
-    // # Safety:
+    // # Safety
     // - This method should be called only when the mutex is already locked, and by the entity which locked the mutex
     unsafe fn wait(&self, mutex: &Self::RawMutex);
 
-    // # Safety:
+    // # Safety
     // - This method should be called only when the mutex is already locked, and by the entity which locked the mutex
     unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool;
 
