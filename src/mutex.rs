@@ -92,6 +92,7 @@ impl<T> Mutex for SingleThreadedMutex<T> {
 
 pub struct SingleThreadedMutexGuard<'a, T>(RefMut<'a, T>);
 
+#[allow(clippy::explicit_auto_deref)]
 impl<'a, T> Deref for SingleThreadedMutexGuard<'a, T> {
     type Target = T;
 
@@ -100,6 +101,7 @@ impl<'a, T> Deref for SingleThreadedMutexGuard<'a, T> {
     }
 }
 
+#[allow(clippy::explicit_auto_deref)]
 impl<'a, T> DerefMut for SingleThreadedMutexGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut *self.0
