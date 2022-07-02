@@ -1,9 +1,10 @@
-use core::fmt::Write;
+use core::fmt::Write as _;
 
 use crate::http::server::middleware::Middleware;
 use crate::http::server::registry::Registry;
 use crate::http::server::Response;
 use crate::http::server::{Handler, HandlerError, Request};
+use crate::io::Write;
 use crate::mutex::*;
 
 pub struct WithCaptivePortalMiddleware<M, F> {
@@ -97,7 +98,8 @@ where
     .unwrap();
 
     resp.content_type("application/captive+json")
-        .send_str(&data)?;
+        .into_writer()?
+        .write_all(data.as_bytes())?;
 
     Ok(())
 }

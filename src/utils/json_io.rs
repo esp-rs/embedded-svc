@@ -1,6 +1,7 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::io::{self, Read, Write};
+use crate::io::{Read, Write};
+use crate::utils::io::*;
 
 #[derive(Debug)]
 pub enum SerdeError<E> {
@@ -14,9 +15,9 @@ where
     R: Read,
     T: Deserialize<'a>,
 {
-    let (buf, _) = io::read_max(read, buf).map_err(SerdeError::IoError)?;
+    let read_len = try_read_full(read, buf).map_err(|(e, _)| SerdeError::IoError(e))?;
 
-    let result = serde_json::from_slice(buf).map_err(|_| SerdeError::SerdeError)?;
+    let result = serde_json::from_slice(&buf[..read_len]).map_err(|_| SerdeError::SerdeError)?;
 
     Ok(result)
 }
@@ -29,9 +30,9 @@ where
 {
     let mut buf = [0_u8; N];
 
-    let (buf, _) = io::read_max(read, &mut buf).map_err(SerdeError::IoError)?;
+    let read_len = try_read_full(read, &mut buf).map_err(|(e, _)| SerdeError::IoError(e))?;
 
-    let result = serde_json::from_slice(buf).map_err(|_| SerdeError::SerdeError)?;
+    let result = serde_json::from_slice(&buf[..read_len]).map_err(|_| SerdeError::SerdeError)?;
 
     Ok(result)
 }
@@ -58,7 +59,7 @@ where
 {
     req.set_header("Content-Type", "application/json");
 
-    let mut writer = req.into_writer(0 /*TODO*/).map_err(SerdeError::IoError)?;
+    let mut writer = req.into_writer().map_err(SerdeError::IoError)?;
 
     write::<N, _, _>(&mut writer, value)?;
 
@@ -86,7 +87,8 @@ where
 pub mod asynch {
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-    use crate::io::asynch::{self, Read, Write};
+    use crate::io::asynch::{Read, Write};
+    use crate::utils::io::asynch::*;
 
     pub use super::SerdeError;
 
@@ -96,11 +98,12 @@ pub mod asynch {
         R: Read,
         T: Deserialize<'a>,
     {
-        let (buf, _) = asynch::read_max(read, buf)
+        let read_len = try_read_full(read, buf)
             .await
-            .map_err(SerdeError::IoError)?;
+            .map_err(|(e, _)| SerdeError::IoError(e))?;
 
-        let result = serde_json::from_slice(buf).map_err(|_| SerdeError::SerdeError)?;
+        let result =
+            serde_json::from_slice(&buf[..read_len]).map_err(|_| SerdeError::SerdeError)?;
 
         Ok(result)
     }
@@ -113,11 +116,12 @@ pub mod asynch {
     {
         let mut buf = [0_u8; N];
 
-        let (buf, _) = asynch::read_max(read, &mut buf)
+        let read_len = try_read_full(read, &mut buf)
             .await
-            .map_err(SerdeError::IoError)?;
+            .map_err(|(e, _)| SerdeError::IoError(e))?;
 
-        let result = serde_json::from_slice(buf).map_err(|_| SerdeError::SerdeError)?;
+        let result =
+            serde_json::from_slice(&buf[..read_len]).map_err(|_| SerdeError::SerdeError)?;
 
         Ok(result)
     }

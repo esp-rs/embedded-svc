@@ -1,8 +1,8 @@
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::errors::wrap::EitherError;
 use crate::io::{self, Io, Read, Write};
+use crate::utils::io::*;
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -89,20 +89,17 @@ pub trait OtaUpdate: Write {
         mut self,
         read: R,
         progress: impl Fn(u64, u64),
-    ) -> Result<(), EitherError<Self::Error, R::Error>>
+    ) -> Result<(), CopyError<R::Error, Self::Error>>
     where
         R: Read,
         Self: Sized,
     {
-        match io::copy_len_with_progress::<64, _, _, _>(read, &mut self, u64::MAX, progress) {
-            Ok(_) => self.complete().map_err(EitherError::E1),
-            Err(e) => {
-                self.abort().map_err(EitherError::E1)?;
+        let mut buf = [0_u8; 64];
 
-                let e = match e {
-                    EitherError::E1(e) => EitherError::E2(e),
-                    EitherError::E2(e) => EitherError::E1(e),
-                };
+        match copy_len_with_progress(read, &mut self, &mut buf, u64::MAX, progress) {
+            Ok(_) => self.complete().map_err(CopyError::Write),
+            Err(e) => {
+                self.abort().map_err(CopyError::Write)?;
 
                 Err(e)
             }
@@ -135,8 +132,8 @@ pub trait OtaServer: Io {
 pub mod asynch {
     use core::future::Future;
 
-    use crate::errors::wrap::EitherError;
-    use crate::io::{self, asynch::Read, asynch::Write, Io};
+    use crate::io::asynch::{Io, Read, Write};
+    use crate::utils::io::asynch::*;
 
     pub use super::{FirmwareInfo, FirmwareInfoLoader, LoadResult, SlotState};
 
@@ -203,7 +200,7 @@ pub mod asynch {
 
         type AbortFuture: Future<Output = Result<(), Self::Error>>;
 
-        type UpdateFuture<R>: Future<Output = Result<(), EitherError<Self::Error, R::Error>>>
+        type UpdateFuture<R>: Future<Output = Result<(), CopyError<R::Error, Self::Error>>>
         where
             R: Read;
 
@@ -217,7 +214,7 @@ pub mod asynch {
             Self: Sized;
     }
 
-    pub trait OtaRead: io::asynch::Read {
+    pub trait OtaRead: Read {
         fn size(&self) -> Option<usize>;
     }
 

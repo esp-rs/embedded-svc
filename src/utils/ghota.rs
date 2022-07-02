@@ -129,40 +129,36 @@ where
     fn get_gh_releases_n<const N: usize>(
         &mut self,
     ) -> Result<(heapless::Vec<Release<'_>, N>, &str), Error<C::Error>> {
-        let mut response = self
+        let response = self
             .client
             .get(&join::<U, _>(&self.base_url, "releases")?)
             .map_err(Error::Http)?
             .submit()
             .map_err(Error::Http)?;
 
-        let read = response.reader();
-
         let releases =
-            json_io::read_buf::<_, heapless::Vec<Release<'_>, N>>(read, &mut self.buf).unwrap(); // TODO
+            json_io::read_buf::<_, heapless::Vec<Release<'_>, N>>(response, &mut self.buf).unwrap(); // TODO
 
         Ok((releases, self.label))
     }
 
     #[cfg(feature = "alloc")]
     fn get_gh_releases(&mut self) -> Result<(alloc::vec::Vec<Release<'_>>, &str), Error<C::Error>> {
-        let mut response = self
+        let response = self
             .client
             .get(&join::<U, _>(&self.base_url, "releases")?)
             .map_err(Error::Http)?
             .submit()
             .map_err(Error::Http)?;
 
-        let read = response.reader();
-
         let releases =
-            json_io::read_buf::<_, alloc::vec::Vec<Release<'_>>>(read, &mut self.buf).unwrap(); // TODO
+            json_io::read_buf::<_, alloc::vec::Vec<Release<'_>>>(response, &mut self.buf).unwrap(); // TODO
 
         Ok((releases, self.label))
     }
 
     fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, Error<C::Error>> {
-        let mut response = self
+        let response = self
             .client
             .get(&join::<U, _>(
                 &join::<U, _>(&self.base_url, "release")?,
@@ -172,9 +168,7 @@ where
             .submit()
             .map_err(Error::Http)?;
 
-        let read = response.reader();
-
-        let release = json_io::read_buf::<_, Option<Release<'_>>>(read, &mut self.buf).unwrap(); // TODO
+        let release = json_io::read_buf::<_, Option<Release<'_>>>(response, &mut self.buf).unwrap(); // TODO
 
         Ok(release)
     }
@@ -206,7 +200,7 @@ where
     R: Response,
 {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.response.reader().read(buf).map_err(Error::Http)
+        self.response.read(buf).map_err(Error::Http)
     }
 }
 
@@ -378,7 +372,7 @@ pub mod asynch {
         async fn get_gh_releases_n<const N: usize>(
             &mut self,
         ) -> Result<(heapless::Vec<Release<'_>, N>, &str), Error<C::Error>> {
-            let mut response = self
+            let response = self
                 .client
                 .get(&join::<U, _>(&self.base_url, "releases")?)
                 .await
@@ -387,10 +381,8 @@ pub mod asynch {
                 .await
                 .map_err(Error::Http)?;
 
-            let read = response.reader();
-
             let releases =
-                json_io::read_buf::<_, heapless::Vec<Release<'_>, N>>(read, &mut self.buf)
+                json_io::read_buf::<_, heapless::Vec<Release<'_>, N>>(response, &mut self.buf)
                     .await
                     .unwrap(); // TODO
 
@@ -401,7 +393,7 @@ pub mod asynch {
         async fn get_gh_releases(
             &mut self,
         ) -> Result<(alloc::vec::Vec<Release<'_>>, &str), Error<C::Error>> {
-            let mut response = self
+            let response = self
                 .client
                 .get(&join::<U, _>(&self.base_url, "releases")?)
                 .await
@@ -410,10 +402,8 @@ pub mod asynch {
                 .await
                 .map_err(Error::Http)?;
 
-            let read = response.reader();
-
             let releases =
-                json_io::read_buf::<_, alloc::vec::Vec<Release<'_>>>(read, &mut self.buf)
+                json_io::read_buf::<_, alloc::vec::Vec<Release<'_>>>(response, &mut self.buf)
                     .await
                     .unwrap(); // TODO
 
@@ -421,7 +411,7 @@ pub mod asynch {
         }
 
         async fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, Error<C::Error>> {
-            let mut response = self
+            let response = self
                 .client
                 .get(&join::<U, _>(
                     &join::<U, _>(&self.base_url, "release")?,
@@ -433,9 +423,7 @@ pub mod asynch {
                 .await
                 .map_err(Error::Http)?;
 
-            let read = response.reader();
-
-            let release = json_io::read_buf::<_, Option<Release<'_>>>(read, &mut self.buf)
+            let release = json_io::read_buf::<_, Option<Release<'_>>>(response, &mut self.buf)
                 .await
                 .unwrap(); // TODO
 
@@ -474,7 +462,7 @@ pub mod asynch {
         = impl Future<Output = Result<usize, Self::Error>>;
 
         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'_> {
-            async move { self.response.reader().read(buf).await.map_err(Error::Http) }
+            async move { self.response.read(buf).await.map_err(Error::Http) }
         }
     }
 
