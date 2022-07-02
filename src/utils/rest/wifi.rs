@@ -84,11 +84,11 @@ pub fn get_configuration(
 }
 
 pub fn set_configuration(
-    mut req: impl Request,
+    req: impl Request,
     _resp: impl Response,
     wifi: &impl Mutex<Data = impl wifi::Wifi>,
 ) -> Result<(), HandlerError> {
-    let conf: wifi::Configuration = json_io::read::<1024, _, _>(req.reader())?;
+    let conf: wifi::Configuration = json_io::read::<1024, _, _>(req)?;
 
     wifi.lock().set_configuration(&conf)?;
 

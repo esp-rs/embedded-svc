@@ -170,6 +170,13 @@ pub trait SendStatus {
     }
 }
 
+pub trait Query {
+    fn query(&self) -> &'_ str;
+}
+pub trait RequestId {
+    fn get_request_id(&self) -> &'_ str;
+}
+
 pub mod cookies {
     use core::iter::{self, Iterator};
     use core::str::Split;

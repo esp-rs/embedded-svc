@@ -1,5 +1,4 @@
-use crate::errors::wrap::EitherError;
-use crate::io::{self, Io, Read, Write};
+use crate::io::{Io, Read, Write};
 
 pub use super::{Headers, Method, SendHeaders, Status};
 
@@ -30,73 +29,37 @@ pub trait Client: Io {
 pub trait RequestWrite: Write {
     type Response: Response<Error = Self::Error>;
 
-    fn submit(self) -> Result<Self::Response, Self::Error>;
+    fn submit(self) -> Result<Self::Response, Self::Error>
+    where
+        Self: Sized;
 }
 
 pub trait Request: SendHeaders + Io {
     type Write: RequestWrite<Error = Self::Error>;
 
-    fn send_bytes(self, bytes: &[u8]) -> Result<Self::Write, Self::Error>
+    fn into_writer(self) -> Result<Self::Write, Self::Error>
     where
-        Self: Sized,
-    {
-        let mut write = self.into_writer(bytes.as_ref().len())?;
-
-        write.write_all(bytes)?;
-
-        Ok(write)
-    }
-
-    fn send_str(self, s: &str) -> Result<Self::Write, Self::Error>
-    where
-        Self: Sized,
-    {
-        self.send_bytes(s.as_bytes())
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn send_reader<R>(
-        self,
-        size: usize,
-        read: R,
-    ) -> Result<Self::Write, EitherError<Self::Error, R::Error>>
-    where
-        R: Read,
-        Self: Sized,
-    {
-        let mut write = self.into_writer(size).map_err(EitherError::E1)?;
-
-        io::copy_len::<64, _, _>(read, &mut write, size as u64).map_err(|e| match e {
-            EitherError::E1(e) => EitherError::E2(e),
-            EitherError::E2(e) => EitherError::E1(e),
-        })?;
-
-        Ok(write)
-    }
-
-    fn into_writer(self, size: usize) -> Result<Self::Write, Self::Error>;
+        Self: Sized;
 
     fn submit(self) -> Result<<Self::Write as RequestWrite>::Response, Self::Error>
     where
-        Self: Sized,
-    {
-        self.into_writer(0)?.submit()
-    }
+        Self: Sized;
 }
 
-pub trait Response: Status + Headers + Io {
-    type Read<'a>: io::Read<Error = Self::Error>
-    where
-        Self: 'a;
+pub trait Response: Status + Headers + Read {
+    type Headers: Status + Headers;
 
-    fn reader(&mut self) -> Self::Read<'_>;
+    type Body: Read<Error = Self::Error>;
+
+    fn split(self) -> (Self::Headers, Self::Body)
+    where
+        Self: Sized;
 }
 
 #[cfg(feature = "experimental")]
 pub mod asynch {
     use core::future::Future;
 
-    use crate::errors::wrap::EitherError;
     use crate::io::{asynch::Read, asynch::Write, Io};
 
     pub use crate::http::{Headers, Method, SendHeaders, Status};
@@ -134,19 +97,13 @@ pub mod asynch {
 
         type IntoResponseFuture: Future<Output = Result<Self::Response, Self::Error>>;
 
-        fn into_response(self) -> Self::IntoResponseFuture;
+        fn into_response(self) -> Self::IntoResponseFuture
+        where
+            Self: Sized;
     }
 
     pub trait Request: SendHeaders + Io {
         type Write: RequestWrite<Error = Self::Error>;
-
-        type SendFuture<'a>: Future<Output = Result<Self::Write, Self::Error>>;
-
-        type SendBytesFuture<'a>: Future<Output = Result<Self::Write, Self::Error>>
-        where
-            Self: 'a;
-
-        type SendReaderFuture<E>: Future<Output = Result<Self::Write, EitherError<Self::Error, E>>>;
 
         type IntoWriterFuture: Future<Output = Result<Self::Write, Self::Error>>;
 
@@ -154,24 +111,7 @@ pub mod asynch {
             Output = Result<<Self::Write as RequestWrite>::Response, Self::Error>,
         >;
 
-        fn send_bytes<'a>(self, bytes: &'a [u8]) -> Self::SendBytesFuture<'a>
-        where
-            Self: Sized + 'a;
-
-        fn send_str<'a>(self, s: &'a str) -> Self::SendBytesFuture<'a>
-        where
-            Self: Sized + 'a,
-        {
-            self.send_bytes(s.as_bytes())
-        }
-
-        #[allow(clippy::type_complexity)]
-        fn send_reader<R>(self, size: usize, read: R) -> Self::SendReaderFuture<R::Error>
-        where
-            R: Read,
-            Self: Sized;
-
-        fn into_writer(self, size: usize) -> Self::IntoWriterFuture
+        fn into_writer(self) -> Self::IntoWriterFuture
         where
             Self: Sized;
 
@@ -180,11 +120,13 @@ pub mod asynch {
             Self: Sized;
     }
 
-    pub trait Response: Status + Headers + Io {
-        type Read<'a>: Read<Error = Self::Error>
-        where
-            Self: 'a;
+    pub trait Response: Status + Headers + Read {
+        type Headers: Status + Headers;
 
-        fn reader(&mut self) -> Self::Read<'_>;
+        type Body: Read<Error = Self::Error>;
+
+        fn split(self) -> (Self::Headers, Self::Body)
+        where
+            Self: Sized;
     }
 }

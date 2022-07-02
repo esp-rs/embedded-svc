@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::http::server::middleware::Middleware;
 use crate::http::server::registry::Registry;
-use crate::http::server::session::Session;
 use crate::http::server::*;
+use crate::io::Write;
 
+use crate::utils::http::server::session::*;
 use crate::utils::json_io;
 use crate::utils::role::*;
 
@@ -108,7 +109,7 @@ pub fn login(
             password: heapless::String<32>,
         }
 
-        let credentials: Credentials = json_io::read::<512, _, _>(req.reader())?;
+        let credentials: Credentials = json_io::read::<512, _, _>(&mut req)?;
 
         if let Some(role) = auth(&credentials.username, &credentials.password) {
             session.invalidate(&req);
@@ -117,7 +118,9 @@ pub fn login(
 
             Ok(())
         } else {
-            resp.status(401).send_str("Invalid username or password")?;
+            resp.status(401)
+                .into_writer()?
+                .write_all("Invalid username or password".as_bytes())?;
 
             Ok(())
         }
