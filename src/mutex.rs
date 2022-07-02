@@ -1,5 +1,3 @@
-use core::cell::RefCell;
-use core::mem;
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
@@ -53,17 +51,17 @@ impl RawMutex for NoopRawMutex {
 #[cfg(feature = "std")]
 pub struct StdRawMutex(
     std::sync::Mutex<()>,
-    RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
+    core::cell::RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
 );
 
 #[cfg(feature = "std")]
 impl RawMutex for StdRawMutex {
     fn new() -> Self {
-        Self(std::sync::Mutex::new(()), RefCell::new(None))
+        Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None))
     }
 
     unsafe fn lock(&self) {
-        let guard = mem::transmute(self.0.lock().unwrap());
+        let guard = core::mem::transmute(self.0.lock().unwrap());
 
         *self.1.borrow_mut() = Some(guard);
     }
@@ -73,6 +71,7 @@ impl RawMutex for StdRawMutex {
     }
 }
 
+#[cfg(feature = "std")]
 impl Drop for StdRawMutex {
     fn drop(&mut self) {
         unsafe {
@@ -93,7 +92,7 @@ impl RawCondvar for StdRawCondvar {
     }
 
     unsafe fn wait(&self, mutex: &Self::RawMutex) {
-        let guard = mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+        let guard = core::mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
 
         let guard = self.0.wait(guard).unwrap();
 
@@ -101,7 +100,7 @@ impl RawCondvar for StdRawCondvar {
     }
 
     unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool {
-        let guard = mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+        let guard = core::mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
 
         let (guard, wtr) = self.0.wait_timeout(guard, duration).unwrap();
 
