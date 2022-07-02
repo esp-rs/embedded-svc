@@ -103,13 +103,13 @@ pub fn factory_reset(
 }
 
 pub fn update(
-    mut req: impl Request,
+    req: impl Request,
     _resp: impl Response,
     ota: &impl Mutex<Data = impl ota::Ota>,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
     progress: &impl Mutex<Data = Option<usize>>,
 ) -> Result<(), HandlerError> {
-    let download_id: Option<heapless::String<128>> = json_io::read::<1024, _, _>(req.reader())?;
+    let download_id: Option<heapless::String<128>> = json_io::read::<1024, _, _>(req)?;
 
     let mut ota_server = ota_server.lock();
 
