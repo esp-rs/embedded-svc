@@ -4,7 +4,6 @@ pub mod session {
 
     use crate::http::cookies::*;
     use crate::http::server::*;
-    use crate::http::*;
     use crate::mutex::*;
 
     #[derive(Debug)]

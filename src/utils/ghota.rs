@@ -372,9 +372,11 @@ pub mod asynch {
         async fn get_gh_releases_n<const N: usize>(
             &mut self,
         ) -> Result<(heapless::Vec<Release<'_>, N>, &str), Error<C::Error>> {
+            let url = join::<U, _>(&self.base_url, "releases")?;
+
             let response = self
                 .client
-                .get(&join::<U, _>(&self.base_url, "releases")?)
+                .get(&url)
                 .await
                 .map_err(Error::Http)?
                 .submit()
@@ -393,9 +395,11 @@ pub mod asynch {
         async fn get_gh_releases(
             &mut self,
         ) -> Result<(alloc::vec::Vec<Release<'_>>, &str), Error<C::Error>> {
+            let url = join::<U, _>(&self.base_url, "releases")?;
+
             let response = self
                 .client
-                .get(&join::<U, _>(&self.base_url, "releases")?)
+                .get(&url)
                 .await
                 .map_err(Error::Http)?
                 .submit()
@@ -411,12 +415,11 @@ pub mod asynch {
         }
 
         async fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, Error<C::Error>> {
+            let url = join::<U, _>(&join::<U, _>(&self.base_url, "release")?, "latest")?;
+
             let response = self
                 .client
-                .get(&join::<U, _>(
-                    &join::<U, _>(&self.base_url, "release")?,
-                    "latest",
-                )?)
+                .get(&url)
                 .await
                 .map_err(Error::Http)?
                 .submit()
