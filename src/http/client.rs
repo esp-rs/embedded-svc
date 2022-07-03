@@ -73,23 +73,23 @@ pub mod asynch {
         where
             Self: 'a;
 
-        fn get(&mut self, url: &str) -> Self::RequestFuture<'_> {
+        fn get<'a>(&'a mut self, url: &'a str) -> Self::RequestFuture<'a> {
             self.request(Method::Get, url)
         }
 
-        fn post(&mut self, url: &str) -> Self::RequestFuture<'_> {
+        fn post<'a>(&'a mut self, url: &'a str) -> Self::RequestFuture<'a> {
             self.request(Method::Post, url)
         }
 
-        fn put(&mut self, url: &str) -> Self::RequestFuture<'_> {
+        fn put<'a>(&'a mut self, url: &'a str) -> Self::RequestFuture<'a> {
             self.request(Method::Put, url)
         }
 
-        fn delete(&mut self, url: &str) -> Self::RequestFuture<'_> {
+        fn delete<'a>(&'a mut self, url: &'a str) -> Self::RequestFuture<'a> {
             self.request(Method::Delete, url)
         }
 
-        fn request(&mut self, method: Method, url: &str) -> Self::RequestFuture<'_>;
+        fn request<'a>(&'a mut self, method: Method, url: &'a str) -> Self::RequestFuture<'a>;
     }
 
     pub trait RequestWrite: Write {
