@@ -129,9 +129,11 @@ where
     fn get_gh_releases_n<const N: usize>(
         &mut self,
     ) -> Result<(heapless::Vec<Release<'_>, N>, &str), Error<C::Error>> {
+        let uri = join::<U, _>(&self.base_url, "releases")?;
+
         let response = self
             .client
-            .get(&join::<U, _>(&self.base_url, "releases")?)
+            .get(&uri)
             .map_err(Error::Http)?
             .submit()
             .map_err(Error::Http)?;
@@ -144,9 +146,11 @@ where
 
     #[cfg(feature = "alloc")]
     fn get_gh_releases(&mut self) -> Result<(alloc::vec::Vec<Release<'_>>, &str), Error<C::Error>> {
+        let uri = join::<U, _>(&self.base_url, "releases")?;
+
         let response = self
             .client
-            .get(&join::<U, _>(&self.base_url, "releases")?)
+            .get(&uri)
             .map_err(Error::Http)?
             .submit()
             .map_err(Error::Http)?;
@@ -158,12 +162,11 @@ where
     }
 
     fn get_gh_latest_release(&mut self) -> Result<Option<Release<'_>>, Error<C::Error>> {
+        let uri = join::<U, _>(&join::<U, _>(&self.base_url, "release")?, "latest")?;
+
         let response = self
             .client
-            .get(&join::<U, _>(
-                &join::<U, _>(&self.base_url, "release")?,
-                "latest",
-            )?)
+            .get(&uri)
             .map_err(Error::Http)?
             .submit()
             .map_err(Error::Http)?;
@@ -269,7 +272,7 @@ where
             .collect::<Result<heapless::Vec<_, N>, _>>()
     }
 
-    fn open(&mut self, download_id: &str) -> Result<Self::OtaRead<'_>, Self::Error> {
+    fn open<'b>(&'b mut self, download_id: &'b str) -> Result<Self::OtaRead<'b>, Self::Error> {
         let response = self
             .client
             .get(download_id)

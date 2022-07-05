@@ -554,3 +554,36 @@ pub trait Wifi {
 
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }
+
+impl<W> Wifi for &mut W
+where
+    W: Wifi,
+{
+    type Error = W::Error;
+
+    fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error> {
+        (**self).get_capabilities()
+    }
+
+    fn get_status(&self) -> Status {
+        (**self).get_status()
+    }
+
+    fn scan_n<const N: usize>(
+        &mut self,
+    ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error> {
+        (*self).scan_n()
+    }
+
+    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error> {
+        (*self).scan()
+    }
+
+    fn get_configuration(&self) -> Result<Configuration, Self::Error> {
+        (**self).get_configuration()
+    }
+
+    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error> {
+        (*self).set_configuration(conf)
+    }
+}
