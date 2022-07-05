@@ -125,7 +125,7 @@ pub trait OtaServer: Io {
         &mut self,
     ) -> Result<heapless::Vec<FirmwareInfo, N>, Self::Error>;
 
-    fn open(&mut self, download_id: &str) -> Result<Self::OtaRead<'_>, Self::Error>;
+    fn open<'a>(&'a mut self, download_id: &'a str) -> Result<Self::OtaRead<'a>, Self::Error>;
 }
 
 #[cfg(feature = "experimental")]

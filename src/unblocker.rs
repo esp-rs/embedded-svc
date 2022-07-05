@@ -2,10 +2,30 @@
 pub mod asynch {
     use core::future::Future;
 
-    pub trait Blocker<'a> {
+    pub struct Blocking<B, T>(pub(crate) B, pub(crate) T);
+
+    impl<B, T> Blocking<B, T> {
+        pub const fn new(blocker: B, api: T) -> Self {
+            Self(blocker, api)
+        }
+    }
+
+    pub trait Blocker {
         fn block_on<F>(&self, f: F) -> F::Output
         where
-            F: Future + 'a;
+            F: Future;
+    }
+
+    impl<B> Blocker for &B
+    where
+        B: Blocker,
+    {
+        fn block_on<F>(&self, f: F) -> F::Output
+        where
+            F: Future,
+        {
+            (*self).block_on(f)
+        }
     }
 
     pub trait Unblocker {
@@ -17,6 +37,24 @@ pub mod asynch {
         where
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static;
+    }
+
+    impl<U> Unblocker for &U
+    where
+        U: Unblocker,
+    {
+        type UnblockFuture<T>
+        where
+            T: Send,
+        = U::UnblockFuture<T>;
+
+        fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
+        where
+            F: FnOnce() -> T + Send + 'static,
+            T: Send + 'static,
+        {
+            (*self).unblock(f)
+        }
     }
 
     #[cfg(feature = "alloc")]
