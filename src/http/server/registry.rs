@@ -4,6 +4,7 @@ use core::fmt::Write;
 use crate::http::Method;
 use crate::io::Error;
 
+use super::FnHandler;
 use super::{middleware::Middleware, Handler, HandlerResult, Request, Response};
 
 pub trait Registry {
@@ -45,7 +46,7 @@ pub trait Registry {
     where
         H: for<'a> Fn(Self::Request<'a>, Self::Response<'a>) -> HandlerResult + Send + 'static,
     {
-        self.set_handler(uri, method, handler)
+        self.set_handler(uri, method, FnHandler::new(handler))
     }
 
     fn set_handler<H>(

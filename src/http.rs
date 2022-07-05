@@ -68,6 +68,15 @@ pub trait Headers {
     }
 }
 
+impl<H> Headers for &H
+where
+    H: Headers,
+{
+    fn header(&self, name: &str) -> Option<&'_ str> {
+        (*self).header(name)
+    }
+}
+
 pub trait SendHeaders {
     fn set_header(&mut self, name: &str, value: &str) -> &mut Self;
 
@@ -137,10 +146,33 @@ pub trait SendHeaders {
     }
 }
 
+impl<S> SendHeaders for &mut S
+where
+    S: SendHeaders,
+{
+    fn set_header(&mut self, name: &str, value: &str) -> &mut Self {
+        (*self).set_header(name, value);
+        self
+    }
+}
+
 pub trait Status {
     fn status(&self) -> u16;
 
     fn status_message(&self) -> Option<&'_ str>;
+}
+
+impl<S> Status for &S
+where
+    S: Status,
+{
+    fn status(&self) -> u16 {
+        (*self).status()
+    }
+
+    fn status_message(&self) -> Option<&'_ str> {
+        (*self).status_message()
+    }
 }
 
 pub trait SendStatus {
@@ -170,11 +202,115 @@ pub trait SendStatus {
     }
 }
 
+impl<S> SendStatus for &mut S
+where
+    S: SendStatus,
+{
+    fn set_status(&mut self, status: u16) -> &mut Self {
+        (*self).set_status(status);
+        self
+    }
+
+    fn set_status_message(&mut self, message: &str) -> &mut Self {
+        (*self).set_status_message(message);
+        self
+    }
+}
+
 pub trait Query {
     fn query(&self) -> &'_ str;
 }
+
+impl<Q> Query for &Q
+where
+    Q: Query,
+{
+    fn query(&self) -> &'_ str {
+        (*self).query()
+    }
+}
+
 pub trait RequestId {
     fn get_request_id(&self) -> &'_ str;
+}
+
+impl<R> RequestId for &R
+where
+    R: RequestId,
+{
+    fn get_request_id(&self) -> &'_ str {
+        (*self).get_request_id()
+    }
+}
+
+#[cfg(feature = "experimental")]
+pub mod asynch {
+    use crate::unblocker::asynch::Blocking;
+
+    impl<B, Q> super::Query for Blocking<B, Q>
+    where
+        Q: super::Query,
+    {
+        fn query(&self) -> &'_ str {
+            self.1.query()
+        }
+    }
+
+    impl<B, R> super::RequestId for Blocking<B, R>
+    where
+        R: super::RequestId,
+    {
+        fn get_request_id(&self) -> &'_ str {
+            self.1.get_request_id()
+        }
+    }
+
+    impl<B, H> super::Headers for Blocking<B, H>
+    where
+        H: super::Headers,
+    {
+        fn header(&self, name: &str) -> Option<&'_ str> {
+            self.1.header(name)
+        }
+    }
+
+    impl<B, S> super::Status for Blocking<B, S>
+    where
+        S: super::Status,
+    {
+        fn status(&self) -> u16 {
+            self.1.status()
+        }
+
+        fn status_message(&self) -> Option<&'_ str> {
+            self.1.status_message()
+        }
+    }
+
+    impl<B, S> super::SendStatus for Blocking<B, S>
+    where
+        S: super::SendStatus,
+    {
+        fn set_status(&mut self, status: u16) -> &mut Self {
+            self.1.set_status(status);
+            self
+        }
+
+        fn set_status_message(&mut self, message: &str) -> &mut Self {
+            self.1.set_status_message(message);
+            self
+        }
+    }
+
+    impl<B, S> super::SendHeaders for Blocking<B, S>
+    where
+        S: super::SendHeaders,
+    {
+        fn set_header(&mut self, name: &str, value: &str) -> &mut Self {
+            self.1.set_header(name, value);
+            self
+        }
+    }
 }
 
 pub mod cookies {
