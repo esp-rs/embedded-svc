@@ -66,12 +66,34 @@ pub trait Ping {
     ) -> Result<Summary, Self::Error>;
 }
 
+impl<P> Ping for &mut P
+where
+    P: Ping,
+{
+    type Error = P::Error;
+
+    fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error> {
+        (*self).ping(ip, conf)
+    }
+
+    fn ping_details<F: Fn(&Summary, &Reply)>(
+        &mut self,
+        ip: ipv4::Ipv4Addr,
+        conf: &Configuration,
+        reply_callback: &F,
+    ) -> Result<Summary, Self::Error> {
+        (*self).ping_details(ip, conf, reply_callback)
+    }
+}
 #[cfg(feature = "experimental")]
 pub mod asynch {
     use core::fmt::Debug;
     use core::future::Future;
 
-    use crate::ipv4;
+    use crate::{
+        ipv4,
+        unblocker::asynch::{Blocker, Blocking},
+    };
 
     pub use super::{Configuration, Reply, Summary};
 
@@ -90,5 +112,56 @@ pub mod asynch {
             conf: &Configuration,
             reply_callback: &F,
         ) -> Self::PingFuture<'_>;
+    }
+
+    impl<P> Ping for &mut P
+    where
+        P: Ping,
+    {
+        type Error = P::Error;
+
+        type PingFuture<'a>
+        where
+            Self: 'a,
+        = P::PingFuture<'a>;
+
+        fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Self::PingFuture<'_> {
+            (*self).ping(ip, conf)
+        }
+
+        fn ping_details<F: Fn(&Summary, &Reply)>(
+            &mut self,
+            ip: ipv4::Ipv4Addr,
+            conf: &Configuration,
+            reply_callback: &F,
+        ) -> Self::PingFuture<'_> {
+            (*self).ping_details(ip, conf, reply_callback)
+        }
+    }
+
+    impl<B, P> super::Ping for Blocking<B, P>
+    where
+        B: Blocker,
+        P: Ping,
+    {
+        type Error = P::Error;
+
+        fn ping(
+            &mut self,
+            ip: ipv4::Ipv4Addr,
+            conf: &Configuration,
+        ) -> Result<Summary, Self::Error> {
+            self.0.block_on(self.1.ping(ip, conf))
+        }
+
+        fn ping_details<F: Fn(&Summary, &Reply)>(
+            &mut self,
+            ip: ipv4::Ipv4Addr,
+            conf: &Configuration,
+            reply_callback: &F,
+        ) -> Result<Summary, Self::Error> {
+            self.0
+                .block_on(self.1.ping_details(ip, conf, reply_callback))
+        }
     }
 }

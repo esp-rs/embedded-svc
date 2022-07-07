@@ -82,11 +82,10 @@ pub trait Response: Status + Headers + Read {
 pub mod asynch {
     use core::future::Future;
 
-    use crate::{
-        io::{asynch::Read, asynch::Write, Io},
-        unblocker::asynch::{Blocker, Blocking},
-    };
+    use crate::io::{asynch::Read, asynch::Write, Io};
+    use crate::unblocker::asynch::{Blocker, Blocking};
 
+    pub use crate::http::asynch::*;
     pub use crate::http::{Headers, Method, SendHeaders, Status};
 
     pub trait Client: Io {
@@ -195,17 +194,6 @@ pub mod asynch {
         }
     }
 
-    impl<B, H> super::SendHeaders for Blocking<B, H>
-    where
-        H: SendHeaders,
-    {
-        fn set_header(&mut self, name: &str, value: &str) -> &mut Self {
-            (*self).1.set_header(name, value);
-
-            self
-        }
-    }
-
     impl<B, R> super::Request for Blocking<B, R>
     where
         B: Blocker,
@@ -244,28 +232,6 @@ pub mod asynch {
             let response = self.0.block_on(self.1.into_response())?;
 
             Ok(Blocking::new(self.0, response))
-        }
-    }
-
-    impl<B, S> super::Status for Blocking<B, S>
-    where
-        S: Status,
-    {
-        fn status(&self) -> u16 {
-            self.1.status()
-        }
-
-        fn status_message(&self) -> Option<&'_ str> {
-            self.1.status_message()
-        }
-    }
-
-    impl<B, H> super::Headers for Blocking<B, H>
-    where
-        H: Headers,
-    {
-        fn header(&self, name: &str) -> Option<&'_ str> {
-            self.1.header(name)
         }
     }
 
