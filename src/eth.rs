@@ -140,3 +140,26 @@ pub trait Eth {
 
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }
+
+impl<E> Eth for &mut E
+where
+    E: Eth,
+{
+    type Error = E::Error;
+
+    fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error> {
+        (**self).get_capabilities()
+    }
+
+    fn get_status(&self) -> Status {
+        (**self).get_status()
+    }
+
+    fn get_configuration(&self) -> Result<Configuration, Self::Error> {
+        (**self).get_configuration()
+    }
+
+    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error> {
+        (*self).set_configuration(conf)
+    }
+}

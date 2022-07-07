@@ -13,6 +13,21 @@ pub trait StorageBase {
     fn remove(&mut self, name: &str) -> Result<bool, Self::Error>;
 }
 
+impl<S> StorageBase for &mut S
+where
+    S: StorageBase,
+{
+    type Error = S::Error;
+
+    fn contains(&self, name: &str) -> Result<bool, Self::Error> {
+        (**self).contains(name)
+    }
+
+    fn remove(&mut self, name: &str) -> Result<bool, Self::Error> {
+        (*self).remove(name)
+    }
+}
+
 pub trait Storage: StorageBase {
     fn get<T>(&self, name: &str) -> Result<Option<T>, Self::Error>
     where
@@ -23,10 +38,42 @@ pub trait Storage: StorageBase {
         T: serde::Serialize;
 }
 
+impl<S> Storage for &mut S
+where
+    S: Storage,
+{
+    fn get<T>(&self, name: &str) -> Result<Option<T>, Self::Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        (**self).get(name)
+    }
+
+    fn set<T>(&mut self, name: &str, value: &T) -> Result<bool, Self::Error>
+    where
+        T: serde::Serialize,
+    {
+        (*self).set(name, value)
+    }
+}
+
 pub trait DynStorage<'a>: StorageBase {
     fn get(&self, name: &str) -> Result<Option<&'a dyn Any>, Self::Error>;
 
     fn set(&mut self, name: &'a str, value: &'a dyn Any) -> Result<bool, Self::Error>;
+}
+
+impl<'a, D> DynStorage<'a> for &'a mut D
+where
+    D: DynStorage<'a>,
+{
+    fn get(&self, name: &str) -> Result<Option<&'a dyn Any>, Self::Error> {
+        (**self).get(name)
+    }
+
+    fn set(&mut self, name: &'a str, value: &'a dyn Any) -> Result<bool, Self::Error> {
+        (*self).set(name, value)
+    }
 }
 
 pub trait RawStorage: StorageBase {
@@ -41,6 +88,27 @@ pub trait RawStorage: StorageBase {
     fn put_raw(&mut self, name: &str, buf: &[u8]) -> Result<bool, Self::Error>;
 }
 
+impl<R> RawStorage for &mut R
+where
+    R: RawStorage,
+{
+    fn len(&self, name: &str) -> Result<Option<usize>, Self::Error> {
+        (**self).len(name)
+    }
+
+    fn get_raw<'a>(
+        &self,
+        name: &str,
+        buf: &'a mut [u8],
+    ) -> Result<Option<(&'a [u8], usize)>, Self::Error> {
+        (**self).get_raw(name, buf)
+    }
+
+    fn put_raw(&mut self, name: &str, buf: &[u8]) -> Result<bool, Self::Error> {
+        (**self).put_raw(name, buf)
+    }
+}
+
 pub trait SerDe {
     type Error: Debug;
 
@@ -51,6 +119,27 @@ pub trait SerDe {
     fn deserialize<T>(&self, slice: &[u8]) -> Result<T, Self::Error>
     where
         T: DeserializeOwned;
+}
+
+impl<S> SerDe for &S
+where
+    S: SerDe,
+{
+    type Error = S::Error;
+
+    fn serialize<'a, T>(&self, slice: &'a mut [u8], value: &T) -> Result<&'a [u8], Self::Error>
+    where
+        T: Serialize,
+    {
+        (*self).serialize(slice, value)
+    }
+
+    fn deserialize<T>(&self, slice: &[u8]) -> Result<T, Self::Error>
+    where
+        T: DeserializeOwned,
+    {
+        (*self).deserialize(slice)
+    }
 }
 
 pub struct StorageImpl<const N: usize, R, S> {

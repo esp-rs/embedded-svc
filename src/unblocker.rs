@@ -2,11 +2,22 @@
 pub mod asynch {
     use core::future::Future;
 
+    pub type TrivialAsync<T> = Blocking<(), T>;
+
     pub struct Blocking<B, T>(pub(crate) B, pub(crate) T);
 
     impl<B, T> Blocking<B, T> {
-        pub const fn new(blocker: B, api: T) -> Self {
+        pub const fn new(blocker: B, api: T) -> Self
+        where
+            B: Blocker,
+        {
             Self(blocker, api)
+        }
+    }
+
+    impl<T> Blocking<(), T> {
+        pub const fn new_async(api: T) -> Self {
+            Self((), api)
         }
     }
 
