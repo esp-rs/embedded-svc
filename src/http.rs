@@ -55,16 +55,16 @@ pub trait Headers {
     fn header(&self, name: &str) -> Option<&'_ str>;
 
     fn content_type(&self) -> Option<&'_ str> {
-        self.header("content-type")
+        self.header("Content-Type")
     }
 
     fn content_len(&self) -> Option<usize> {
-        self.header("content-length")
+        self.header("Content-Length")
             .and_then(|v| v.parse::<usize>().ok())
     }
 
     fn content_encoding(&self) -> Option<&'_ str> {
-        self.header("content-encoding")
+        self.header("Content-Encoding")
     }
 }
 
@@ -81,7 +81,7 @@ pub trait SendHeaders {
     fn set_header(&mut self, name: &str, value: &str) -> &mut Self;
 
     fn set_content_type(&mut self, ctype: &str) -> &mut Self {
-        self.set_header("content-type", ctype)
+        self.set_header("Content-Type", ctype)
     }
 
     fn set_content_len(&mut self, len: usize) -> &mut Self {
@@ -89,15 +89,15 @@ pub trait SendHeaders {
 
         write!(&mut buf, "{}", len).unwrap();
 
-        self.set_header("content-length", &buf)
+        self.set_header("Content-Length", &buf)
     }
 
     fn set_content_encoding(&mut self, encoding: &str) -> &mut Self {
-        self.set_header("content-encoding", encoding)
+        self.set_header("Content-Encoding", encoding)
     }
 
     fn set_redirect(&mut self, location: &str) -> &mut Self {
-        self.set_header("location", location)
+        self.set_header("Location", location)
     }
 
     fn header<H, V>(mut self, name: H, value: V) -> Self
