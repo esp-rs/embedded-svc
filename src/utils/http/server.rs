@@ -27,16 +27,16 @@ pub mod session {
     pub trait Session: Send {
         type SessionData;
 
-        fn is_existing(&self, req: &impl Request) -> bool;
+        fn is_existing(&self, headers: &(impl RequestId + Headers)) -> bool;
 
-        fn with_existing<R, F>(&self, req: &impl Request, f: F) -> Option<R>
+        fn with_existing<R, F>(&self, headers: &(impl RequestId + Headers), f: F) -> Option<R>
         where
             F: FnOnce(&mut Self::SessionData) -> R;
 
         fn with<R, F>(
             &self,
-            req: &impl Request,
-            resp: &mut impl Response,
+            headers: &(impl RequestId + Headers),
+            out_headers: &mut impl SendHeaders,
             f: F,
         ) -> Result<R, SessionError>
         where
@@ -110,15 +110,15 @@ pub mod session {
             }
         }
 
-        fn with_existing<R, F>(&self, req: &(impl RequestId + Headers), f: F) -> Option<R>
+        fn with_existing<R, F>(&self, headers: &(impl RequestId + Headers), f: F) -> Option<R>
         where
             F: FnOnce(&mut Self::SessionData) -> R,
         {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
 
-            let id = self.get_existing_id(req);
-            let req_id = req.get_request_id();
+            let id = self.get_existing_id(headers);
+            let req_id = headers.get_request_id();
 
             let mut data = self.data.lock();
 
@@ -132,8 +132,8 @@ pub mod session {
 
         fn with<R, F>(
             &self,
-            req: &(impl RequestId + Headers),
-            resp: &mut impl Response,
+            headers: &(impl RequestId + Headers),
+            out_headers: &mut impl SendHeaders,
             f: F,
         ) -> Result<R, SessionError>
         where
@@ -142,8 +142,8 @@ pub mod session {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
 
-            let id = self.get_existing_id(req);
-            let req_id = req.get_request_id();
+            let id = self.get_existing_id(headers);
+            let req_id = headers.get_request_id();
 
             let mut data = self.data.lock();
 
@@ -163,7 +163,7 @@ pub mod session {
                 entry.timeout = self.default_session_timeout;
                 entry.last_accessed = current_time;
 
-                let cookies_str = req.header("Cookie").unwrap_or("");
+                let cookies_str = headers.header("Cookie").unwrap_or("");
                 let mut cookies = heapless::String::<128>::new();
 
                 for cookie in Cookies::serialize(Cookies::set(
@@ -174,7 +174,7 @@ pub mod session {
                     cookies.push_str(cookie).unwrap(); // TODO
                 }
 
-                resp.set_header("Set-Cookie", &cookies);
+                out_headers.set_header("Set-Cookie", &cookies);
 
                 Ok(f(&mut entry.data))
             } else {

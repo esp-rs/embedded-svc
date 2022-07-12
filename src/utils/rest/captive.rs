@@ -1,10 +1,7 @@
 use core::fmt::Write as _;
 
-use crate::http::server::middleware::Middleware;
-use crate::http::server::registry::Registry;
-use crate::http::server::Response;
-use crate::http::server::{Handler, HandlerError, Request};
-use crate::io::Write;
+use crate::http::server::{Handler, HandlerResult, Middleware, Request, Response};
+use crate::http::{SendHeaders, SendStatus};
 use crate::mutex::*;
 
 pub struct WithCaptivePortalMiddleware<M, F> {
@@ -27,60 +24,39 @@ where
     }
 }
 
-impl<R, P, M, F> Middleware<R, P> for WithCaptivePortalMiddleware<M, F>
+impl<R, M, F> Middleware<R> for WithCaptivePortalMiddleware<M, F>
 where
     R: Request,
-    P: Response,
     M: Mutex<Data = bool> + Send,
     F: Fn(&str) -> bool + Send,
 {
-    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<(), HandlerError>
+    fn handle<H>(&self, request: R, handler: &H) -> HandlerResult
     where
-        H: Handler<R, P>,
+        H: Handler<R>,
     {
         let captive = *self.captive.lock();
 
         let allow = !captive
-            || req
+            || request
                 .header("host")
                 .map(|host| (self.allowed_hosts)(host))
                 .unwrap_or(true);
 
         if allow {
-            handler.handle(req, resp)
+            handler.handle(request)
         } else {
-            resp.status(307).header("Location", self.portal_uri);
-
-            Ok(())
+            Ok(request
+                .into_response()?
+                .status(307)
+                .header("Location", self.portal_uri)
+                .complete()?)
         }
     }
 }
 
-pub fn register<R, M, const N: usize>(
-    registry: &mut R,
-    portal_uri: &'static str,
-    captive: M,
-) -> Result<(), R::Error>
-where
-    R: Registry,
-    M: Mutex<Data = bool> + Send + Sync + 'static,
-{
-    registry.handle_get("", move |req, resp| {
-        get_status::<_, _, _, N>(req, resp, portal_uri, &captive)
-    })?;
-
-    Ok(())
-}
-
-pub fn get_status<R, P, M, const N: usize>(
-    _req: R,
-    resp: P,
-    portal_uri: &str,
-    captive: &M,
-) -> Result<(), HandlerError>
+pub fn get_status<R, M, const N: usize>(request: R, portal_uri: &str, captive: &M) -> HandlerResult
 where
     R: Request,
-    P: Response,
     M: Mutex<Data = bool>,
 {
     let mut data = heapless::String::<N>::new();
@@ -97,9 +73,8 @@ where
     )
     .unwrap();
 
-    resp.content_type("application/captive+json")
-        .into_writer()?
-        .write_all(data.as_bytes())?;
-
-    Ok(())
+    Ok(request
+        .into_response()?
+        .content_type("application/captive+json")
+        .submit(data.as_bytes())?)
 }
