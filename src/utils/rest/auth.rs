@@ -1,11 +1,9 @@
 use core::fmt::Debug;
 
+use embedded_io::blocking::Write;
 use serde::{Deserialize, Serialize};
 
-use crate::http::server::middleware::Middleware;
-use crate::http::server::registry::Registry;
 use crate::http::server::*;
-use crate::io::Write;
 
 use crate::utils::http::server::session::*;
 use crate::utils::json_io;
@@ -32,107 +30,115 @@ impl<A, S> WithRoleMiddleware<A, S> {
     }
 }
 
-impl<R, P, A, S, D> Middleware<R, P> for WithRoleMiddleware<A, S>
+impl<C, A, S, D> Middleware<C> for WithRoleMiddleware<A, S>
 where
-    R: Request,
-    P: Response,
-    A: Fn(&R) -> Option<Role> + Send,
+    C: Connection,
+    A: Fn(&C::Headers) -> Option<Role> + Send,
     S: Session<SessionData = D>,
     D: RoleSessionData,
 {
-    fn handle<H>(&self, req: R, resp: P, handler: &H) -> Result<(), HandlerError>
+    fn handle<H>(&self, connection: &mut C, mut request: C::Request, handler: &H) -> HandlerResult
     where
-        H: Handler<R, P>,
+        H: Handler<C>,
     {
-        let role = (self.auth)(&req);
+        let headers = connection.headers(&mut request);
+
+        let role = (self.auth)(headers);
 
         if let Some(role) = role {
             if role >= self.min_role {
-                return handler.handle(req, resp);
+                return handler.handle(connection, request);
             }
         } else {
             let role = self
                 .session
                 .as_ref()
-                .and_then(|session| session.with_existing(&req, |sd| sd.get_role()))
+                .and_then(|session| {
+                    session.with_existing(get_cookie_session_id(headers), |sd| sd.get_role())
+                })
                 .flatten();
 
             if let Some(role) = role {
                 if role >= self.min_role {
-                    return handler.handle(req, resp);
+                    return handler.handle(connection, request);
                 }
             }
         }
 
-        resp.status(401)
-            .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"");
+        connection.into_response(
+            request,
+            401,
+            None,
+            &[("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")],
+        )?;
 
         Ok(())
     }
 }
 
-pub fn register<R>(
-    registry: &mut R,
-    session: impl Session<SessionData = impl RoleSessionData> + Clone + 'static,
-    auth: impl Fn(&str, &str) -> Option<Role> + Send + Sync + 'static,
-) -> Result<(), R::Error>
-where
-    R: Registry,
-{
-    let session1 = session.clone();
-
-    registry
-        .handle_post("/login", move |req, resp| {
-            login(req, resp, &session1, &auth)
-        })?
-        .handle_post("/logout", move |req, resp| logout(req, resp, &session))?;
+pub fn relogin<C: Connection>(
+    connection: &mut C,
+    mut request: C::Request,
+    session: &impl Session<SessionData = impl RoleSessionData>,
+    auth: impl Fn(&str, &str) -> Option<Role>,
+) -> HandlerResult {
+    if session
+        .with_existing(
+            get_cookie_session_id(connection.headers(&mut request)),
+            |sd| sd.get_role(),
+        )
+        .flatten()
+        .is_some()
+    {
+        login(connection, request, session, auth)?;
+    }
 
     Ok(())
 }
 
-pub fn login(
-    mut req: impl Request,
-    mut resp: impl Response,
+pub fn login<C: Connection>(
+    connection: &mut C,
+    mut request: C::Request,
     session: &impl Session<SessionData = impl RoleSessionData>,
     auth: impl Fn(&str, &str) -> Option<Role>,
-) -> Result<(), HandlerError> {
-    if session
-        .with_existing(&req, |sd| sd.get_role())
-        .flatten()
-        .is_some()
-    {
+) -> HandlerResult {
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct Credentials {
+        username: heapless::String<32>,
+        password: heapless::String<32>,
+    }
+
+    let credentials: Credentials = json_io::read::<512, _, _>(connection.reader(&mut request))?;
+
+    if let Some(role) = auth(&credentials.username, &credentials.password) {
+        let headers = connection.headers(&mut request);
+
+        session.invalidate(get_cookie_session_id(headers));
+
+        let session_id = "XXX"; // TODO: Random string
+        session.with(session_id, |sd| sd.set_role(role))?;
+
+        let mut cookie = heapless::String::<128>::new();
+        set_cookie_session_id(headers, session_id, &mut cookie);
+
+        connection.into_response(request, 200, None, &[("Set-Cookie", cookie.as_str())])?;
+
         Ok(())
     } else {
-        #[derive(Clone, Debug, Serialize, Deserialize)]
-        struct Credentials {
-            username: heapless::String<32>,
-            password: heapless::String<32>,
-        }
+        let mut response = connection.into_status_response(request, 401)?;
 
-        let credentials: Credentials = json_io::read::<512, _, _>(&mut req)?;
-
-        if let Some(role) = auth(&credentials.username, &credentials.password) {
-            session.invalidate(&req);
-
-            session.with(&req, &mut resp, |sd| sd.set_role(role))?;
-
-            Ok(())
-        } else {
-            resp.status(401)
-                .into_writer()?
-                .write_all("Invalid username or password".as_bytes())?;
-
-            Ok(())
-        }
+        Ok(connection
+            .writer(&mut response)
+            .write_all("Invalid username or password".as_bytes())?)
     }
 }
 
-pub fn logout(
-    req: impl Request,
-    _resp: impl Response,
+pub fn logout<C: Connection>(
+    connection: &mut C,
+    mut request: C::Request,
     session: &impl Session,
-) -> Result<(), HandlerError> {
-    session.invalidate(&req);
+) -> HandlerResult {
+    session.invalidate(get_cookie_session_id(connection.headers(&mut request)));
 
     Ok(())
 }
