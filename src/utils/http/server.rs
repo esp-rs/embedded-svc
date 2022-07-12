@@ -1,3 +1,383 @@
+pub mod registration {
+    use crate::http::server::{Connection, Handler, HandlerResult, Method};
+
+    pub trait HandlerRegistration<C>
+    where
+        C: Connection,
+    {
+        fn handle<'a>(
+            &'a self,
+            path_registered: bool,
+            path: &'a str,
+            method: Method,
+            connection: &'a mut C,
+            request: C::Request,
+        ) -> HandlerResult;
+    }
+
+    impl<C> HandlerRegistration<C> for ()
+    where
+        C: Connection,
+    {
+        fn handle<'a>(
+            &'a self,
+            path_registered: bool,
+            _path: &'a str,
+            _method: Method,
+            connection: &'a mut C,
+            request: C::Request,
+        ) -> HandlerResult {
+            connection.into_status_response(request, if path_registered { 405 } else { 404 })?;
+
+            Ok(())
+        }
+    }
+
+    pub struct SimpleHandlerRegistration<H, N> {
+        path: &'static str,
+        method: Method,
+        handler: H,
+        next: N,
+    }
+
+    impl<H, N> SimpleHandlerRegistration<H, N> {
+        const fn new(path: &'static str, method: Method, handler: H, next: N) -> Self {
+            Self {
+                path,
+                method,
+                handler,
+                next,
+            }
+        }
+    }
+
+    impl<H, C, N> HandlerRegistration<C> for SimpleHandlerRegistration<H, N>
+    where
+        H: Handler<C>,
+        N: HandlerRegistration<C>,
+        C: Connection,
+    {
+        fn handle<'a>(
+            &'a self,
+            path_registered: bool,
+            path: &'a str,
+            method: Method,
+            connection: &'a mut C,
+            request: C::Request,
+        ) -> HandlerResult {
+            let path_registered2 = if self.path == path {
+                if self.method == method {
+                    return self.handler.handle(connection, request);
+                }
+
+                true
+            } else {
+                false
+            };
+
+            self.next.handle(
+                path_registered || path_registered2,
+                path,
+                method,
+                connection,
+                request,
+            )
+        }
+    }
+
+    pub struct ServerHandler<H>(H);
+
+    impl ServerHandler<()> {
+        pub fn new() -> Self {
+            Self(())
+        }
+    }
+
+    impl<H> ServerHandler<H> {
+        pub fn register_get<H2, C>(
+            self,
+            path: &'static str,
+            handler: H2,
+        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+        where
+            H2: Handler<C> + 'static,
+            C: Connection,
+        {
+            self.register(path, Method::Get, handler)
+        }
+
+        pub fn register_post<H2, C>(
+            self,
+            path: &'static str,
+            handler: H2,
+        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+        where
+            H2: Handler<C> + 'static,
+            C: Connection,
+        {
+            self.register(path, Method::Post, handler)
+        }
+
+        pub fn register_put<H2, C>(
+            self,
+            path: &'static str,
+            handler: H2,
+        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+        where
+            H2: Handler<C> + 'static,
+            C: Connection,
+        {
+            self.register(path, Method::Put, handler)
+        }
+
+        pub fn register_delete<H2, C>(
+            self,
+            path: &'static str,
+            handler: H2,
+        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+        where
+            H2: Handler<C> + 'static,
+            C: Connection,
+        {
+            self.register(path, Method::Delete, handler)
+        }
+
+        pub fn register<H2, C>(
+            self,
+            path: &'static str,
+            method: Method,
+            handler: H2,
+        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+        where
+            H2: Handler<C> + 'static,
+            C: Connection,
+        {
+            ServerHandler(SimpleHandlerRegistration::new(
+                path, method, handler, self.0,
+            ))
+        }
+
+        pub fn handle<'a, C>(
+            &'a self,
+            path: &'a str,
+            method: Method,
+            connection: &'a mut C,
+            request: C::Request,
+        ) -> HandlerResult
+        where
+            H: HandlerRegistration<C>,
+            C: Connection,
+        {
+            self.0.handle(false, path, method, connection, request)
+        }
+    }
+
+    #[cfg(feature = "experimental")]
+    pub mod asynch {
+        use core::future::Future;
+
+        use crate::http::server::asynch::{Connection, Handler, HandlerResult, Method};
+
+        pub trait HandlerRegistration<C>
+        where
+            C: Connection,
+        {
+            type HandleFuture<'a>: Future<Output = HandlerResult>
+            where
+                Self: 'a,
+                C: 'a;
+
+            fn handle<'a>(
+                &'a self,
+                path_registered: bool,
+                path: &'a str,
+                method: Method,
+                connection: &'a mut C,
+                request: C::Request,
+            ) -> Self::HandleFuture<'a>;
+        }
+
+        impl<C> HandlerRegistration<C> for ()
+        where
+            C: Connection,
+        {
+            type HandleFuture<'a>
+            where
+                Self: 'a,
+                C: 'a,
+            = impl Future<Output = HandlerResult>;
+
+            fn handle<'a>(
+                &'a self,
+                path_registered: bool,
+                _path: &'a str,
+                _method: Method,
+                connection: &'a mut C,
+                request: C::Request,
+            ) -> Self::HandleFuture<'a> {
+                async move {
+                    connection
+                        .into_status_response(request, if path_registered { 405 } else { 404 })
+                        .await?;
+
+                    Ok(())
+                }
+            }
+        }
+
+        pub struct SimpleHandlerRegistration<H, N> {
+            path: &'static str,
+            method: Method,
+            handler: H,
+            next: N,
+        }
+
+        impl<H, N> SimpleHandlerRegistration<H, N> {
+            const fn new(path: &'static str, method: Method, handler: H, next: N) -> Self {
+                Self {
+                    path,
+                    method,
+                    handler,
+                    next,
+                }
+            }
+        }
+
+        impl<H, C, N> HandlerRegistration<C> for SimpleHandlerRegistration<H, N>
+        where
+            H: Handler<C>,
+            N: HandlerRegistration<C>,
+            C: Connection,
+        {
+            type HandleFuture<'a>
+            where
+                Self: 'a,
+                C: 'a,
+            = impl Future<Output = HandlerResult>;
+
+            fn handle<'a>(
+                &'a self,
+                path_registered: bool,
+                path: &'a str,
+                method: Method,
+                connection: &'a mut C,
+                request: C::Request,
+            ) -> Self::HandleFuture<'a> {
+                async move {
+                    let path_registered2 = if self.path == path {
+                        if self.method == method {
+                            return self.handler.handle(connection, request).await;
+                        }
+
+                        true
+                    } else {
+                        false
+                    };
+
+                    self.next
+                        .handle(
+                            path_registered || path_registered2,
+                            path,
+                            method,
+                            connection,
+                            request,
+                        )
+                        .await
+                }
+            }
+        }
+
+        pub struct ServerHandler<H>(H);
+
+        impl ServerHandler<()> {
+            pub fn new() -> Self {
+                Self(())
+            }
+        }
+
+        impl<H> ServerHandler<H> {
+            pub fn register_get<H2, C>(
+                self,
+                path: &'static str,
+                handler: H2,
+            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+            where
+                H2: Handler<C> + 'static,
+                C: Connection,
+            {
+                self.register(path, Method::Get, handler)
+            }
+
+            pub fn register_post<H2, C>(
+                self,
+                path: &'static str,
+                handler: H2,
+            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+            where
+                H2: Handler<C> + 'static,
+                C: Connection,
+            {
+                self.register(path, Method::Post, handler)
+            }
+
+            pub fn register_put<H2, C>(
+                self,
+                path: &'static str,
+                handler: H2,
+            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+            where
+                H2: Handler<C> + 'static,
+                C: Connection,
+            {
+                self.register(path, Method::Put, handler)
+            }
+
+            pub fn register_delete<H2, C>(
+                self,
+                path: &'static str,
+                handler: H2,
+            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+            where
+                H2: Handler<C> + 'static,
+                C: Connection,
+            {
+                self.register(path, Method::Delete, handler)
+            }
+
+            pub fn register<H2, C>(
+                self,
+                path: &'static str,
+                method: Method,
+                handler: H2,
+            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+            where
+                H2: Handler<C> + 'static,
+                C: Connection,
+            {
+                ServerHandler(SimpleHandlerRegistration::new(
+                    path, method, handler, self.0,
+                ))
+            }
+
+            pub async fn handle<'a, C>(
+                &'a self,
+                path: &'a str,
+                method: Method,
+                connection: &'a mut C,
+                request: C::Request,
+            ) -> HandlerResult
+            where
+                H: HandlerRegistration<C>,
+                C: Connection,
+            {
+                self.0
+                    .handle(false, path, method, connection, request)
+                    .await
+            }
+        }
+    }
+}
+
 pub mod session {
     use core::fmt;
     use core::time::Duration;
@@ -27,22 +407,17 @@ pub mod session {
     pub trait Session: Send {
         type SessionData;
 
-        fn is_existing(&self, req: &impl Request) -> bool;
+        fn is_existing(&self, session_id: Option<&str>) -> bool;
 
-        fn with_existing<R, F>(&self, req: &impl Request, f: F) -> Option<R>
+        fn with_existing<R, F>(&self, session_id: Option<&str>, f: F) -> Option<R>
         where
             F: FnOnce(&mut Self::SessionData) -> R;
 
-        fn with<R, F>(
-            &self,
-            req: &impl Request,
-            resp: &mut impl Response,
-            f: F,
-        ) -> Result<R, SessionError>
+        fn with<R, F>(&self, session_id: &str, f: F) -> Result<R, SessionError>
         where
             F: FnOnce(&mut Self::SessionData) -> R;
 
-        fn invalidate(&self, req: &impl Request) -> bool;
+        fn invalidate(&self, session_id: Option<&str>) -> bool;
     }
 
     #[derive(Debug, Default)]
@@ -68,11 +443,6 @@ pub mod session {
         M: Mutex<Data = [SessionData<S>; N]>,
         S: Default,
     {
-        fn get_existing_id<'a>(&self, req: &'a impl Headers) -> Option<&'a str> {
-            req.header("Cookie")
-                .and_then(|cookies_str| Cookies::new(cookies_str).get("SESSIONID"))
-        }
-
         fn cleanup(&self, current_time: Duration) {
             let mut data = self.data.lock();
 
@@ -92,17 +462,15 @@ pub mod session {
     {
         type SessionData = S;
 
-        fn is_existing(&self, req: &(impl RequestId + Headers)) -> bool {
+        fn is_existing(&self, session_id: Option<&str>) -> bool {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
 
-            let id = self.get_existing_id(req);
-
-            if let Some(id) = id {
+            if let Some(session_id) = session_id {
                 let mut data = self.data.lock();
 
                 data.iter_mut()
-                    .find(|entry| entry.id == id)
+                    .find(|entry| entry.id.as_str() == session_id)
                     .map(|entry| entry.last_accessed = current_time)
                     .is_some()
             } else {
@@ -110,46 +478,39 @@ pub mod session {
             }
         }
 
-        fn with_existing<R, F>(&self, req: &(impl RequestId + Headers), f: F) -> Option<R>
+        fn with_existing<R, F>(&self, session_id: Option<&str>, f: F) -> Option<R>
         where
             F: FnOnce(&mut Self::SessionData) -> R,
         {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
 
-            let id = self.get_existing_id(req);
-            let req_id = req.get_request_id();
+            if let Some(session_id) = session_id {
+                let mut data = self.data.lock();
 
-            let mut data = self.data.lock();
-
-            data.iter_mut()
-                .find(|entry| Some(entry.id.as_ref()) == id || entry.id == req_id)
-                .map(|entry| {
-                    entry.last_accessed = current_time;
-                    f(&mut entry.data)
-                })
+                data.iter_mut()
+                    .find(|entry| entry.id.as_str() == session_id)
+                    .map(|entry| {
+                        entry.last_accessed = current_time;
+                        f(&mut entry.data)
+                    })
+            } else {
+                None
+            }
         }
 
-        fn with<R, F>(
-            &self,
-            req: &(impl RequestId + Headers),
-            resp: &mut impl Response,
-            f: F,
-        ) -> Result<R, SessionError>
+        fn with<'b, R, F>(&self, session_id: &str, f: F) -> Result<R, SessionError>
         where
             F: FnOnce(&mut Self::SessionData) -> R,
         {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
-
-            let id = self.get_existing_id(req);
-            let req_id = req.get_request_id();
 
             let mut data = self.data.lock();
 
             if let Some(entry) = data
                 .iter_mut()
-                .find(|entry| Some(entry.id.as_ref()) == id || entry.id == req_id)
+                .find(|entry| entry.id.as_str() == session_id)
                 .map(|entry| {
                     entry.last_accessed = current_time;
 
@@ -158,23 +519,10 @@ pub mod session {
             {
                 Ok(f(&mut entry.data))
             } else if let Some(entry) = data.iter_mut().find(|entry| entry.id == "") {
-                entry.id = req_id.into();
+                entry.id = session_id.into();
                 entry.data = Default::default();
                 entry.timeout = self.default_session_timeout;
                 entry.last_accessed = current_time;
-
-                let cookies_str = req.header("Cookie").unwrap_or("");
-                let mut cookies = heapless::String::<128>::new();
-
-                for cookie in Cookies::serialize(Cookies::set(
-                    Cookies::new(cookies_str).into_iter(),
-                    "SESSIONID",
-                    &entry.id,
-                )) {
-                    cookies.push_str(cookie).unwrap(); // TODO
-                }
-
-                resp.set_header("Set-Cookie", &cookies);
 
                 Ok(f(&mut entry.data))
             } else {
@@ -182,24 +530,52 @@ pub mod session {
             }
         }
 
-        fn invalidate(&self, req: &(impl RequestId + Headers)) -> bool {
+        fn invalidate(&self, session_id: Option<&str>) -> bool {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
 
-            let id = self.get_existing_id(req);
-            let req_id = req.get_request_id();
+            if let Some(session_id) = session_id {
+                let mut data = self.data.lock();
 
-            let mut data = self.data.lock();
-
-            if let Some(entry) = data
-                .iter_mut()
-                .find(|entry| Some(entry.id.as_ref()) == id || entry.id == req_id)
-            {
-                entry.id = "".into();
-                true
+                if let Some(entry) = data
+                    .iter_mut()
+                    .find(|entry| entry.id.as_str() == session_id)
+                {
+                    entry.id = "".into();
+                    true
+                } else {
+                    false
+                }
             } else {
                 false
             }
+        }
+    }
+
+    pub fn get_cookie_session_id<'a, H>(headers: &'a H) -> Option<&'a str>
+    where
+        H: Headers,
+    {
+        headers
+            .header("Cookie")
+            .and_then(|cookies_str| Cookies::new(cookies_str).get("SESSIONID"))
+    }
+
+    pub fn set_cookie_session_id<'a, const N: usize, H>(
+        headers: H,
+        session_id: &str,
+        cookies: &mut heapless::String<N>,
+    ) where
+        H: Headers + 'a,
+    {
+        let cookies_str = headers.header("Cookie").unwrap_or("");
+
+        for cookie in Cookies::serialize(Cookies::set(
+            Cookies::new(cookies_str).into_iter(),
+            "SESSIONID",
+            session_id,
+        )) {
+            cookies.push_str(cookie).unwrap(); // TODO
         }
     }
 }

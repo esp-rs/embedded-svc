@@ -1,115 +1,72 @@
 use core::cmp::min;
 
 use crate::errors::wrap::WrapError;
-use crate::http::server::registry::Registry;
 use crate::http::server::*;
 use crate::mutex::*;
 use crate::ota::{self, OtaRead, OtaSlot, OtaUpdate};
 use crate::utils::json_io;
 
-pub fn register<R, MO, MS, MP, O, S>(
-    registry: &mut R,
-    ota: MO,
-    ota_server: MS,
-    progress: MP,
-) -> Result<(), R::Error>
-where
-    R: Registry,
-    MO: Mutex<Data = O> + Send + Sync + Clone + 'static,
-    MS: Mutex<Data = S> + Send + Sync + Clone + 'static,
-    MP: Mutex<Data = Option<usize>> + Send + Sync + Clone + 'static,
-    O: ota::Ota,
-    S: ota::OtaServer,
-{
-    let ota_server1 = ota_server.clone();
-    let ota_server2 = ota_server.clone();
-
-    let ota1 = ota.clone();
-    let ota2 = ota.clone();
-
-    let progress1 = progress.clone();
-
-    registry
-        .handle_get("", move |req, resp| get_status(req, resp, &ota1))?
-        .handle_get("/updates", move |req, resp| {
-            get_updates(req, resp, &ota_server1)
-        })?
-        .handle_get("/updates/latest", move |req, resp| {
-            get_latest_update(req, resp, &ota_server2)
-        })?
-        .handle_post("/reset", move |req, resp| factory_reset(req, resp, &ota2))?
-        .handle_post("/update", move |req, resp| {
-            update(req, resp, &ota, &ota_server, &progress1)
-        })?
-        .handle_get("/update/progress", move |req, resp| {
-            get_update_progress(req, resp, &progress)
-        })?;
-
-    Ok(())
-}
-
-pub fn get_status(
-    _req: impl Request,
-    resp: impl Response,
+pub fn get_status<C: Connection>(
+    connection: &mut C,
+    request: C::Request,
     ota: &impl Mutex<Data = impl ota::Ota>,
-) -> Result<(), HandlerError> {
+) -> HandlerResult {
     let ota = ota.lock();
 
     let slot = ota.get_running_slot()?;
 
     let info = slot.get_firmware_info()?;
 
-    json_io::resp_write::<512, _, _>(resp, &info)?;
-
-    Ok(())
+    Ok(json_io::response::<512, _, _>(connection, request, &info)?)
 }
 
-pub fn get_updates(
-    _req: impl Request,
-    resp: impl Response,
+pub fn get_updates<C: Connection>(
+    connection: &mut C,
+    request: C::Request,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
-) -> Result<(), HandlerError> {
+) -> HandlerResult {
     let mut ota_server = ota_server.lock();
 
     let updates = ota_server.get_releases()?;
 
-    json_io::resp_write::<512, _, _>(resp, &updates)?;
-
-    Ok(())
+    Ok(json_io::response::<512, _, _>(
+        connection, request, &updates,
+    )?)
 }
 
-pub fn get_latest_update(
-    _req: impl Request,
-    resp: impl Response,
+pub fn get_latest_update<C: Connection>(
+    connection: &mut C,
+    request: C::Request,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
-) -> Result<(), HandlerError> {
+) -> HandlerResult {
     let mut ota_server = ota_server.lock();
 
     let update = ota_server.get_latest_release()?;
 
-    json_io::resp_write::<512, _, _>(resp, &update)?;
-
-    Ok(())
+    Ok(json_io::response::<512, _, _>(
+        connection, request, &update,
+    )?)
 }
 
-pub fn factory_reset(
-    _req: impl Request,
-    _resp: impl Response,
+pub fn factory_reset<C: Connection>(
+    _connection: &mut C,
+    _request: C::Request,
     ota: &impl Mutex<Data = impl ota::Ota>,
-) -> Result<(), HandlerError> {
+) -> HandlerResult {
     ota.lock().factory_reset()?;
 
     Ok(())
 }
 
-pub fn update(
-    req: impl Request,
-    _resp: impl Response,
+pub fn update<C: Connection>(
+    connection: &mut C,
+    mut request: C::Request,
     ota: &impl Mutex<Data = impl ota::Ota>,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
     progress: &impl Mutex<Data = Option<usize>>,
-) -> Result<(), HandlerError> {
-    let download_id: Option<heapless::String<128>> = json_io::read::<1024, _, _>(req)?;
+) -> HandlerResult {
+    let download_id: Option<heapless::String<128>> =
+        json_io::read::<1024, _, _>(connection.reader(&mut request))?;
 
     let mut ota_server = ota_server.lock();
 
@@ -140,12 +97,14 @@ pub fn update(
     Ok(())
 }
 
-pub fn get_update_progress(
-    _req: impl Request,
-    resp: impl Response,
+pub fn get_update_progress<C: Connection>(
+    connection: &mut C,
+    request: C::Request,
     progress: &impl Mutex<Data = Option<usize>>,
-) -> Result<(), HandlerError> {
-    json_io::resp_write::<512, _, _>(resp, &*progress.lock())?;
-
-    Ok(())
+) -> HandlerResult {
+    Ok(json_io::response::<512, _, _>(
+        connection,
+        request,
+        &*progress.lock(),
+    )?)
 }

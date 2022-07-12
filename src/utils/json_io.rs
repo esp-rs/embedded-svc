@@ -49,39 +49,24 @@ where
 }
 
 #[cfg(feature = "json_io")]
-pub fn req_write<const N: usize, R, T>(
-    mut req: R,
+pub fn response<const N: usize, C, T>(
+    connection: &mut C,
+    request: C::Request,
     value: &T,
-) -> Result<R::Write, SerdeError<R::Error>>
+) -> Result<(), SerdeError<C::Error>>
 where
-    R: crate::http::client::Request,
+    C: crate::http::server::Connection,
     T: Serialize,
 {
-    req.set_header("Content-Type", "application/json");
+    use crate::http::headers::content_type;
 
-    let mut writer = req.into_writer().map_err(SerdeError::IoError)?;
+    let mut response = connection
+        .into_response(request, 200, None, &[content_type("application/json")])
+        .map_err(SerdeError::IoError)?;
 
-    write::<N, _, _>(&mut writer, value)?;
+    write::<N, _, _>(connection.writer(&mut response), value)?;
 
-    Ok(writer)
-}
-
-#[cfg(feature = "json_io")]
-pub fn resp_write<const N: usize, P, T>(
-    mut response: P,
-    value: &T,
-) -> Result<P::Write, SerdeError<P::Error>>
-where
-    P: crate::http::server::Response,
-    T: Serialize,
-{
-    response.set_header("Content-Type", "application/json");
-
-    let mut writer = response.into_writer().map_err(SerdeError::IoError)?;
-
-    write::<N, _, _>(&mut writer, value)?;
-
-    Ok(writer)
+    Ok(())
 }
 
 pub mod asynch {
