@@ -49,17 +49,33 @@ where
 }
 
 #[cfg(feature = "json_io")]
-pub fn req_write<const N: usize, R, T>(
-    mut req: R,
+pub fn submit_request<const N: usize, R, T>(
+    request: R,
+    value: &T,
+) -> Result<<R::Write as crate::http::client::RequestWrite>::Response, SerdeError<R::Error>>
+where
+    R: crate::http::client::Request,
+    T: Serialize,
+{
+    use crate::http::client::RequestWrite;
+
+    Ok(write_request::<N, _, _>(request, value)?
+        .submit()
+        .map_err(SerdeError::IoError))?
+}
+
+#[cfg(feature = "json_io")]
+pub fn write_request<const N: usize, R, T>(
+    mut request: R,
     value: &T,
 ) -> Result<R::Write, SerdeError<R::Error>>
 where
     R: crate::http::client::Request,
     T: Serialize,
 {
-    req.set_header("Content-Type", "application/json");
+    request.set_header("Content-Type", "application/json");
 
-    let mut writer = req.into_writer().map_err(SerdeError::IoError)?;
+    let mut writer = request.into_writer().map_err(SerdeError::IoError)?;
 
     write::<N, _, _>(&mut writer, value)?;
 
@@ -67,12 +83,28 @@ where
 }
 
 #[cfg(feature = "json_io")]
-pub fn resp_write<const N: usize, P, T>(
-    mut response: P,
+pub fn submit_response<const N: usize, S, T>(
+    response: S,
     value: &T,
-) -> Result<P::Write, SerdeError<P::Error>>
+) -> Result<crate::http::server::Completion, SerdeError<S::Error>>
 where
-    P: crate::http::server::Response,
+    S: crate::http::server::Response,
+    T: Serialize,
+{
+    use crate::http::server::ResponseWrite;
+
+    Ok(write_response::<N, _, _>(response, value)?
+        .complete()
+        .map_err(SerdeError::IoError)?)
+}
+
+#[cfg(feature = "json_io")]
+pub fn write_response<const N: usize, S, T>(
+    mut response: S,
+    value: &T,
+) -> Result<S::Write, SerdeError<S::Error>>
+where
+    S: crate::http::server::Response,
     T: Serialize,
 {
     response.set_header("Content-Type", "application/json");
