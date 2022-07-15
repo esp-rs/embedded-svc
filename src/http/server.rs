@@ -2,7 +2,7 @@ use core::fmt::{self, Debug, Display, Write as _};
 
 use crate::io::{Io, Read, Write};
 
-pub use super::{Headers, Query, RequestId, SendHeaders, SendStatus};
+pub use super::{Headers, Method, Query, RequestId, SendHeaders, SendStatus, Status};
 
 struct PrivateData;
 
@@ -15,15 +15,19 @@ impl Completion {
 }
 
 pub trait Request: RequestId + Query + Headers + Read {
-    type Headers: RequestId + Query + Headers;
-    type Body: RequestBody<Request = Self, Error = Self::Error>;
+    type Headers<'b>: RequestId + Query + Headers
+    where
+        Self: 'b;
+    type Body<'b>: Read<Error = Self::Error>
+    where
+        Self: 'b;
 
     type Response: Response<Error = Self::Error>;
-    type ResponseHeaders: ResponseHeaders<Request = Self, Error = Self::Error>;
-
-    fn split(self) -> (Self::Headers, Self::Body, Self::ResponseHeaders)
+    type ResponseHeaders<'b>: SendStatus + SendHeaders
     where
-        Self: Sized;
+        Self: 'b;
+
+    fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Body<'b>, Self::ResponseHeaders<'b>);
 
     fn into_response(self) -> Result<Self::Response, Self::Error>
     where
@@ -35,29 +39,6 @@ pub trait Request: RequestId + Query + Headers + Read {
     {
         self.into_response()?.complete()
     }
-}
-
-pub trait RequestBody: Read {
-    type Request: Request<Body = Self, Error = Self::Error>;
-
-    fn merge(
-        self,
-        request_headers: <<Self as RequestBody>::Request as Request>::Headers,
-        response_headers: <<Self as RequestBody>::Request as Request>::ResponseHeaders,
-    ) -> Self::Request
-    where
-        Self: Sized;
-}
-
-pub trait ResponseHeaders: SendStatus + SendHeaders + Io {
-    type Request: Request<ResponseHeaders = Self, Error = Self::Error>;
-
-    fn into_response(
-        self,
-        request_body: <<Self as ResponseHeaders>::Request as Request>::Body,
-    ) -> Result<<<Self as ResponseHeaders>::Request as Request>::Response, Self::Error>
-    where
-        Self: Sized;
 }
 
 pub trait Response: SendStatus + SendHeaders + Io {
@@ -93,6 +74,16 @@ pub trait ResponseWrite: Write {
 }
 
 pub struct HandlerError(heapless::String<128>);
+
+impl HandlerError {
+    pub fn new(message: &str) -> Self {
+        Self(message.into())
+    }
+
+    pub fn message(&self) -> &str {
+        &self.0
+    }
+}
 
 impl<E> From<E> for HandlerError
 where
@@ -205,52 +196,31 @@ pub mod asynch {
     use crate::io::{asynch::Read, asynch::Write, Io};
     use crate::unblocker::asynch::{Blocker, Blocking, TrivialAsync};
 
-    pub use crate::http::{Headers, Query, RequestId, SendHeaders, SendStatus};
-
-    use super::Completion;
-    pub use super::{HandlerError, HandlerResult};
+    pub use super::{
+        Completion, HandlerError, HandlerResult, Headers, Method, Query, RequestId, SendHeaders,
+        SendStatus, Status,
+    };
 
     pub trait Request: RequestId + Query + Headers + Read {
-        type Headers: Query + RequestId + Headers;
-        type Body: RequestBody<Request = Self, Error = Self::Error>;
+        type Headers<'b>: Query + RequestId + Headers
+        where
+            Self: 'b;
+        type Body<'b>: Read<Error = Self::Error>
+        where
+            Self: 'b;
 
         type Response: Response<Error = Self::Error>;
-        type ResponseHeaders: ResponseHeaders<Request = Self, Error = Self::Error>;
+        type ResponseHeaders<'b>: SendStatus + SendHeaders
+        where
+            Self: 'b;
 
         type IntoResponseFuture: Future<Output = Result<Self::Response, Self::Error>>;
 
-        fn split(self) -> (Self::Headers, Self::Body, Self::ResponseHeaders)
-        where
-            Self: Sized;
+        fn split<'b>(
+            &'b mut self,
+        ) -> (Self::Headers<'b>, Self::Body<'b>, Self::ResponseHeaders<'b>);
 
         fn into_response(self) -> Self::IntoResponseFuture
-        where
-            Self: Sized;
-    }
-
-    pub trait RequestBody: Read {
-        type Request: Request<Body = Self, Error = Self::Error>;
-
-        fn merge(
-            self,
-            request_headers: <<Self as RequestBody>::Request as Request>::Headers,
-            response_headers: <<Self as RequestBody>::Request as Request>::ResponseHeaders,
-        ) -> Self::Request
-        where
-            Self: Sized;
-    }
-
-    pub trait ResponseHeaders: SendStatus + SendHeaders + Io {
-        type Request: Request<ResponseHeaders = Self, Error = Self::Error>;
-
-        type IntoResponseFuture: Future<
-            Output = Result<<<Self as ResponseHeaders>::Request as Request>::Response, Self::Error>,
-        >;
-
-        fn into_response(
-            self,
-            request_body: <<Self as ResponseHeaders>::Request as Request>::Body,
-        ) -> Self::IntoResponseFuture
         where
             Self: Sized;
     }
@@ -314,19 +284,30 @@ pub mod asynch {
         B: Blocker + Clone,
         R: Request,
     {
-        type Headers = R::Headers;
-        type Body = Blocking<B, R::Body>;
+        type Headers<'b>
+        where
+            Self: 'b,
+        = R::Headers<'b>;
+        type Body<'b>
+        where
+            Self: 'b,
+        = Blocking<B, R::Body<'b>>;
 
         type Response = Blocking<B, R::Response>;
-        type ResponseHeaders = Blocking<B, R::ResponseHeaders>;
+        type ResponseHeaders<'b>
+        where
+            Self: 'b,
+        = R::ResponseHeaders<'b>;
 
-        fn split(self) -> (Self::Headers, Self::Body, Self::ResponseHeaders) {
+        fn split<'b>(
+            &'b mut self,
+        ) -> (Self::Headers<'b>, Self::Body<'b>, Self::ResponseHeaders<'b>) {
             let (headers, body, response_headers) = self.1.split();
 
             (
                 headers,
                 Blocking::new(self.0.clone(), body),
-                Blocking::new(self.0, response_headers),
+                response_headers,
             )
         }
 
@@ -335,48 +316,6 @@ pub mod asynch {
             Self: Sized,
         {
             let response = self.0.block_on(self.1.into_response())?;
-
-            Ok(Blocking::new(self.0, response))
-        }
-    }
-
-    impl<B, R> super::RequestBody for Blocking<B, R>
-    where
-        B: Blocker + Clone,
-        R: RequestBody,
-    {
-        type Request = Blocking<B, R::Request>;
-
-        fn merge(
-            self,
-            request_headers: <<Self as super::RequestBody>::Request as super::Request>::Headers,
-            response_headers: <<Self as super::RequestBody>::Request as super::Request>::ResponseHeaders,
-        ) -> Self::Request
-        where
-            Self: Sized,
-        {
-            Blocking::new(self.0, self.1.merge(request_headers, response_headers.1))
-        }
-    }
-
-    impl<B, R> super::ResponseHeaders for Blocking<B, R>
-    where
-        B: Blocker + Clone,
-        R: ResponseHeaders,
-    {
-        type Request = Blocking<B, R::Request>;
-
-        fn into_response(
-            self,
-            request_body: Blocking<B, <<R as ResponseHeaders>::Request as Request>::Body>,
-        ) -> Result<
-            <<Self as super::ResponseHeaders>::Request as super::Request>::Response,
-            Self::Error,
-        >
-        where
-            Self: Sized,
-        {
-            let response = self.0.block_on(self.1.into_response(request_body.1))?;
 
             Ok(Blocking::new(self.0, response))
         }
@@ -429,22 +368,29 @@ pub mod asynch {
     where
         R: super::Request,
     {
-        type Headers = R::Headers;
-        type Body = TrivialAsync<R::Body>;
+        type Headers<'b>
+        where
+            Self: 'b,
+        = R::Headers<'b>;
+        type Body<'b>
+        where
+            Self: 'b,
+        = TrivialAsync<R::Body<'b>>;
 
         type Response = TrivialAsync<R::Response>;
-        type ResponseHeaders = TrivialAsync<R::ResponseHeaders>;
+        type ResponseHeaders<'b>
+        where
+            Self: 'b,
+        = R::ResponseHeaders<'b>;
 
         type IntoResponseFuture = impl Future<Output = Result<Self::Response, Self::Error>>;
 
-        fn split(self) -> (Self::Headers, Self::Body, Self::ResponseHeaders) {
+        fn split<'b>(
+            &'b mut self,
+        ) -> (Self::Headers<'b>, Self::Body<'b>, Self::ResponseHeaders<'b>) {
             let (headers, body, response_headers) = self.1.split();
 
-            (
-                headers,
-                TrivialAsync::new_async(body),
-                TrivialAsync::new_async(response_headers),
-            )
+            (headers, TrivialAsync::new_async(body), response_headers)
         }
 
         fn into_response(self) -> Self::IntoResponseFuture
@@ -452,49 +398,6 @@ pub mod asynch {
             Self: Sized,
         {
             async move { Ok(TrivialAsync::new_async(self.1.into_response()?)) }
-        }
-    }
-
-    impl<R> RequestBody for TrivialAsync<R>
-    where
-        R: super::RequestBody,
-    {
-        type Request = TrivialAsync<R::Request>;
-
-        fn merge(
-            self,
-            request_headers: <<Self as RequestBody>::Request as Request>::Headers,
-            response_headers: <<Self as RequestBody>::Request as Request>::ResponseHeaders,
-        ) -> Self::Request
-        where
-            Self: Sized,
-        {
-            TrivialAsync::new_async(self.1.merge(request_headers, response_headers.1))
-        }
-    }
-
-    impl<R> ResponseHeaders for TrivialAsync<R>
-    where
-        R: super::ResponseHeaders,
-    {
-        type Request = TrivialAsync<R::Request>;
-
-        type IntoResponseFuture = impl Future<
-            Output = Result<<<Self as ResponseHeaders>::Request as Request>::Response, Self::Error>,
-        >;
-
-        fn into_response(
-            self,
-            request_body: <<Self as ResponseHeaders>::Request as Request>::Body,
-        ) -> Self::IntoResponseFuture
-        where
-            Self: Sized,
-        {
-            async move {
-                Ok(TrivialAsync::new_async(
-                    self.1.into_response(request_body.1)?,
-                ))
-            }
         }
     }
 

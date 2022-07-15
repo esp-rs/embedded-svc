@@ -91,11 +91,12 @@ pub fn login(
         if let Some(role) = auth(&credentials.username, &credentials.password) {
             session.invalidate(&request);
 
-            let (headers, body, mut resp_headers) = request.split();
+            {
+                let (headers, _, mut resp_headers) = request.split();
+                session.with(&headers, &mut resp_headers, |sd| sd.set_role(role))?;
+            }
 
-            session.with(&headers, &mut resp_headers, |sd| sd.set_role(role))?;
-
-            Ok(resp_headers.into_response(body)?.complete()?)
+            Ok(request.into_response()?.complete()?)
         } else {
             Ok(request
                 .into_response()?
