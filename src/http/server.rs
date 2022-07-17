@@ -1,76 +1,47 @@
-use core::fmt::{self, Debug, Display, Write as _};
+use core::{
+    fmt::{self, Debug, Display, Write as _},
+    iter,
+};
 
-use crate::io::{Io, Read, Write};
+use crate::io::{Read, Write};
 
-pub use super::{Headers, Method, Query, RequestId, SendHeaders, SendStatus, Status};
+pub use super::{Headers, Method, Query, Status};
 
-struct PrivateData;
-
-pub struct Completion(PrivateData);
-
-impl Completion {
-    pub unsafe fn internal_new() -> Self {
-        Self(PrivateData)
-    }
-}
-
-pub trait Request: RequestId + Query + Headers + Read {
-    type Headers<'b>: RequestId + Query + Headers
+pub trait Request: Query + Headers + Read {
+    type Headers<'b>: Query + Headers
     where
         Self: 'b;
-    type Body<'b>: Read<Error = Self::Error>
+    type Read<'b>: Read<Error = Self::Error>
     where
         Self: 'b;
 
-    type Response: Response<Error = Self::Error>;
-    type ResponseHeaders<'b>: SendStatus + SendHeaders
-    where
-        Self: 'b;
+    type ResponseWrite: Write<Error = Self::Error>;
 
-    fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Body<'b>, Self::ResponseHeaders<'b>);
+    fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>);
 
-    fn into_response(self) -> Result<Self::Response, Self::Error>
+    fn into_response<'a, H>(
+        self,
+        status: u16,
+        message: Option<&'a str>,
+        headers: H,
+    ) -> Result<Self::ResponseWrite, Self::Error>
     where
+        H: IntoIterator<Item = (&'a str, &'a str)>,
         Self: Sized;
 
-    fn complete(self) -> Result<Completion, Self::Error>
+    fn into_status_response(self, status: u16) -> Result<Self::ResponseWrite, Self::Error>
     where
         Self: Sized,
     {
-        self.into_response()?.complete()
+        self.into_response(status, None, iter::empty())
     }
-}
 
-pub trait Response: SendStatus + SendHeaders + Io {
-    type Write: ResponseWrite<Error = Self::Error>;
-
-    fn into_writer(self) -> Result<Self::Write, Self::Error>
-    where
-        Self: Sized;
-
-    fn submit(self, data: &[u8]) -> Result<Completion, Self::Error>
+    fn into_ok_response(self) -> Result<Self::ResponseWrite, Self::Error>
     where
         Self: Sized,
     {
-        let mut write = self.into_writer()?;
-
-        write.write_all(data)?;
-
-        write.complete()
+        self.into_response(200, Some("OK"), iter::empty())
     }
-
-    fn complete(self) -> Result<Completion, Self::Error>
-    where
-        Self: Sized,
-    {
-        self.into_writer()?.complete()
-    }
-}
-
-pub trait ResponseWrite: Write {
-    fn complete(self) -> Result<Completion, Self::Error>
-    where
-        Self: Sized;
 }
 
 pub struct HandlerError(heapless::String<128>);
@@ -106,7 +77,7 @@ impl Display for HandlerError {
     }
 }
 
-pub type HandlerResult = Result<Completion, HandlerError>;
+pub type HandlerResult = Result<(), HandlerError>;
 
 pub trait Handler<R>: Send
 where
@@ -193,62 +164,37 @@ where
 pub mod asynch {
     use core::future::Future;
 
-    use crate::io::{asynch::Read, asynch::Write, Io};
+    use crate::io::{asynch::Read, asynch::Write};
     use crate::unblocker::asynch::{Blocker, Blocking, TrivialAsync};
 
-    pub use super::{
-        Completion, HandlerError, HandlerResult, Headers, Method, Query, RequestId, SendHeaders,
-        SendStatus, Status,
-    };
+    pub use super::{HandlerError, HandlerResult, Headers, Method, Query, Status};
 
-    pub trait Request: RequestId + Query + Headers + Read {
-        type Headers<'b>: Query + RequestId + Headers
+    pub trait Request: Query + Headers + Read {
+        type Headers<'b>: Query + Headers
         where
             Self: 'b;
-        type Body<'b>: Read<Error = Self::Error>
+        type Read<'b>: Read<Error = Self::Error>
         where
             Self: 'b;
 
-        type Response: Response<Error = Self::Error>;
-        type ResponseHeaders<'b>: SendStatus + SendHeaders
+        type ResponseWrite: Write<Error = Self::Error>;
+
+        type IntoResponseFuture<'a, H>: Future<Output = Result<Self::ResponseWrite, Self::Error>>;
+        type IntoOkResponseFuture: Future<Output = Result<Self::ResponseWrite, Self::Error>>;
+
+        fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>);
+
+        fn into_response<'a, H>(
+            self,
+            status: u16,
+            message: Option<&'a str>,
+            headers: H,
+        ) -> Self::IntoResponseFuture<'a, H>
         where
-            Self: 'b;
-
-        type IntoResponseFuture: Future<Output = Result<Self::Response, Self::Error>>;
-
-        fn split<'b>(
-            &'b mut self,
-        ) -> (Self::Headers<'b>, Self::Body<'b>, Self::ResponseHeaders<'b>);
-
-        fn into_response(self) -> Self::IntoResponseFuture
-        where
-            Self: Sized;
-    }
-
-    pub trait Response: SendStatus + SendHeaders + Io {
-        type Write: ResponseWrite<Error = Self::Error>;
-
-        type IntoWriterFuture: Future<Output = Result<Self::Write, Self::Error>>;
-        type SubmitFuture<'a>: Future<Output = Result<Completion, Self::Error>>;
-        type CompleteFuture: Future<Output = Result<Completion, Self::Error>>;
-
-        fn into_writer(self) -> Self::IntoWriterFuture
-        where
+            H: IntoIterator<Item = (&'a str, &'a str)>,
             Self: Sized;
 
-        fn submit<'a>(self, data: &'a [u8]) -> Self::SubmitFuture<'a>
-        where
-            Self: Sized;
-
-        fn complete(self) -> Self::CompleteFuture
-        where
-            Self: Sized;
-    }
-
-    pub trait ResponseWrite: Write {
-        type CompleteFuture: Future<Output = Result<Completion, Self::Error>>;
-
-        fn complete(self) -> Self::CompleteFuture
+        fn into_ok_response(self) -> Self::IntoOkResponseFuture
         where
             Self: Sized;
     }
@@ -288,66 +234,43 @@ pub mod asynch {
         where
             Self: 'b,
         = R::Headers<'b>;
-        type Body<'b>
+        type Read<'b>
         where
             Self: 'b,
-        = Blocking<B, R::Body<'b>>;
+        = Blocking<B, R::Read<'b>>;
 
-        type Response = Blocking<B, R::Response>;
-        type ResponseHeaders<'b>
-        where
-            Self: 'b,
-        = R::ResponseHeaders<'b>;
+        type ResponseWrite = Blocking<B, R::ResponseWrite>;
 
-        fn split<'b>(
-            &'b mut self,
-        ) -> (Self::Headers<'b>, Self::Body<'b>, Self::ResponseHeaders<'b>) {
-            let (headers, body, response_headers) = self.1.split();
+        fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>) {
+            let (headers, body) = self.1.split();
 
-            (
-                headers,
-                Blocking::new(self.0.clone(), body),
-                response_headers,
-            )
+            (headers, Blocking::new(self.0.clone(), body))
         }
 
-        fn into_response(self) -> Result<Self::Response, Self::Error>
+        fn into_response<'a, H>(
+            self,
+            status: u16,
+            message: Option<&'a str>,
+            headers: H,
+        ) -> Result<Self::ResponseWrite, Self::Error>
         where
+            H: IntoIterator<Item = (&'a str, &'a str)>,
             Self: Sized,
         {
-            let response = self.0.block_on(self.1.into_response())?;
+            let response = self
+                .0
+                .block_on(self.1.into_response(status, message, headers))?;
 
             Ok(Blocking::new(self.0, response))
         }
-    }
 
-    impl<B, R> super::Response for Blocking<B, R>
-    where
-        B: Blocker,
-        R: Response,
-    {
-        type Write = Blocking<B, R::Write>;
-
-        fn into_writer(self) -> Result<Self::Write, Self::Error>
+        fn into_ok_response(self) -> Result<Self::ResponseWrite, Self::Error>
         where
             Self: Sized,
         {
-            let write = self.0.block_on(self.1.into_writer())?;
+            let response = self.0.block_on(self.1.into_ok_response())?;
 
-            Ok(Blocking::new(self.0, write))
-        }
-    }
-
-    impl<B, R> super::ResponseWrite for Blocking<B, R>
-    where
-        B: Blocker,
-        R: ResponseWrite,
-    {
-        fn complete(self) -> Result<Completion, Self::Error>
-        where
-            Self: Sized,
-        {
-            Ok(self.0.block_on(self.1.complete())?)
+            Ok(Blocking::new(self.0, response))
         }
     }
 
@@ -372,78 +295,45 @@ pub mod asynch {
         where
             Self: 'b,
         = R::Headers<'b>;
-        type Body<'b>
+        type Read<'b>
         where
             Self: 'b,
-        = TrivialAsync<R::Body<'b>>;
+        = TrivialAsync<R::Read<'b>>;
 
-        type Response = TrivialAsync<R::Response>;
-        type ResponseHeaders<'b>
-        where
-            Self: 'b,
-        = R::ResponseHeaders<'b>;
+        type ResponseWrite = TrivialAsync<R::ResponseWrite>;
 
-        type IntoResponseFuture = impl Future<Output = Result<Self::Response, Self::Error>>;
+        type IntoResponseFuture<'a, H> =
+            impl Future<Output = Result<Self::ResponseWrite, Self::Error>>;
+        type IntoOkResponseFuture = impl Future<Output = Result<Self::ResponseWrite, Self::Error>>;
 
-        fn split<'b>(
-            &'b mut self,
-        ) -> (Self::Headers<'b>, Self::Body<'b>, Self::ResponseHeaders<'b>) {
-            let (headers, body, response_headers) = self.1.split();
+        fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>) {
+            let (headers, body) = self.1.split();
 
-            (headers, TrivialAsync::new_async(body), response_headers)
+            (headers, TrivialAsync::new_async(body))
         }
 
-        fn into_response(self) -> Self::IntoResponseFuture
+        fn into_response<'a, H>(
+            self,
+            status: u16,
+            message: Option<&'a str>,
+            headers: H,
+        ) -> Self::IntoResponseFuture<'a, H>
+        where
+            H: IntoIterator<Item = (&'a str, &'a str)>,
+            Self: Sized,
+        {
+            async move {
+                Ok(TrivialAsync::new_async(
+                    self.1.into_response(status, message, headers)?,
+                ))
+            }
+        }
+
+        fn into_ok_response(self) -> Self::IntoOkResponseFuture
         where
             Self: Sized,
         {
-            async move { Ok(TrivialAsync::new_async(self.1.into_response()?)) }
-        }
-    }
-
-    impl<R> ResponseWrite for TrivialAsync<R>
-    where
-        R: super::ResponseWrite,
-    {
-        type CompleteFuture = impl Future<Output = Result<Completion, Self::Error>>;
-
-        fn complete(self) -> Self::CompleteFuture
-        where
-            Self: Sized,
-        {
-            async move { self.1.complete() }
-        }
-    }
-
-    impl<R> Response for TrivialAsync<R>
-    where
-        R: super::Response,
-    {
-        type Write = TrivialAsync<R::Write>;
-
-        type IntoWriterFuture = impl Future<Output = Result<Self::Write, Self::Error>>;
-        type SubmitFuture<'a> = impl Future<Output = Result<Completion, Self::Error>>;
-        type CompleteFuture = impl Future<Output = Result<Completion, Self::Error>>;
-
-        fn into_writer(self) -> Self::IntoWriterFuture
-        where
-            Self: Sized,
-        {
-            async move { self.1.into_writer().map(TrivialAsync::new_async) }
-        }
-
-        fn submit<'a>(self, data: &'a [u8]) -> Self::SubmitFuture<'a>
-        where
-            Self: Sized,
-        {
-            async move { self.1.submit(data) }
-        }
-
-        fn complete(self) -> Self::CompleteFuture
-        where
-            Self: Sized,
-        {
-            async move { self.1.complete() }
+            async move { Ok(TrivialAsync::new_async(self.1.into_ok_response()?)) }
         }
     }
 

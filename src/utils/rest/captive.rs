@@ -1,7 +1,10 @@
 use core::fmt::Write as _;
+use core::iter;
 
-use crate::http::server::{Handler, HandlerResult, Middleware, Request, Response};
-use crate::http::{SendHeaders, SendStatus};
+use embedded_io::blocking::Write;
+
+use crate::http::headers;
+use crate::http::server::{Handler, HandlerResult, Middleware, Request};
 use crate::mutex::*;
 
 pub struct WithCaptivePortalMiddleware<M, F> {
@@ -45,11 +48,9 @@ where
         if allow {
             handler.handle(request)
         } else {
-            Ok(request
-                .into_response()?
-                .status(307)
-                .header("Location", self.portal_uri)
-                .complete()?)
+            request.into_response(307, None, iter::once(("Location", self.portal_uri)))?;
+
+            Ok(())
         }
     }
 }
@@ -74,7 +75,6 @@ where
     .unwrap();
 
     Ok(request
-        .into_response()?
-        .content_type("application/captive+json")
-        .submit(data.as_bytes())?)
+        .into_response(200, None, headers::content_type("application/captive+json"))?
+        .write_all(data.as_bytes())?)
 }

@@ -1,5 +1,7 @@
 use core::fmt::Debug;
+use core::iter;
 
+use embedded_io::blocking::Write;
 use serde::{Deserialize, Serialize};
 
 use crate::http::server::*;
@@ -50,7 +52,9 @@ where
             let role = self
                 .session
                 .as_ref()
-                .and_then(|session| session.with_existing(&request, |sd| sd.get_role()))
+                .and_then(|session| {
+                    session.with_existing(get_cookie_session_id(&request), |sd| sd.get_role())
+                })
                 .flatten();
 
             if let Some(role) = role {
@@ -60,12 +64,30 @@ where
             }
         }
 
-        Ok(request
-            .into_response()?
-            .status(401)
-            .header("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")
-            .complete()?)
+        request.into_response(
+            401,
+            None,
+            iter::once(("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")),
+        )?;
+
+        Ok(())
     }
+}
+
+pub fn relogin(
+    request: impl Request,
+    session: &impl Session<SessionData = impl RoleSessionData>,
+    auth: impl Fn(&str, &str) -> Option<Role>,
+) -> HandlerResult {
+    if session
+        .with_existing(get_cookie_session_id(&request), |sd| sd.get_role())
+        .flatten()
+        .is_some()
+    {
+        login(request, session, auth)?;
+    }
+
+    Ok(())
 }
 
 pub fn login(
@@ -73,41 +95,35 @@ pub fn login(
     session: &impl Session<SessionData = impl RoleSessionData>,
     auth: impl Fn(&str, &str) -> Option<Role>,
 ) -> HandlerResult {
-    if session
-        .with_existing(&request, |sd| sd.get_role())
-        .flatten()
-        .is_some()
-    {
-        Ok(request.complete()?)
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct Credentials {
+        username: heapless::String<32>,
+        password: heapless::String<32>,
+    }
+
+    let credentials: Credentials = json_io::read::<512, _, _>(&mut request)?;
+
+    if let Some(role) = auth(&credentials.username, &credentials.password) {
+        session.invalidate(get_cookie_session_id(&request));
+
+        let session_id = "XXX"; // TODO: Random string
+        session.with(session_id, |sd| sd.set_role(role))?;
+
+        let mut cookie = heapless::String::<128>::new();
+        set_cookie_session_id(&request, session_id, &mut cookie);
+
+        request.into_response(200, None, iter::once(("Set-Cookie", cookie.as_str())))?;
+
+        Ok(())
     } else {
-        #[derive(Clone, Debug, Serialize, Deserialize)]
-        struct Credentials {
-            username: heapless::String<32>,
-            password: heapless::String<32>,
-        }
-
-        let credentials: Credentials = json_io::read::<512, _, _>(&mut request)?;
-
-        if let Some(role) = auth(&credentials.username, &credentials.password) {
-            session.invalidate(&request);
-
-            {
-                let (headers, _, mut resp_headers) = request.split();
-                session.with(&headers, &mut resp_headers, |sd| sd.set_role(role))?;
-            }
-
-            Ok(request.into_response()?.complete()?)
-        } else {
-            Ok(request
-                .into_response()?
-                .status(401)
-                .submit("Invalid username or password".as_bytes())?)
-        }
+        Ok(request
+            .into_status_response(401)?
+            .write_all("Invalid username or password".as_bytes())?)
     }
 }
 
 pub fn logout(request: impl Request, session: &impl Session) -> HandlerResult {
-    session.invalidate(&request);
+    session.invalidate(get_cookie_session_id(&request));
 
-    Ok(request.complete()?)
+    Ok(())
 }

@@ -49,71 +49,22 @@ where
 }
 
 #[cfg(feature = "json_io")]
-pub fn submit_request<const N: usize, R, T>(
-    request: R,
-    value: &T,
-) -> Result<<R::Write as crate::http::client::RequestWrite>::Response, SerdeError<R::Error>>
+pub fn response<const N: usize, R, T>(request: R, value: &T) -> Result<(), SerdeError<R::Error>>
 where
-    R: crate::http::client::Request,
+    R: crate::http::server::Request,
     T: Serialize,
 {
-    use crate::http::client::RequestWrite;
-
-    Ok(write_request::<N, _, _>(request, value)?
-        .submit()
-        .map_err(SerdeError::IoError))?
-}
-
-#[cfg(feature = "json_io")]
-pub fn write_request<const N: usize, R, T>(
-    mut request: R,
-    value: &T,
-) -> Result<R::Write, SerdeError<R::Error>>
-where
-    R: crate::http::client::Request,
-    T: Serialize,
-{
-    request.set_header("Content-Type", "application/json");
-
-    let mut writer = request.into_writer().map_err(SerdeError::IoError)?;
+    let mut writer = request
+        .into_response(
+            200,
+            None,
+            core::iter::once(("Content-Type", "application/json")),
+        )
+        .map_err(SerdeError::IoError)?;
 
     write::<N, _, _>(&mut writer, value)?;
 
-    Ok(writer)
-}
-
-#[cfg(feature = "json_io")]
-pub fn submit_response<const N: usize, S, T>(
-    response: S,
-    value: &T,
-) -> Result<crate::http::server::Completion, SerdeError<S::Error>>
-where
-    S: crate::http::server::Response,
-    T: Serialize,
-{
-    use crate::http::server::ResponseWrite;
-
-    Ok(write_response::<N, _, _>(response, value)?
-        .complete()
-        .map_err(SerdeError::IoError)?)
-}
-
-#[cfg(feature = "json_io")]
-pub fn write_response<const N: usize, S, T>(
-    mut response: S,
-    value: &T,
-) -> Result<S::Write, SerdeError<S::Error>>
-where
-    S: crate::http::server::Response,
-    T: Serialize,
-{
-    response.set_header("Content-Type", "application/json");
-
-    let mut writer = response.into_writer().map_err(SerdeError::IoError)?;
-
-    write::<N, _, _>(&mut writer, value)?;
-
-    Ok(writer)
+    Ok(())
 }
 
 pub mod asynch {

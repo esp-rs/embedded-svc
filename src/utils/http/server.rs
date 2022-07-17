@@ -27,22 +27,17 @@ pub mod session {
     pub trait Session: Send {
         type SessionData;
 
-        fn is_existing(&self, headers: &(impl RequestId + Headers)) -> bool;
+        fn is_existing(&self, session_id: Option<&str>) -> bool;
 
-        fn with_existing<R, F>(&self, headers: &(impl RequestId + Headers), f: F) -> Option<R>
+        fn with_existing<R, F>(&self, session_id: Option<&str>, f: F) -> Option<R>
         where
             F: FnOnce(&mut Self::SessionData) -> R;
 
-        fn with<R, F>(
-            &self,
-            headers: &(impl RequestId + Headers),
-            out_headers: &mut impl SendHeaders,
-            f: F,
-        ) -> Result<R, SessionError>
+        fn with<R, F>(&self, session_id: &str, f: F) -> Result<R, SessionError>
         where
             F: FnOnce(&mut Self::SessionData) -> R;
 
-        fn invalidate(&self, req: &impl Request) -> bool;
+        fn invalidate(&self, session_id: Option<&str>) -> bool;
     }
 
     #[derive(Debug, Default)]
@@ -68,11 +63,6 @@ pub mod session {
         M: Mutex<Data = [SessionData<S>; N]>,
         S: Default,
     {
-        fn get_existing_id<'a>(&self, req: &'a impl Headers) -> Option<&'a str> {
-            req.header("Cookie")
-                .and_then(|cookies_str| Cookies::new(cookies_str).get("SESSIONID"))
-        }
-
         fn cleanup(&self, current_time: Duration) {
             let mut data = self.data.lock();
 
@@ -92,17 +82,15 @@ pub mod session {
     {
         type SessionData = S;
 
-        fn is_existing(&self, req: &(impl RequestId + Headers)) -> bool {
+        fn is_existing(&self, session_id: Option<&str>) -> bool {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
 
-            let id = self.get_existing_id(req);
-
-            if let Some(id) = id {
+            if let Some(session_id) = session_id {
                 let mut data = self.data.lock();
 
                 data.iter_mut()
-                    .find(|entry| entry.id == id)
+                    .find(|entry| entry.id.as_str() == session_id)
                     .map(|entry| entry.last_accessed = current_time)
                     .is_some()
             } else {
@@ -110,46 +98,39 @@ pub mod session {
             }
         }
 
-        fn with_existing<R, F>(&self, headers: &(impl RequestId + Headers), f: F) -> Option<R>
+        fn with_existing<R, F>(&self, session_id: Option<&str>, f: F) -> Option<R>
         where
             F: FnOnce(&mut Self::SessionData) -> R,
         {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
 
-            let id = self.get_existing_id(headers);
-            let req_id = headers.get_request_id();
+            if let Some(session_id) = session_id {
+                let mut data = self.data.lock();
 
-            let mut data = self.data.lock();
-
-            data.iter_mut()
-                .find(|entry| Some(entry.id.as_ref()) == id || entry.id == req_id)
-                .map(|entry| {
-                    entry.last_accessed = current_time;
-                    f(&mut entry.data)
-                })
+                data.iter_mut()
+                    .find(|entry| entry.id.as_str() == session_id)
+                    .map(|entry| {
+                        entry.last_accessed = current_time;
+                        f(&mut entry.data)
+                    })
+            } else {
+                None
+            }
         }
 
-        fn with<R, F>(
-            &self,
-            headers: &(impl RequestId + Headers),
-            out_headers: &mut impl SendHeaders,
-            f: F,
-        ) -> Result<R, SessionError>
+        fn with<'b, R, F>(&self, session_id: &str, f: F) -> Result<R, SessionError>
         where
             F: FnOnce(&mut Self::SessionData) -> R,
         {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
-
-            let id = self.get_existing_id(headers);
-            let req_id = headers.get_request_id();
 
             let mut data = self.data.lock();
 
             if let Some(entry) = data
                 .iter_mut()
-                .find(|entry| Some(entry.id.as_ref()) == id || entry.id == req_id)
+                .find(|entry| entry.id.as_str() == session_id)
                 .map(|entry| {
                     entry.last_accessed = current_time;
 
@@ -158,23 +139,10 @@ pub mod session {
             {
                 Ok(f(&mut entry.data))
             } else if let Some(entry) = data.iter_mut().find(|entry| entry.id == "") {
-                entry.id = req_id.into();
+                entry.id = session_id.into();
                 entry.data = Default::default();
                 entry.timeout = self.default_session_timeout;
                 entry.last_accessed = current_time;
-
-                let cookies_str = headers.header("Cookie").unwrap_or("");
-                let mut cookies = heapless::String::<128>::new();
-
-                for cookie in Cookies::serialize(Cookies::set(
-                    Cookies::new(cookies_str).into_iter(),
-                    "SESSIONID",
-                    &entry.id,
-                )) {
-                    cookies.push_str(cookie).unwrap(); // TODO
-                }
-
-                out_headers.set_header("Set-Cookie", &cookies);
 
                 Ok(f(&mut entry.data))
             } else {
@@ -182,24 +150,52 @@ pub mod session {
             }
         }
 
-        fn invalidate(&self, req: &(impl RequestId + Headers)) -> bool {
+        fn invalidate(&self, session_id: Option<&str>) -> bool {
             let current_time = (self.current_time)();
             self.cleanup(current_time);
 
-            let id = self.get_existing_id(req);
-            let req_id = req.get_request_id();
+            if let Some(session_id) = session_id {
+                let mut data = self.data.lock();
 
-            let mut data = self.data.lock();
-
-            if let Some(entry) = data
-                .iter_mut()
-                .find(|entry| Some(entry.id.as_ref()) == id || entry.id == req_id)
-            {
-                entry.id = "".into();
-                true
+                if let Some(entry) = data
+                    .iter_mut()
+                    .find(|entry| entry.id.as_str() == session_id)
+                {
+                    entry.id = "".into();
+                    true
+                } else {
+                    false
+                }
             } else {
                 false
             }
+        }
+    }
+
+    pub fn get_cookie_session_id<'a, H>(headers: &'a H) -> Option<&'a str>
+    where
+        H: Headers,
+    {
+        headers
+            .header("Cookie")
+            .and_then(|cookies_str| Cookies::new(cookies_str).get("SESSIONID"))
+    }
+
+    pub fn set_cookie_session_id<'a, const N: usize, H>(
+        headers: H,
+        session_id: &str,
+        cookies: &mut heapless::String<N>,
+    ) where
+        H: Headers + 'a,
+    {
+        let cookies_str = headers.header("Cookie").unwrap_or("");
+
+        for cookie in Cookies::serialize(Cookies::set(
+            Cookies::new(cookies_str).into_iter(),
+            "SESSIONID",
+            session_id,
+        )) {
+            cookies.push_str(cookie).unwrap(); // TODO
         }
     }
 }
