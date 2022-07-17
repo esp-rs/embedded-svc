@@ -19,7 +19,7 @@ pub trait Client: Io {
         headers: H,
     ) -> Result<Self::RequestWrite<'a>, Self::Error>
     where
-        H: Iterator<Item = (&'a str, &'a str)>,
+        H: IntoIterator<Item = (&'a str, &'a str)>,
     {
         self.request(Method::Post, uri, headers)
     }
@@ -30,7 +30,7 @@ pub trait Client: Io {
         headers: H,
     ) -> Result<Self::RequestWrite<'a>, Self::Error>
     where
-        H: Iterator<Item = (&'a str, &'a str)>,
+        H: IntoIterator<Item = (&'a str, &'a str)>,
     {
         self.request(Method::Put, uri, headers)
     }
@@ -46,7 +46,7 @@ pub trait Client: Io {
         headers: H,
     ) -> Result<Self::RequestWrite<'a>, Self::Error>
     where
-        H: Iterator<Item = (&'a str, &'a str)>;
+        H: IntoIterator<Item = (&'a str, &'a str)>;
 }
 
 impl<'c, C> Client for &'c mut C
@@ -65,7 +65,7 @@ where
         headers: H,
     ) -> Result<Self::RequestWrite<'a>, Self::Error>
     where
-        H: Iterator<Item = (&'a str, &'a str)>,
+        H: IntoIterator<Item = (&'a str, &'a str)>,
     {
         (*self).request(method, uri, headers)
     }
@@ -80,11 +80,15 @@ pub trait RequestWrite: Write {
 }
 
 pub trait Response: Status + Headers + Read {
-    type Headers: Status + Headers;
+    type Headers<'a>: Status + Headers
+    where
+        Self: 'a;
 
-    type Read: Read<Error = Self::Error>;
+    type Read<'a>: Read<Error = Self::Error>
+    where
+        Self: 'a;
 
-    fn split(self) -> (Self::Headers, Self::Read)
+    fn split<'a>(&'a mut self) -> (Self::Headers<'a>, Self::Read<'a>)
     where
         Self: Sized;
 }
@@ -115,14 +119,14 @@ pub mod asynch {
 
         fn post<'a, H>(&'a mut self, uri: &'a str, headers: H) -> Self::RequestFuture<'a>
         where
-            H: Iterator<Item = (&'a str, &'a str)>,
+            H: IntoIterator<Item = (&'a str, &'a str)>,
         {
             self.request(Method::Post, uri, headers)
         }
 
         fn put<'a, H>(&'a mut self, uri: &'a str, headers: H) -> Self::RequestFuture<'a>
         where
-            H: Iterator<Item = (&'a str, &'a str)>,
+            H: IntoIterator<Item = (&'a str, &'a str)>,
         {
             self.request(Method::Put, uri, headers)
         }
@@ -138,7 +142,7 @@ pub mod asynch {
             headers: H,
         ) -> Self::RequestFuture<'a>
         where
-            H: Iterator<Item = (&'a str, &'a str)>;
+            H: IntoIterator<Item = (&'a str, &'a str)>;
     }
 
     impl<C> Client for &mut C
@@ -162,7 +166,7 @@ pub mod asynch {
             headers: H,
         ) -> Self::RequestFuture<'a>
         where
-            H: Iterator<Item = (&'a str, &'a str)>,
+            H: IntoIterator<Item = (&'a str, &'a str)>,
         {
             (*self).request(method, uri, headers)
         }
@@ -179,11 +183,15 @@ pub mod asynch {
     }
 
     pub trait Response: Status + Headers + Read {
-        type Headers: Status + Headers;
+        type Headers<'a>: Status + Headers
+        where
+            Self: 'a;
 
-        type Read: Read<Error = Self::Error>;
+        type Read<'a>: Read<Error = Self::Error>
+        where
+            Self: 'a;
 
-        fn split(self) -> (Self::Headers, Self::Read)
+        fn split<'a>(&'a mut self) -> (Self::Headers<'a>, Self::Read<'a>)
         where
             Self: Sized;
     }
@@ -205,7 +213,7 @@ pub mod asynch {
             headers: H,
         ) -> Result<Self::RequestWrite<'a>, Self::Error>
         where
-            H: Iterator<Item = (&'a str, &'a str)>,
+            H: IntoIterator<Item = (&'a str, &'a str)>,
         {
             let request_write = self.0.block_on(self.1.request(method, uri, headers))?;
 
@@ -215,7 +223,7 @@ pub mod asynch {
 
     impl<B, W> super::RequestWrite for Blocking<B, W>
     where
-        B: Blocker,
+        B: Blocker + Clone,
         W: RequestWrite,
     {
         type Response = Blocking<B, W::Response>;
@@ -232,20 +240,26 @@ pub mod asynch {
 
     impl<B, R> super::Response for Blocking<B, R>
     where
-        B: Blocker,
+        B: Blocker + Clone,
         R: Response,
     {
-        type Headers = R::Headers;
+        type Headers<'a>
+        where
+            Self: 'a,
+        = R::Headers<'a>;
 
-        type Read = Blocking<B, R::Read>;
+        type Read<'a>
+        where
+            Self: 'a,
+        = Blocking<B, R::Read<'a>>;
 
-        fn split(self) -> (Self::Headers, Self::Read)
+        fn split<'a>(&'a mut self) -> (Self::Headers<'a>, Self::Read<'a>)
         where
             Self: Sized,
         {
             let (headers, body) = self.1.split();
 
-            (headers, Blocking::new(self.0, body))
+            (headers, Blocking::new(self.0.clone(), body))
         }
     }
 }
