@@ -13,10 +13,7 @@ pub fn get_status(request: impl Request, ota: &impl Mutex<Data = impl ota::Ota>)
 
     let info = slot.get_firmware_info()?;
 
-    Ok(json_io::submit_response::<512, _, _>(
-        request.into_response()?,
-        &info,
-    )?)
+    Ok(json_io::response::<512, _, _>(request, &info)?)
 }
 
 pub fn get_updates(
@@ -27,10 +24,7 @@ pub fn get_updates(
 
     let updates = ota_server.get_releases()?;
 
-    Ok(json_io::submit_response::<512, _, _>(
-        request.into_response()?,
-        &updates,
-    )?)
+    Ok(json_io::response::<512, _, _>(request, &updates)?)
 }
 
 pub fn get_latest_update(
@@ -41,19 +35,16 @@ pub fn get_latest_update(
 
     let update = ota_server.get_latest_release()?;
 
-    Ok(json_io::submit_response::<512, _, _>(
-        request.into_response()?,
-        &update,
-    )?)
+    Ok(json_io::response::<512, _, _>(request, &update)?)
 }
 
 pub fn factory_reset(
-    request: impl Request,
+    _request: impl Request,
     ota: &impl Mutex<Data = impl ota::Ota>,
 ) -> HandlerResult {
     ota.lock().factory_reset()?;
 
-    Ok(request.complete()?)
+    Ok(())
 }
 
 pub fn update(
@@ -90,15 +81,12 @@ pub fn update(
             *progress.lock() = size.map(|size| copied as usize * 100 / size as usize)
         })?; // TODO: Take the progress mutex more rarely
 
-    Ok(request.complete()?)
+    Ok(())
 }
 
 pub fn get_update_progress(
     request: impl Request,
     progress: &impl Mutex<Data = Option<usize>>,
 ) -> HandlerResult {
-    Ok(json_io::submit_response::<512, _, _>(
-        request.into_response()?,
-        &*progress.lock(),
-    )?)
+    Ok(json_io::response::<512, _, _>(request, &*progress.lock())?)
 }

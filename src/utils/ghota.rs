@@ -3,7 +3,7 @@ use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use crate::http::{client::*, Headers};
+use crate::http::client::*;
 use crate::io::{self, ErrorKind, Io, Read};
 use crate::ota::*;
 use crate::utils::json_io;
@@ -221,7 +221,7 @@ where
     type OtaRead<'b>
     where
         Self: 'b,
-    = GitHubOtaRead<<<<C as Client>::Request<'b> as Request>::Write as RequestWrite>::Response>;
+    = GitHubOtaRead<<<C as Client>::RequestWrite<'b> as RequestWrite>::Response>;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
         let label = self.label;
@@ -281,7 +281,7 @@ where
             .map_err(Error::Http)?;
 
         Ok(GitHubOtaRead {
-            size: response.content_len(),
+            size: None, // TODO
             response,
         })
     }
@@ -322,7 +322,7 @@ pub mod asynch {
     use core::convert::TryInto;
     use core::future::Future;
 
-    use crate::http::{client::asynch::*, Headers};
+    use crate::http::client::asynch::*;
     use crate::io::{asynch::Read, Io};
     use crate::ota::asynch::*;
     use crate::utils::json_io::asynch as json_io;
@@ -486,7 +486,7 @@ pub mod asynch {
         type OtaRead<'b>
         where
             Self: 'b,
-        = GitHubOtaRead<<<<C as Client>::Request<'b> as Request>::Write as RequestWrite>::Response>;
+        = GitHubOtaRead<<<C as Client>::RequestWrite<'b> as RequestWrite>::Response>;
 
         type GetLatestReleaseFuture<'b>
         where
@@ -578,7 +578,7 @@ pub mod asynch {
                     .map_err(Error::Http)?;
 
                 Ok(GitHubOtaRead {
-                    size: response.content_len(),
+                    size: None, // TODO
                     response,
                 })
             }

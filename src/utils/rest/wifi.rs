@@ -9,10 +9,7 @@ pub fn get_capabilities(
 ) -> HandlerResult {
     let caps = wifi.lock().get_capabilities()?;
 
-    Ok(json_io::submit_response::<512, _, _>(
-        request.into_response()?,
-        &caps,
-    )?)
+    Ok(json_io::response::<512, _, _>(request, &caps)?)
 }
 
 pub fn get_status(
@@ -21,10 +18,7 @@ pub fn get_status(
 ) -> HandlerResult {
     let status = wifi.lock().get_status();
 
-    Ok(json_io::submit_response::<1024, _, _>(
-        request.into_response()?,
-        &status,
-    )?)
+    Ok(json_io::response::<1024, _, _>(request, &status)?)
 }
 
 pub fn scan(request: impl Request, wifi: &impl Mutex<Data = impl wifi::Wifi>) -> HandlerResult {
@@ -32,10 +26,7 @@ pub fn scan(request: impl Request, wifi: &impl Mutex<Data = impl wifi::Wifi>) ->
 
     let (aps, _) = wifi.scan_n::<20>()?; // TODO
 
-    Ok(json_io::submit_response::<4096, _, _>(
-        request.into_response()?,
-        &aps,
-    )?)
+    Ok(json_io::response::<4096, _, _>(request, &aps)?)
 }
 
 pub fn get_configuration(
@@ -46,10 +37,7 @@ pub fn get_configuration(
 
     let conf = wifi.get_configuration()?;
 
-    Ok(json_io::submit_response::<1024, _, _>(
-        request.into_response()?,
-        &conf,
-    )?)
+    Ok(json_io::response::<1024, _, _>(request, &conf)?)
 }
 
 pub fn set_configuration(
@@ -60,5 +48,5 @@ pub fn set_configuration(
 
     wifi.lock().set_configuration(&conf)?;
 
-    Ok(request.into_response()?.complete()?)
+    Ok(())
 }

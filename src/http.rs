@@ -1,5 +1,3 @@
-use core::fmt::Write;
-
 pub mod client;
 pub mod server;
 
@@ -58,13 +56,21 @@ pub trait Headers {
         self.header("Content-Type")
     }
 
-    fn content_len(&self) -> Option<usize> {
+    fn content_len(&self) -> Option<u64> {
         self.header("Content-Length")
-            .and_then(|v| v.parse::<usize>().ok())
+            .and_then(|v| v.parse::<u64>().ok())
     }
 
     fn content_encoding(&self) -> Option<&'_ str> {
         self.header("Content-Encoding")
+    }
+
+    fn transfer_encoding(&self) -> Option<&'_ str> {
+        self.header("Transfer-Encoding")
+    }
+
+    fn connection(&self) -> Option<&'_ str> {
+        self.header("Connection")
     }
 }
 
@@ -74,85 +80,6 @@ where
 {
     fn header(&self, name: &str) -> Option<&'_ str> {
         (*self).header(name)
-    }
-}
-
-pub trait SendHeaders {
-    fn set_header(&mut self, name: &str, value: &str) -> &mut Self;
-
-    fn set_content_type(&mut self, ctype: &str) -> &mut Self {
-        self.set_header("Content-Type", ctype)
-    }
-
-    fn set_content_len(&mut self, len: usize) -> &mut Self {
-        let mut buf: heapless::String<32> = "".into();
-
-        write!(&mut buf, "{}", len).unwrap();
-
-        self.set_header("Content-Length", &buf)
-    }
-
-    fn set_content_encoding(&mut self, encoding: &str) -> &mut Self {
-        self.set_header("Content-Encoding", encoding)
-    }
-
-    fn set_redirect(&mut self, location: &str) -> &mut Self {
-        self.set_header("Location", location)
-    }
-
-    fn header<H, V>(mut self, name: H, value: V) -> Self
-    where
-        H: AsRef<str>,
-        V: AsRef<str>,
-        Self: Sized,
-    {
-        self.set_header(name.as_ref(), value.as_ref());
-        self
-    }
-
-    fn content_type<V>(mut self, ctype: V) -> Self
-    where
-        V: AsRef<str>,
-        Self: Sized,
-    {
-        self.set_content_type(ctype.as_ref());
-        self
-    }
-
-    fn content_len(mut self, len: usize) -> Self
-    where
-        Self: Sized,
-    {
-        self.set_content_len(len);
-        self
-    }
-
-    fn content_encoding<V>(mut self, encoding: V) -> Self
-    where
-        V: AsRef<str>,
-        Self: Sized,
-    {
-        self.set_content_encoding(encoding.as_ref());
-        self
-    }
-
-    fn redirect<V>(mut self, location: V) -> Self
-    where
-        V: AsRef<str>,
-        Self: Sized,
-    {
-        self.set_header("location", location.as_ref());
-        self
-    }
-}
-
-impl<S> SendHeaders for &mut S
-where
-    S: SendHeaders,
-{
-    fn set_header(&mut self, name: &str, value: &str) -> &mut Self {
-        (*self).set_header(name, value);
-        self
     }
 }
 
@@ -175,48 +102,6 @@ where
     }
 }
 
-pub trait SendStatus {
-    fn set_ok(&mut self) -> &mut Self {
-        self.set_status(200)
-    }
-
-    fn set_status(&mut self, status: u16) -> &mut Self;
-
-    fn set_status_message(&mut self, message: &str) -> &mut Self;
-
-    fn status(mut self, status: u16) -> Self
-    where
-        Self: Sized,
-    {
-        self.set_status(status);
-        self
-    }
-
-    fn status_message<M>(mut self, message: M) -> Self
-    where
-        M: AsRef<str>,
-        Self: Sized,
-    {
-        self.set_status_message(message.as_ref());
-        self
-    }
-}
-
-impl<S> SendStatus for &mut S
-where
-    S: SendStatus,
-{
-    fn set_status(&mut self, status: u16) -> &mut Self {
-        (*self).set_status(status);
-        self
-    }
-
-    fn set_status_message(&mut self, message: &str) -> &mut Self {
-        (*self).set_status_message(message);
-        self
-    }
-}
-
 pub trait Query {
     fn query(&self) -> &'_ str;
 }
@@ -230,16 +115,42 @@ where
     }
 }
 
-pub trait RequestId {
-    fn get_request_id(&self) -> &'_ str;
-}
+pub mod headers {
+    use core::iter;
 
-impl<R> RequestId for &R
-where
-    R: RequestId,
-{
-    fn get_request_id(&self) -> &'_ str {
-        (*self).get_request_id()
+    pub type ContentLenParseBuf = heapless::String<20>;
+
+    pub fn content_type<'a>(ctype: &'a str) -> impl Iterator<Item = (&'static str, &'a str)> {
+        iter::once(("Content-Type", ctype))
+    }
+
+    pub fn content_len<'a>(
+        len: u64,
+        buf: &'a mut ContentLenParseBuf,
+    ) -> impl Iterator<Item = (&'static str, &'a str)> {
+        *buf = ContentLenParseBuf::from(len);
+
+        iter::once(("Content-Length", buf.as_str()))
+    }
+
+    pub fn content_encoding<'a>(
+        encoding: &'a str,
+    ) -> impl Iterator<Item = (&'static str, &'a str)> {
+        iter::once(("Content-Encoding", encoding))
+    }
+
+    pub fn transfer_encoding<'a>(
+        encoding: &'a str,
+    ) -> impl Iterator<Item = (&'static str, &'a str)> {
+        iter::once(("Transfer-Encoding", encoding))
+    }
+
+    pub fn connection<'a>(connection: &'a str) -> impl Iterator<Item = (&'static str, &'a str)> {
+        iter::once(("Connection", connection))
+    }
+
+    pub fn location<'a>(location: &'a str) -> impl Iterator<Item = (&'static str, &'a str)> {
+        iter::once(("Location", location))
     }
 }
 
@@ -253,15 +164,6 @@ pub mod asynch {
     {
         fn query(&self) -> &'_ str {
             self.1.query()
-        }
-    }
-
-    impl<B, R> super::RequestId for Blocking<B, R>
-    where
-        R: super::RequestId,
-    {
-        fn get_request_id(&self) -> &'_ str {
-            self.1.get_request_id()
         }
     }
 
@@ -284,31 +186,6 @@ pub mod asynch {
 
         fn status_message(&self) -> Option<&'_ str> {
             self.1.status_message()
-        }
-    }
-
-    impl<B, S> super::SendStatus for Blocking<B, S>
-    where
-        S: super::SendStatus,
-    {
-        fn set_status(&mut self, status: u16) -> &mut Self {
-            self.1.set_status(status);
-            self
-        }
-
-        fn set_status_message(&mut self, message: &str) -> &mut Self {
-            self.1.set_status_message(message);
-            self
-        }
-    }
-
-    impl<B, S> super::SendHeaders for Blocking<B, S>
-    where
-        S: super::SendHeaders,
-    {
-        fn set_header(&mut self, name: &str, value: &str) -> &mut Self {
-            self.1.set_header(name, value);
-            self
         }
     }
 }
