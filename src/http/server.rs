@@ -1,7 +1,4 @@
-use core::{
-    fmt::{self, Debug, Display, Write as _},
-    iter,
-};
+use core::fmt::{self, Debug, Display, Write as _};
 
 use crate::io::{Read, Write};
 
@@ -19,28 +16,27 @@ pub trait Request: Query + Headers + Read {
 
     fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>);
 
-    fn into_response<'a, H>(
+    fn into_response<'a>(
         self,
         status: u16,
         message: Option<&'a str>,
-        headers: H,
+        headers: &'a [(&'a str, &'a str)],
     ) -> Result<Self::ResponseWrite, Self::Error>
     where
-        H: IntoIterator<Item = (&'a str, &'a str)>,
         Self: Sized;
 
     fn into_status_response(self, status: u16) -> Result<Self::ResponseWrite, Self::Error>
     where
         Self: Sized,
     {
-        self.into_response(status, None, iter::empty())
+        self.into_response(status, None, &[])
     }
 
     fn into_ok_response(self) -> Result<Self::ResponseWrite, Self::Error>
     where
         Self: Sized,
     {
-        self.into_response(200, Some("OK"), iter::empty())
+        self.into_response(200, Some("OK"), &[])
     }
 }
 
@@ -179,19 +175,18 @@ pub mod asynch {
 
         type ResponseWrite: Write<Error = Self::Error>;
 
-        type IntoResponseFuture<'a, H>: Future<Output = Result<Self::ResponseWrite, Self::Error>>;
+        type IntoResponseFuture<'a>: Future<Output = Result<Self::ResponseWrite, Self::Error>>;
         type IntoOkResponseFuture: Future<Output = Result<Self::ResponseWrite, Self::Error>>;
 
         fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>);
 
-        fn into_response<'a, H>(
+        fn into_response<'a>(
             self,
             status: u16,
             message: Option<&'a str>,
-            headers: H,
-        ) -> Self::IntoResponseFuture<'a, H>
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::IntoResponseFuture<'a>
         where
-            H: IntoIterator<Item = (&'a str, &'a str)>,
             Self: Sized;
 
         fn into_ok_response(self) -> Self::IntoOkResponseFuture
@@ -247,14 +242,13 @@ pub mod asynch {
             (headers, Blocking::new(self.0.clone(), body))
         }
 
-        fn into_response<'a, H>(
+        fn into_response<'a>(
             self,
             status: u16,
             message: Option<&'a str>,
-            headers: H,
+            headers: &'a [(&'a str, &'a str)],
         ) -> Result<Self::ResponseWrite, Self::Error>
         where
-            H: IntoIterator<Item = (&'a str, &'a str)>,
             Self: Sized,
         {
             let response = self
@@ -302,7 +296,7 @@ pub mod asynch {
 
         type ResponseWrite = TrivialAsync<R::ResponseWrite>;
 
-        type IntoResponseFuture<'a, H> =
+        type IntoResponseFuture<'a> =
             impl Future<Output = Result<Self::ResponseWrite, Self::Error>>;
         type IntoOkResponseFuture = impl Future<Output = Result<Self::ResponseWrite, Self::Error>>;
 
@@ -312,14 +306,13 @@ pub mod asynch {
             (headers, TrivialAsync::new_async(body))
         }
 
-        fn into_response<'a, H>(
+        fn into_response<'a>(
             self,
             status: u16,
             message: Option<&'a str>,
-            headers: H,
-        ) -> Self::IntoResponseFuture<'a, H>
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::IntoResponseFuture<'a>
         where
-            H: IntoIterator<Item = (&'a str, &'a str)>,
             Self: Sized,
         {
             async move {

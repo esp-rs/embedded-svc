@@ -1,5 +1,3 @@
-use core::iter;
-
 use crate::io::{Io, Read, Write};
 
 pub use super::{Headers, Method, Status};
@@ -10,43 +8,35 @@ pub trait Client: Io {
         Self: 'a;
 
     fn get<'a>(&'a mut self, uri: &'a str) -> Result<Self::RequestWrite<'a>, Self::Error> {
-        self.request(Method::Get, uri, iter::empty())
+        self.request(Method::Get, uri, &[])
     }
 
-    fn post<'a, H>(
+    fn post<'a>(
         &'a mut self,
         uri: &'a str,
-        headers: H,
-    ) -> Result<Self::RequestWrite<'a>, Self::Error>
-    where
-        H: IntoIterator<Item = (&'a str, &'a str)>,
-    {
+        headers: &'a [(&'a str, &'a str)],
+    ) -> Result<Self::RequestWrite<'a>, Self::Error> {
         self.request(Method::Post, uri, headers)
     }
 
-    fn put<'a, H>(
+    fn put<'a>(
         &'a mut self,
         uri: &'a str,
-        headers: H,
-    ) -> Result<Self::RequestWrite<'a>, Self::Error>
-    where
-        H: IntoIterator<Item = (&'a str, &'a str)>,
-    {
+        headers: &'a [(&'a str, &'a str)],
+    ) -> Result<Self::RequestWrite<'a>, Self::Error> {
         self.request(Method::Put, uri, headers)
     }
 
     fn delete<'a>(&'a mut self, uri: &'a str) -> Result<Self::RequestWrite<'a>, Self::Error> {
-        self.request(Method::Delete, uri, iter::empty())
+        self.request(Method::Delete, uri, &[])
     }
 
-    fn request<'a, H>(
+    fn request<'a>(
         &'a mut self,
         method: Method,
         uri: &'a str,
-        headers: H,
-    ) -> Result<Self::RequestWrite<'a>, Self::Error>
-    where
-        H: IntoIterator<Item = (&'a str, &'a str)>;
+        headers: &'a [(&'a str, &'a str)],
+    ) -> Result<Self::RequestWrite<'a>, Self::Error>;
 }
 
 impl<'c, C> Client for &'c mut C
@@ -58,15 +48,12 @@ where
         Self: 'a,
     = C::RequestWrite<'a>;
 
-    fn request<'a, H>(
+    fn request<'a>(
         &'a mut self,
         method: Method,
         uri: &'a str,
-        headers: H,
-    ) -> Result<Self::RequestWrite<'a>, Self::Error>
-    where
-        H: IntoIterator<Item = (&'a str, &'a str)>,
-    {
+        headers: &'a [(&'a str, &'a str)],
+    ) -> Result<Self::RequestWrite<'a>, Self::Error> {
         (*self).request(method, uri, headers)
     }
 }
@@ -96,7 +83,6 @@ pub trait Response: Status + Headers + Read {
 #[cfg(feature = "experimental")]
 pub mod asynch {
     use core::future::Future;
-    use core::iter::{self, Empty};
 
     use crate::io::{asynch::Read, asynch::Write, Io};
     use crate::unblocker::asynch::{Blocker, Blocking};
@@ -109,46 +95,40 @@ pub mod asynch {
         where
             Self: 'a;
 
-        type RequestFuture<'a, H>: Future<Output = Result<Self::RequestWrite<'a>, Self::Error>>
+        type RequestFuture<'a>: Future<Output = Result<Self::RequestWrite<'a>, Self::Error>>
         where
             Self: 'a;
 
-        fn get<'a>(
-            &'a mut self,
-            uri: &'a str,
-        ) -> Self::RequestFuture<'a, Empty<(&'a str, &'a str)>> {
-            self.request(Method::Get, uri, iter::empty())
+        fn get<'a>(&'a mut self, uri: &'a str) -> Self::RequestFuture<'a> {
+            self.request(Method::Get, uri, &[])
         }
 
-        fn post<'a, H>(&'a mut self, uri: &'a str, headers: H) -> Self::RequestFuture<'a, H>
-        where
-            H: IntoIterator<Item = (&'a str, &'a str)>,
-        {
+        fn post<'a>(
+            &'a mut self,
+            uri: &'a str,
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::RequestFuture<'a> {
             self.request(Method::Post, uri, headers)
         }
 
-        fn put<'a, H>(&'a mut self, uri: &'a str, headers: H) -> Self::RequestFuture<'a, H>
-        where
-            H: IntoIterator<Item = (&'a str, &'a str)>,
-        {
+        fn put<'a>(
+            &'a mut self,
+            uri: &'a str,
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::RequestFuture<'a> {
             self.request(Method::Put, uri, headers)
         }
 
-        fn delete<'a>(
-            &'a mut self,
-            uri: &'a str,
-        ) -> Self::RequestFuture<'a, Empty<(&'a str, &'a str)>> {
-            self.request(Method::Delete, uri, iter::empty())
+        fn delete<'a>(&'a mut self, uri: &'a str) -> Self::RequestFuture<'a> {
+            self.request(Method::Delete, uri, &[])
         }
 
-        fn request<'a, H>(
+        fn request<'a>(
             &'a mut self,
             method: Method,
             uri: &'a str,
-            headers: H,
-        ) -> Self::RequestFuture<'a, H>
-        where
-            H: IntoIterator<Item = (&'a str, &'a str)>;
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::RequestFuture<'a>;
     }
 
     impl<C> Client for &mut C
@@ -160,20 +140,17 @@ pub mod asynch {
             Self: 'a,
         = C::RequestWrite<'a>;
 
-        type RequestFuture<'a, H>
+        type RequestFuture<'a>
         where
             Self: 'a,
-        = C::RequestFuture<'a, H>;
+        = C::RequestFuture<'a>;
 
-        fn request<'a, H>(
+        fn request<'a>(
             &'a mut self,
             method: Method,
             uri: &'a str,
-            headers: H,
-        ) -> Self::RequestFuture<'a, H>
-        where
-            H: IntoIterator<Item = (&'a str, &'a str)>,
-        {
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::RequestFuture<'a> {
             (*self).request(method, uri, headers)
         }
     }
@@ -212,15 +189,12 @@ pub mod asynch {
             Self: 'a,
         = Blocking<&'a B, C::RequestWrite<'a>>;
 
-        fn request<'a, H>(
+        fn request<'a>(
             &'a mut self,
             method: Method,
             uri: &'a str,
-            headers: H,
-        ) -> Result<Self::RequestWrite<'a>, Self::Error>
-        where
-            H: IntoIterator<Item = (&'a str, &'a str)>,
-        {
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Result<Self::RequestWrite<'a>, Self::Error> {
             let request_write = self.0.block_on(self.1.request(method, uri, headers))?;
 
             Ok(Blocking::new(&mut self.0, request_write))

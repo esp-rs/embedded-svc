@@ -1,3 +1,263 @@
+pub mod registration {
+    use crate::http::server::{Handler, HandlerResult, Method, Request};
+
+    pub trait HandlerRegistration<R>
+    where
+        R: Request,
+    {
+        fn handle<'a>(
+            &'a self,
+            path_registered: bool,
+            path: &'a str,
+            method: Method,
+            request: R,
+        ) -> HandlerResult;
+    }
+
+    impl<R> HandlerRegistration<R> for ()
+    where
+        R: Request,
+    {
+        fn handle<'a>(
+            &'a self,
+            path_registered: bool,
+            _path: &'a str,
+            _method: Method,
+            request: R,
+        ) -> HandlerResult {
+            request.into_response(if path_registered { 405 } else { 404 }, None, &[])?;
+
+            Ok(())
+        }
+    }
+
+    pub struct SimpleHandlerRegistration<H, N> {
+        path: &'static str,
+        method: Method,
+        handler: H,
+        next: N,
+    }
+
+    impl<H, N> SimpleHandlerRegistration<H, N> {
+        const fn new(path: &'static str, method: Method, handler: H, next: N) -> Self {
+            Self {
+                path,
+                method,
+                handler,
+                next,
+            }
+        }
+    }
+
+    impl<H, R, N> HandlerRegistration<R> for SimpleHandlerRegistration<H, N>
+    where
+        H: Handler<R>,
+        N: HandlerRegistration<R>,
+        R: Request,
+    {
+        fn handle<'a>(
+            &'a self,
+            path_registered: bool,
+            path: &'a str,
+            method: Method,
+            request: R,
+        ) -> HandlerResult {
+            let path_registered2 = if self.path == path {
+                if self.method == method {
+                    return self.handler.handle(request);
+                }
+
+                true
+            } else {
+                false
+            };
+
+            self.next
+                .handle(path_registered || path_registered2, path, method, request)
+        }
+    }
+
+    pub struct ServerHandler<H>(H);
+
+    impl ServerHandler<()> {
+        pub fn new() -> Self {
+            Self(())
+        }
+    }
+
+    impl<H> ServerHandler<H> {
+        pub fn register<H2, R>(
+            self,
+            path: &'static str,
+            method: Method,
+            handler: H2,
+        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+        where
+            H2: Handler<R> + 'static,
+            R: Request,
+        {
+            ServerHandler(SimpleHandlerRegistration::new(
+                path, method, handler, self.0,
+            ))
+        }
+
+        pub async fn handle<'a, R>(
+            &'a self,
+            path: &'a str,
+            method: Method,
+            request: R,
+        ) -> HandlerResult
+        where
+            H: HandlerRegistration<R>,
+            R: Request,
+        {
+            self.0.handle(false, path, method, request)
+        }
+    }
+
+    #[cfg(feature = "experimental")]
+    pub mod asynch {
+        use core::future::Future;
+
+        use crate::http::server::asynch::{Handler, HandlerResult, Method, Request};
+
+        pub trait HandlerRegistration<R>
+        where
+            R: Request,
+        {
+            type HandleFuture<'a>: Future<Output = HandlerResult>
+            where
+                Self: 'a;
+
+            fn handle<'a>(
+                &'a self,
+                path_registered: bool,
+                path: &'a str,
+                method: Method,
+                request: R,
+            ) -> Self::HandleFuture<'a>;
+        }
+
+        impl<R> HandlerRegistration<R> for ()
+        where
+            R: Request,
+        {
+            type HandleFuture<'a>
+            where
+                Self: 'a,
+            = impl Future<Output = HandlerResult>;
+
+            fn handle<'a>(
+                &'a self,
+                path_registered: bool,
+                _path: &'a str,
+                _method: Method,
+                request: R,
+            ) -> Self::HandleFuture<'a> {
+                async move {
+                    request
+                        .into_response(if path_registered { 405 } else { 404 }, None, &[])
+                        .await?;
+
+                    Ok(())
+                }
+            }
+        }
+
+        pub struct SimpleHandlerRegistration<H, N> {
+            path: &'static str,
+            method: Method,
+            handler: H,
+            next: N,
+        }
+
+        impl<H, N> SimpleHandlerRegistration<H, N> {
+            const fn new(path: &'static str, method: Method, handler: H, next: N) -> Self {
+                Self {
+                    path,
+                    method,
+                    handler,
+                    next,
+                }
+            }
+        }
+
+        impl<H, R, N> HandlerRegistration<R> for SimpleHandlerRegistration<H, N>
+        where
+            H: Handler<R>,
+            N: HandlerRegistration<R>,
+            R: Request,
+        {
+            type HandleFuture<'a>
+            where
+                Self: 'a,
+            = impl Future<Output = HandlerResult>;
+
+            fn handle<'a>(
+                &'a self,
+                path_registered: bool,
+                path: &'a str,
+                method: Method,
+                request: R,
+            ) -> Self::HandleFuture<'a> {
+                async move {
+                    let path_registered2 = if self.path == path {
+                        if self.method == method {
+                            return self.handler.handle(request).await;
+                        }
+
+                        true
+                    } else {
+                        false
+                    };
+
+                    self.next
+                        .handle(path_registered || path_registered2, path, method, request)
+                        .await
+                }
+            }
+        }
+
+        pub struct ServerHandler<H>(H);
+
+        impl ServerHandler<()> {
+            pub fn new() -> Self {
+                Self(())
+            }
+        }
+
+        impl<H> ServerHandler<H> {
+            pub fn register<H2, R>(
+                self,
+                path: &'static str,
+                method: Method,
+                handler: H2,
+            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
+            where
+                H2: Handler<R> + 'static,
+                R: Request,
+            {
+                ServerHandler(SimpleHandlerRegistration::new(
+                    path, method, handler, self.0,
+                ))
+            }
+
+            pub async fn handle<'a, R>(
+                &'a self,
+                path: &'a str,
+                method: Method,
+                request: R,
+            ) -> HandlerResult
+            where
+                H: HandlerRegistration<R>,
+                R: Request,
+            {
+                self.0.handle(false, path, method, request).await
+            }
+        }
+    }
+}
+
 pub mod session {
     use core::fmt;
     use core::time::Duration;
