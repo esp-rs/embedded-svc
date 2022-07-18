@@ -1,5 +1,4 @@
 use core::fmt::Debug;
-use core::iter;
 
 use embedded_io::blocking::Write;
 use serde::{Deserialize, Serialize};
@@ -67,7 +66,7 @@ where
         request.into_response(
             401,
             None,
-            iter::once(("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")),
+            &[("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")],
         )?;
 
         Ok(())
@@ -112,7 +111,7 @@ pub fn login(
         let mut cookie = heapless::String::<128>::new();
         set_cookie_session_id(&request, session_id, &mut cookie);
 
-        request.into_response(200, None, iter::once(("Set-Cookie", cookie.as_str())))?;
+        request.into_response(200, None, &[("Set-Cookie", cookie.as_str())])?;
 
         Ok(())
     } else {

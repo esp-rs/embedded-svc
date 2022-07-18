@@ -54,12 +54,10 @@ where
     R: crate::http::server::Request,
     T: Serialize,
 {
+    use crate::http::headers::content_type;
+
     let mut writer = request
-        .into_response(
-            200,
-            None,
-            core::iter::once(("Content-Type", "application/json")),
-        )
+        .into_response(200, None, &[content_type("application/json")])
         .map_err(SerdeError::IoError)?;
 
     write::<N, _, _>(&mut writer, value)?;

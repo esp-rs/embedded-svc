@@ -116,37 +116,32 @@ where
 }
 
 pub mod headers {
-    use core::iter;
-
     pub type ContentLenParseBuf = heapless::String<20>;
 
-    pub fn content_type<'a>(ctype: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
-        iter::once(("Content-Type", ctype))
+    pub fn content_type<'a>(ctype: &'a str) -> (&'a str, &'a str) {
+        ("Content-Type", ctype)
     }
 
-    pub fn content_len<'a>(
-        len: u64,
-        buf: &'a mut ContentLenParseBuf,
-    ) -> impl Iterator<Item = (&'a str, &'a str)> {
+    pub fn content_len<'a>(len: u64, buf: &'a mut ContentLenParseBuf) -> (&'a str, &'a str) {
         *buf = ContentLenParseBuf::from(len);
 
-        iter::once(("Content-Length", buf.as_str()))
+        ("Content-Length", buf.as_str())
     }
 
-    pub fn content_encoding<'a>(encoding: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
-        iter::once(("Content-Encoding", encoding))
+    pub fn content_encoding<'a>(encoding: &'a str) -> (&'a str, &'a str) {
+        ("Content-Encoding", encoding)
     }
 
-    pub fn transfer_encoding<'a>(encoding: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
-        iter::once(("Transfer-Encoding", encoding))
+    pub fn transfer_encoding<'a>(encoding: &'a str) -> (&'a str, &'a str) {
+        ("Transfer-Encoding", encoding)
     }
 
-    pub fn connection<'a>(connection: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
-        iter::once(("Connection", connection))
+    pub fn connection<'a>(connection: &'a str) -> (&'a str, &'a str) {
+        ("Connection", connection)
     }
 
-    pub fn location<'a>(location: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
-        iter::once(("Location", location))
+    pub fn location<'a>(location: &'a str) -> (&'a str, &'a str) {
+        ("Location", location)
     }
 }
 

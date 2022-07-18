@@ -1,5 +1,4 @@
 use core::fmt::Write as _;
-use core::iter;
 
 use embedded_io::blocking::Write;
 
@@ -48,7 +47,7 @@ where
         if allow {
             handler.handle(request)
         } else {
-            request.into_response(307, None, iter::once(("Location", self.portal_uri)))?;
+            request.into_response(307, None, &[headers::location(self.portal_uri)])?;
 
             Ok(())
         }
@@ -75,6 +74,10 @@ where
     .unwrap();
 
     Ok(request
-        .into_response(200, None, headers::content_type("application/captive+json"))?
+        .into_response(
+            200,
+            None,
+            &[headers::content_type("application/captive+json")],
+        )?
         .write_all(data.as_bytes())?)
 }
