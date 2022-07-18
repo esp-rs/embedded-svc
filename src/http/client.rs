@@ -96,7 +96,7 @@ pub trait Response: Status + Headers + Read {
 #[cfg(feature = "experimental")]
 pub mod asynch {
     use core::future::Future;
-    use core::iter;
+    use core::iter::{self, Empty};
 
     use crate::io::{asynch::Read, asynch::Write, Io};
     use crate::unblocker::asynch::{Blocker, Blocking};
@@ -109,29 +109,35 @@ pub mod asynch {
         where
             Self: 'a;
 
-        type RequestFuture<'a>: Future<Output = Result<Self::RequestWrite<'a>, Self::Error>>
+        type RequestFuture<'a, H>: Future<Output = Result<Self::RequestWrite<'a>, Self::Error>>
         where
             Self: 'a;
 
-        fn get<'a>(&'a mut self, uri: &'a str) -> Self::RequestFuture<'a> {
+        fn get<'a>(
+            &'a mut self,
+            uri: &'a str,
+        ) -> Self::RequestFuture<'a, Empty<(&'a str, &'a str)>> {
             self.request(Method::Get, uri, iter::empty())
         }
 
-        fn post<'a, H>(&'a mut self, uri: &'a str, headers: H) -> Self::RequestFuture<'a>
+        fn post<'a, H>(&'a mut self, uri: &'a str, headers: H) -> Self::RequestFuture<'a, H>
         where
             H: IntoIterator<Item = (&'a str, &'a str)>,
         {
             self.request(Method::Post, uri, headers)
         }
 
-        fn put<'a, H>(&'a mut self, uri: &'a str, headers: H) -> Self::RequestFuture<'a>
+        fn put<'a, H>(&'a mut self, uri: &'a str, headers: H) -> Self::RequestFuture<'a, H>
         where
             H: IntoIterator<Item = (&'a str, &'a str)>,
         {
             self.request(Method::Put, uri, headers)
         }
 
-        fn delete<'a>(&'a mut self, uri: &'a str) -> Self::RequestFuture<'a> {
+        fn delete<'a>(
+            &'a mut self,
+            uri: &'a str,
+        ) -> Self::RequestFuture<'a, Empty<(&'a str, &'a str)>> {
             self.request(Method::Delete, uri, iter::empty())
         }
 
@@ -140,7 +146,7 @@ pub mod asynch {
             method: Method,
             uri: &'a str,
             headers: H,
-        ) -> Self::RequestFuture<'a>
+        ) -> Self::RequestFuture<'a, H>
         where
             H: IntoIterator<Item = (&'a str, &'a str)>;
     }
@@ -154,17 +160,17 @@ pub mod asynch {
             Self: 'a,
         = C::RequestWrite<'a>;
 
-        type RequestFuture<'a>
+        type RequestFuture<'a, H>
         where
             Self: 'a,
-        = C::RequestFuture<'a>;
+        = C::RequestFuture<'a, H>;
 
         fn request<'a, H>(
             &'a mut self,
             method: Method,
             uri: &'a str,
             headers: H,
-        ) -> Self::RequestFuture<'a>
+        ) -> Self::RequestFuture<'a, H>
         where
             H: IntoIterator<Item = (&'a str, &'a str)>,
         {
