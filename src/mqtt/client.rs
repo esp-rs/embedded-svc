@@ -421,7 +421,7 @@ pub mod utils {
 pub mod asynch {
     use core::future::Future;
 
-    use crate::unblocker::asynch::{Blocker, Blocking};
+    use crate::executor::asynch::{Blocker, Blocking};
 
     pub use super::{Details, ErrorType, Event, Message, MessageId, QoS};
 
