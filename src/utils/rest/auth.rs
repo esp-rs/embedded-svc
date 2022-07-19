@@ -30,40 +30,43 @@ impl<A, S> WithRoleMiddleware<A, S> {
     }
 }
 
-impl<R, A, S, D> Middleware<R> for WithRoleMiddleware<A, S>
+impl<C, A, S, D> Middleware<C> for WithRoleMiddleware<A, S>
 where
-    R: Request,
-    A: Fn(&R) -> Option<Role> + Send,
+    C: Connection,
+    A: Fn(&C::Headers) -> Option<Role> + Send,
     S: Session<SessionData = D>,
     D: RoleSessionData,
 {
-    fn handle<H>(&self, request: R, handler: &H) -> HandlerResult
+    fn handle<H>(&self, connection: &mut C, mut request: C::Request, handler: &H) -> HandlerResult
     where
-        H: Handler<R>,
+        H: Handler<C>,
     {
-        let role = (self.auth)(&request);
+        let headers = connection.headers(&mut request);
+
+        let role = (self.auth)(headers);
 
         if let Some(role) = role {
             if role >= self.min_role {
-                return handler.handle(request);
+                return handler.handle(connection, request);
             }
         } else {
             let role = self
                 .session
                 .as_ref()
                 .and_then(|session| {
-                    session.with_existing(get_cookie_session_id(&request), |sd| sd.get_role())
+                    session.with_existing(get_cookie_session_id(headers), |sd| sd.get_role())
                 })
                 .flatten();
 
             if let Some(role) = role {
                 if role >= self.min_role {
-                    return handler.handle(request);
+                    return handler.handle(connection, request);
                 }
             }
         }
 
-        request.into_response(
+        connection.into_response(
+            request,
             401,
             None,
             &[("WWW-Authenticate", "Basic realm=\"User Visible Realm\"")],
@@ -73,24 +76,29 @@ where
     }
 }
 
-pub fn relogin(
-    request: impl Request,
+pub fn relogin<C: Connection>(
+    connection: &mut C,
+    mut request: C::Request,
     session: &impl Session<SessionData = impl RoleSessionData>,
     auth: impl Fn(&str, &str) -> Option<Role>,
 ) -> HandlerResult {
     if session
-        .with_existing(get_cookie_session_id(&request), |sd| sd.get_role())
+        .with_existing(
+            get_cookie_session_id(connection.headers(&mut request)),
+            |sd| sd.get_role(),
+        )
         .flatten()
         .is_some()
     {
-        login(request, session, auth)?;
+        login(connection, request, session, auth)?;
     }
 
     Ok(())
 }
 
-pub fn login(
-    mut request: impl Request,
+pub fn login<C: Connection>(
+    connection: &mut C,
+    mut request: C::Request,
     session: &impl Session<SessionData = impl RoleSessionData>,
     auth: impl Fn(&str, &str) -> Option<Role>,
 ) -> HandlerResult {
@@ -100,29 +108,37 @@ pub fn login(
         password: heapless::String<32>,
     }
 
-    let credentials: Credentials = json_io::read::<512, _, _>(&mut request)?;
+    let credentials: Credentials = json_io::read::<512, _, _>(connection.reader(&mut request))?;
 
     if let Some(role) = auth(&credentials.username, &credentials.password) {
-        session.invalidate(get_cookie_session_id(&request));
+        let headers = connection.headers(&mut request);
+
+        session.invalidate(get_cookie_session_id(headers));
 
         let session_id = "XXX"; // TODO: Random string
         session.with(session_id, |sd| sd.set_role(role))?;
 
         let mut cookie = heapless::String::<128>::new();
-        set_cookie_session_id(&request, session_id, &mut cookie);
+        set_cookie_session_id(headers, session_id, &mut cookie);
 
-        request.into_response(200, None, &[("Set-Cookie", cookie.as_str())])?;
+        connection.into_response(request, 200, None, &[("Set-Cookie", cookie.as_str())])?;
 
         Ok(())
     } else {
-        Ok(request
-            .into_status_response(401)?
+        let mut response = connection.into_status_response(request, 401)?;
+
+        Ok(connection
+            .writer(&mut response)
             .write_all("Invalid username or password".as_bytes())?)
     }
 }
 
-pub fn logout(request: impl Request, session: &impl Session) -> HandlerResult {
-    session.invalidate(get_cookie_session_id(&request));
+pub fn logout<C: Connection>(
+    connection: &mut C,
+    mut request: C::Request,
+    session: &impl Session,
+) -> HandlerResult {
+    session.invalidate(get_cookie_session_id(connection.headers(&mut request)));
 
     Ok(())
 }
