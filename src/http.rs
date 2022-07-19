@@ -147,7 +147,7 @@ pub mod headers {
 
 #[cfg(feature = "experimental")]
 pub mod asynch {
-    use crate::unblocker::asynch::Blocking;
+    use crate::executor::asynch::Blocking;
 
     impl<B, Q> super::Query for Blocking<B, Q>
     where

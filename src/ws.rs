@@ -110,7 +110,7 @@ where
 pub mod asynch {
     use core::future::Future;
 
-    use crate::unblocker::asynch::{Blocker, Blocking};
+    use crate::executor::asynch::{Blocker, Blocking};
 
     pub use super::{ErrorType, Fragmented, FrameType};
 

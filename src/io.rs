@@ -9,7 +9,7 @@ pub mod asynch {
     pub use embedded_io::asynch::*;
     pub use embedded_io::*;
 
-    use crate::unblocker::asynch::{Blocker, Blocking, TrivialAsync};
+    use crate::executor::asynch::{Blocker, Blocking, TrivialAsync};
 
     impl<B, I> Io for Blocking<B, I>
     where
