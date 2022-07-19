@@ -3,41 +3,57 @@ use core::fmt::{self, Debug, Display, Write as _};
 use crate::io::{Read, Write};
 
 pub use super::{Headers, Method, Query, Status};
+pub use crate::io::Io;
 
-pub trait Request: Query + Headers + Read {
-    type Headers<'b>: Query + Headers
-    where
-        Self: 'b;
-    type Read<'b>: Read<Error = Self::Error>
-    where
-        Self: 'b;
+pub trait Connection: Io {
+    type Request;
 
-    type ResponseWrite: Write<Error = Self::Error>;
+    type Response;
 
-    fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>);
+    type Headers: Query + Headers;
+
+    type Read: Read<Error = Self::Error>;
+
+    type Write: Write<Error = Self::Error>;
+
+    fn split<'a>(
+        &'a mut self,
+        request: &'a mut Self::Request,
+    ) -> (&'a Self::Headers, &'a mut Self::Read);
+
+    fn headers<'a>(&'a mut self, request: &'a mut Self::Request) -> &'a Self::Headers {
+        let (header, _) = self.split(request);
+
+        header
+    }
+
+    fn reader<'a>(&'a mut self, request: &'a mut Self::Request) -> &'a mut Self::Read {
+        let (_, read) = self.split(request);
+
+        read
+    }
 
     fn into_response<'a>(
-        self,
+        &'a mut self,
+        request: Self::Request,
         status: u16,
         message: Option<&'a str>,
         headers: &'a [(&'a str, &'a str)],
-    ) -> Result<Self::ResponseWrite, Self::Error>
-    where
-        Self: Sized;
+    ) -> Result<Self::Response, Self::Error>;
 
-    fn into_status_response(self, status: u16) -> Result<Self::ResponseWrite, Self::Error>
-    where
-        Self: Sized,
-    {
-        self.into_response(status, None, &[])
+    fn into_status_response(
+        &mut self,
+        request: Self::Request,
+        status: u16,
+    ) -> Result<Self::Response, Self::Error> {
+        self.into_response(request, status, None, &[])
     }
 
-    fn into_ok_response(self) -> Result<Self::ResponseWrite, Self::Error>
-    where
-        Self: Sized,
-    {
-        self.into_response(200, Some("OK"), &[])
+    fn into_ok_response(&mut self, request: Self::Request) -> Result<Self::Response, Self::Error> {
+        self.into_response(request, 200, Some("OK"), &[])
     }
+
+    fn writer<'a>(&'a mut self, response: &'a Self::Response) -> &'a mut Self::Write;
 }
 
 pub struct HandlerError(heapless::String<128>);
@@ -75,56 +91,61 @@ impl Display for HandlerError {
 
 pub type HandlerResult = Result<(), HandlerError>;
 
-pub trait Handler<R>: Send
+pub trait Handler<C>: Send
 where
-    R: Request,
+    C: Connection,
 {
-    fn handle(&self, request: R) -> HandlerResult;
+    fn handle<'a>(&'a self, connection: &'a mut C, request: C::Request) -> HandlerResult;
 }
 
-impl<R, H> Handler<R> for &H
+impl<C, H> Handler<C> for &H
 where
-    R: Request,
-    H: Handler<R> + Send + Sync,
+    C: Connection,
+    H: Handler<C> + Send + Sync,
 {
-    fn handle(&self, request: R) -> HandlerResult {
-        (*self).handle(request)
+    fn handle<'a>(&'a self, connection: &'a mut C, request: C::Request) -> HandlerResult {
+        (*self).handle(connection, request)
     }
 }
 
 pub struct FnHandler<F>(F);
 
 impl<F> FnHandler<F> {
-    pub const fn new<R>(f: F) -> Self
+    pub const fn new<C>(f: F) -> Self
     where
-        R: Request,
-        F: Fn(R) -> HandlerResult,
+        C: Connection,
+        F: Fn(&mut C, C::Request) -> HandlerResult,
     {
         Self(f)
     }
 }
 
-impl<R, F> Handler<R> for FnHandler<F>
+impl<C, F> Handler<C> for FnHandler<F>
 where
-    R: Request,
-    F: Fn(R) -> HandlerResult + Send,
+    C: Connection,
+    F: Fn(&mut C, C::Request) -> HandlerResult + Send,
 {
-    fn handle(&self, request: R) -> HandlerResult {
-        self.0(request)
+    fn handle<'a>(&'a self, connection: &'a mut C, request: C::Request) -> HandlerResult {
+        self.0(connection, request)
     }
 }
 
-pub trait Middleware<R>: Send
+pub trait Middleware<C>: Send
 where
-    R: Request,
+    C: Connection,
 {
-    fn handle<H>(&self, request: R, handler: &H) -> HandlerResult
+    fn handle<'a, H>(
+        &'a self,
+        connection: &'a mut C,
+        request: C::Request,
+        handler: &'a H,
+    ) -> HandlerResult
     where
-        H: Handler<R>;
+        H: Handler<C>;
 
     fn compose<H>(self, handler: H) -> CompositeHandler<Self, H>
     where
-        H: Handler<R>,
+        H: Handler<C>,
         Self: Sized,
     {
         CompositeHandler::new(self, handler)
@@ -145,14 +166,14 @@ impl<M, H> CompositeHandler<M, H> {
     }
 }
 
-impl<M, H, R> Handler<R> for CompositeHandler<M, H>
+impl<M, H, C> Handler<C> for CompositeHandler<M, H>
 where
-    M: Middleware<R>,
-    H: Handler<R>,
-    R: Request,
+    M: Middleware<C>,
+    H: Handler<C>,
+    C: Connection,
 {
-    fn handle(&self, request: R) -> HandlerResult {
-        self.middleware.handle(request, &self.handler)
+    fn handle<'a>(&'a self, connection: &'a mut C, request: C::Request) -> HandlerResult {
+        self.middleware.handle(connection, request, &self.handler)
     }
 }
 
@@ -161,112 +182,149 @@ pub mod asynch {
     use core::future::Future;
 
     use crate::io::{asynch::Read, asynch::Write};
-    use crate::unblocker::asynch::{Blocker, Blocking, TrivialAsync};
+    //use crate::unblocker::asynch::{Blocker, Blocking, TrivialAsync};
 
     pub use super::{HandlerError, HandlerResult, Headers, Method, Query, Status};
+    pub use crate::io::Io;
 
-    pub trait Request: Query + Headers + Read {
-        type Headers<'b>: Query + Headers
-        where
-            Self: 'b;
-        type Read<'b>: Read<Error = Self::Error>
-        where
-            Self: 'b;
+    pub trait Connection: Io {
+        type Request;
 
-        type ResponseWrite: Write<Error = Self::Error>;
+        type Response;
 
-        type IntoResponseFuture<'a>: Future<Output = Result<Self::ResponseWrite, Self::Error>>;
-        type IntoOkResponseFuture: Future<Output = Result<Self::ResponseWrite, Self::Error>>;
+        type Headers: Query + Headers;
 
-        fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>);
+        type Read: Read<Error = Self::Error>;
 
-        fn into_response<'a>(
-            self,
-            status: u16,
-            message: Option<&'a str>,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Self::IntoResponseFuture<'a>
-        where
-            Self: Sized;
+        type Write: Write<Error = Self::Error>;
 
-        fn into_ok_response(self) -> Self::IntoOkResponseFuture
-        where
-            Self: Sized;
-    }
-
-    pub trait Handler<R>: Send
-    where
-        R: Request,
-    {
-        type HandleFuture<'a>: Future<Output = HandlerResult>
+        type IntoResponseFuture<'a>: Future<Output = Result<Self::Response, Self::Error>>
         where
             Self: 'a;
 
-        fn handle(&self, request: R) -> Self::HandleFuture<'_>;
+        fn split<'a>(
+            &'a mut self,
+            request: &'a mut Self::Request,
+        ) -> (&'a Self::Headers, &'a mut Self::Read);
+
+        fn headers<'a>(&'a self, request: &'a Self::Request) -> &'a Self::Headers;
+
+        fn reader<'a>(&'a mut self, request: &'a mut Self::Request) -> &'a mut Self::Read {
+            let (_, read) = self.split(request);
+
+            read
+        }
+
+        fn into_response<'a>(
+            &'a mut self,
+            request: Self::Request,
+            status: u16,
+            message: Option<&'a str>,
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::IntoResponseFuture<'a>;
+
+        fn into_status_response<'a>(
+            &'a mut self,
+            request: Self::Request,
+            status: u16,
+        ) -> Self::IntoResponseFuture<'a> {
+            self.into_response(request, status, None, &[])
+        }
+
+        fn into_ok_response<'a>(
+            &'a mut self,
+            request: Self::Request,
+        ) -> Self::IntoResponseFuture<'a> {
+            self.into_response(request, 200, None, &[])
+        }
+
+        fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write;
     }
 
-    impl<H, R> Handler<R> for &H
+    pub trait Handler<C>: Send
     where
-        R: Request,
-        H: Handler<R> + Send + Sync,
+        C: Connection,
+    {
+        type HandleFuture<'a>: Future<Output = HandlerResult>
+        where
+            Self: 'a,
+            C: 'a;
+
+        fn handle<'a>(
+            &'a self,
+            connection: &'a mut C,
+            request: C::Request,
+        ) -> Self::HandleFuture<'a>;
+    }
+
+    impl<H, C> Handler<C> for &H
+    where
+        C: Connection,
+        H: Handler<C> + Send + Sync,
     {
         type HandleFuture<'a>
         where
             Self: 'a,
+            C: 'a,
         = H::HandleFuture<'a>;
 
-        fn handle(&self, request: R) -> Self::HandleFuture<'_> {
-            (*self).handle(request)
+        fn handle<'a>(
+            &'a self,
+            connection: &'a mut C,
+            request: C::Request,
+        ) -> Self::HandleFuture<'a> {
+            (*self).handle(connection, request)
         }
     }
 
-    impl<B, R> super::Request for Blocking<B, R>
-    where
-        B: Blocker + Clone,
-        R: Request,
-    {
-        type Headers<'b>
-        where
-            Self: 'b,
-        = R::Headers<'b>;
-        type Read<'b>
-        where
-            Self: 'b,
-        = Blocking<B, R::Read<'b>>;
+    // impl<B, C> super::Connection for Blocking<B, C>
+    // where
+    //     B: Blocker + Clone,
+    //     C: Connection,
+    // {
+    //     type Request = C::Request;
 
-        type ResponseWrite = Blocking<B, R::ResponseWrite>;
+    //     type Response = C::Response;
 
-        fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>) {
-            let (headers, body) = self.1.split();
+    //     type Headers<'a>
+    //     where
+    //         Self: 'a,
+    //     = C::Headers<'a>;
 
-            (headers, Blocking::new(self.0.clone(), body))
-        }
+    //     type Read<'a>
+    //     where
+    //         Self: 'a,
+    //     = Blocking<B, C::Read<'a>>;
 
-        fn into_response<'a>(
-            self,
-            status: u16,
-            message: Option<&'a str>,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Result<Self::ResponseWrite, Self::Error>
-        where
-            Self: Sized,
-        {
-            let response = self
-                .0
-                .block_on(self.1.into_response(status, message, headers))?;
+    //     type Write<'a>
+    //     where
+    //         Self: 'a,
+    //     = Blocking<B, C::Write<'a>>;
 
-            Ok(Blocking::new(self.0, response))
-        }
+    //     fn reader<'a>(&'a mut self, request: &'a mut Self::Request) -> (Self::Headers<'a>, Self::Read<'a>) {
+    //         let (headers, read) = self.1.reader(request);
 
-        fn into_ok_response(self) -> Result<Self::ResponseWrite, Self::Error>
-        where
-            Self: Sized,
-        {
-            let response = self.0.block_on(self.1.into_ok_response())?;
+    //         (headers, Blocking::new(self.0.clone(), read))
+    //     }
 
-            Ok(Blocking::new(self.0, response))
-        }
-    }
+    //     fn into_response<'a>(
+    //         &'a mut self,
+    //         request: Self::Request,
+    //         status: u16,
+    //         message: Option<&'a str>,
+    //         headers: &'a [(&'a str, &'a str)],
+    //     ) -> Result<Self::Response, Self::Error> {
+    //         let response = self
+    //             .0
+    //             .block_on(self.1.into_response(request, status, message, headers))?;
+
+    //         Ok(response)
+    //     }
+
+    //     fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> Self::Write<'a> {
+    //         Blocking::new(self.0.clone(), self.1.writer(response))
+    //     }
+    // }
 
     // // Implement a blocking handler on top of an async handler
     // // (use case: user provides us an async handler, but we are a blocking server)
@@ -281,54 +339,56 @@ pub mod asynch {
     //     }
     // }
 
-    impl<R> Request for TrivialAsync<R>
-    where
-        R: super::Request,
-    {
-        type Headers<'b>
-        where
-            Self: 'b,
-        = R::Headers<'b>;
-        type Read<'b>
-        where
-            Self: 'b,
-        = TrivialAsync<R::Read<'b>>;
+    // impl<C> Connection for TrivialAsync<C>
+    // where
+    //     C: super::Connection,
+    // {
+    //     type Request = C::Request;
 
-        type ResponseWrite = TrivialAsync<R::ResponseWrite>;
+    //     type Response = C::Response;
 
-        type IntoResponseFuture<'a> =
-            impl Future<Output = Result<Self::ResponseWrite, Self::Error>>;
-        type IntoOkResponseFuture = impl Future<Output = Result<Self::ResponseWrite, Self::Error>>;
+    //     type Headers<'a>
+    //     where
+    //         Self: 'a,
+    //     = C::Headers<'a>;
 
-        fn split<'b>(&'b mut self) -> (Self::Headers<'b>, Self::Read<'b>) {
-            let (headers, body) = self.1.split();
+    //     type Read<'a>
+    //     where
+    //         Self: 'a,
+    //     = TrivialAsync<C::Read<'a>>;
 
-            (headers, TrivialAsync::new_async(body))
-        }
+    //     type Write<'a>
+    //     where
+    //         Self: 'a,
+    //     = TrivialAsync<C::Write<'a>>;
 
-        fn into_response<'a>(
-            self,
-            status: u16,
-            message: Option<&'a str>,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Self::IntoResponseFuture<'a>
-        where
-            Self: Sized,
-        {
-            async move {
-                Ok(TrivialAsync::new_async(
-                    self.1.into_response(status, message, headers)?,
-                ))
-            }
-        }
+    //     type IntoResponseFuture<'a> =
+    //         impl Future<Output = Result<Self::Response, Self::Error>>;
 
-        fn into_ok_response(self) -> Self::IntoOkResponseFuture
-        where
-            Self: Sized,
-        {
-            async move { Ok(TrivialAsync::new_async(self.1.into_ok_response()?)) }
-        }
-    }
+    //     fn reader<'a>(&'a mut self, request: &'a mut Self::Request) -> (Self::Headers<'a>, Self::Read<'a>) {
+    //         let (headers, reader) = self.1.reader(request);
+
+    //         (headers, TrivialAsync::new_async(reader))
+    //     }
+
+    //     fn into_response<'a>(
+    //         &'a mut self,
+    //         request: Self::Request,
+    //         status: u16,
+    //         message: Option<&'a str>,
+    //         headers: &'a [(&'a str, &'a str)],
+    //     ) -> Self::IntoResponseFuture<'a> {
+    //         async move {
+    //             Ok(TrivialAsync::new_async(
+    //                 self.1.into_response(request, status, message, headers)?,
+    //             ))
+    //         }
+    //     }
+
+    //     fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> Self::Write<'a> {
+    //         TrivialAsync::new_async(self.1.writer(response))
+    //     }
+    // }
 
     // // Implement an async handler on top of a blocking handler
     // // (use case: user provides us a blocking handler, but we are an async server,
@@ -351,21 +411,27 @@ pub mod asynch {
     //     }
     // }
 
-    pub trait Middleware<R>: Send
+    pub trait Middleware<C>: Send
     where
-        R: Request,
+        C: Connection,
     {
         type HandleFuture<'a>: Future<Output = HandlerResult> + Send
         where
-            Self: 'a;
+            Self: 'a,
+            C: 'a;
 
-        fn handle<H>(&self, request: R, handler: &H) -> Self::HandleFuture<'_>
+        fn handle<'a, H>(
+            &'a self,
+            connection: &'a mut C,
+            request: C::Request,
+            handler: &'a H,
+        ) -> Self::HandleFuture<'a>
         where
-            H: Handler<R>;
+            H: Handler<C>;
 
         fn compose<H>(self, handler: H) -> CompositeHandler<Self, H>
         where
-            H: Handler<R>,
+            H: Handler<C>,
             Self: Sized,
         {
             CompositeHandler::new(self, handler)
@@ -386,19 +452,24 @@ pub mod asynch {
         }
     }
 
-    impl<M, H, R> Handler<R> for CompositeHandler<M, H>
+    impl<M, H, C> Handler<C> for CompositeHandler<M, H>
     where
-        M: Middleware<R>,
-        H: Handler<R>,
-        R: Request,
+        M: Middleware<C>,
+        H: Handler<C>,
+        C: Connection,
     {
         type HandleFuture<'a>
         where
             Self: 'a,
+            C: 'a,
         = impl Future<Output = HandlerResult> + Send;
 
-        fn handle(&self, request: R) -> Self::HandleFuture<'_> {
-            self.middleware.handle(request, &self.handler)
+        fn handle<'a>(
+            &'a self,
+            connection: &'a mut C,
+            request: C::Request,
+        ) -> Self::HandleFuture<'a> {
+            self.middleware.handle(connection, request, &self.handler)
         }
     }
 }
