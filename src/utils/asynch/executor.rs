@@ -12,7 +12,63 @@ impl fmt::Display for SpawnError {
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for SpawnError {}
+impl ::std::error::Error for SpawnError {}
+
+#[cfg(all(
+    //feature = "std-async-executor",
+    feature = "std",
+))]
+pub mod std {
+    use crate::unblocker::asynch::Blocker;
+
+    struct PrivateData;
+
+    pub struct StdBlocker(PrivateData);
+
+    impl StdBlocker {
+        pub const fn new() -> Self {
+            Self(PrivateData)
+        }
+    }
+
+    impl Blocker for StdBlocker {
+        fn block_on<F>(&self, f: F) -> F::Output
+        where
+            F: futures::Future,
+        {
+            async_io::block_on(f)
+        }
+    }
+
+    // pub struct StdLocalExecutor<'a>(async_executor::LocalExecutor<'a>);
+
+    // impl<'a> SmolLocalSpawner<'a> {
+    //     pub fn new(executor: LocalExecutor<'a>) -> Self {
+    //         Self(executor)
+    //     }
+
+    //     pub fn executor(&mut self) -> &mut LocalExecutor<'a> {
+    //         &mut self.0
+    //     }
+    // }
+
+    // impl<'a> Spawner<'a> for SmolLocalSpawner<'a> {
+    //     type Error = Infallible;
+
+    //     type Task<T>
+    //     = Task<T>
+    //     where
+    //         T: 'a;
+
+    //     fn spawn<F, T>(&mut self, fut: F) -> Result<Self::Task<T>, Self::Error>
+    //     where
+    //         F: futures::Future<Output = T> + Send + 'a,
+    //         T: 'a,
+    //     {
+    //         Ok(self.0.spawn(fut))
+    //     }
+    // }
+}
 
 #[cfg(all(
     feature = "isr-async-executor",
@@ -22,15 +78,18 @@ impl std::error::Error for SpawnError {}
 pub mod isr {
     use core::future::Future;
     use core::marker::PhantomData;
+    use core::task::{Context, Poll};
 
     extern crate alloc;
     use alloc::sync::Arc;
 
     use async_task::{Runnable, Task};
+    use futures_lite::pin;
 
     use heapless::mpmc::MpMcQueue;
 
     use crate::executor::asynch::{Executor, LocalSpawner, Spawner, WaitableExecutor};
+    use crate::unblocker::asynch::Blocker;
 
     use super::SpawnError;
 
@@ -47,13 +106,13 @@ pub mod isr {
         }
     }
 
-    pub trait Notify {
+    pub trait Notify: Send + Sync {
         fn notify(&self);
     }
 
     impl<F> Notify for F
     where
-        F: Fn(),
+        F: Fn() + Send + Sync,
     {
         fn notify(&self) {
             (self)()
@@ -71,9 +130,17 @@ pub mod isr {
         fn postrun(&self) {}
     }
 
-    pub struct RunContext(());
+    // mod std {
+    //     pub struct CondvarNotifyFactory(super::PrivateData);
 
-    pub struct ISRExecutor<'a, const C: usize, N, W, S = ()> {
+    //     pub struct CondvarNotify(RawCondvar);
+    // }
+
+    struct PrivateData;
+
+    pub struct RunContext(PrivateData);
+
+    pub struct EmbeddedExecutor<'a, const C: usize, N, W, S = ()> {
         queue: Arc<MpMcQueue<Runnable, C>>,
         notify_factory: N,
         wait: W,
@@ -81,7 +148,7 @@ pub mod isr {
         _marker: PhantomData<core::cell::UnsafeCell<&'a ()>>,
     }
 
-    impl<'a, const C: usize, N, W, S> ISRExecutor<'a, C, N, W, S> {
+    impl<'a, const C: usize, N, W, S> EmbeddedExecutor<'a, C, N, W, S> {
         pub unsafe fn new_unchecked(notify_factory: N, wait: W) -> Self {
             Self {
                 queue: Arc::new(MpMcQueue::<_, C>::new()),
@@ -93,7 +160,7 @@ pub mod isr {
         }
     }
 
-    impl<'a, const C: usize, N, W, S> ISRExecutor<'a, C, N, W, S>
+    impl<'a, const C: usize, N, W, S> EmbeddedExecutor<'a, C, N, W, S>
     where
         N: NotifyFactory,
     {
@@ -121,7 +188,7 @@ pub mod isr {
 
     pub type Local = *const ();
 
-    impl<'a, const C: usize, N, W> ISRExecutor<'a, C, N, W, Local> {
+    impl<'a, const C: usize, N, W> EmbeddedExecutor<'a, C, N, W, Local> {
         pub fn new(notify_factory: N, wait: W) -> Self {
             unsafe { Self::new_unchecked(notify_factory, wait) }
         }
@@ -129,13 +196,13 @@ pub mod isr {
 
     pub type Sendable = ();
 
-    impl<'a, const C: usize, N, W> ISRExecutor<'a, C, N, W, Sendable> {
+    impl<'a, const C: usize, N, W> EmbeddedExecutor<'a, C, N, W, Sendable> {
         pub fn new(notify_factory: N, wait: W) -> Self {
             unsafe { Self::new_unchecked(notify_factory, wait) }
         }
     }
 
-    impl<'a, const C: usize, N, W, S> Spawner<'a> for ISRExecutor<'a, C, N, W, S>
+    impl<'a, const C: usize, N, W, S> Spawner<'a> for EmbeddedExecutor<'a, C, N, W, S>
     where
         N: NotifyFactory,
     {
@@ -155,7 +222,7 @@ pub mod isr {
         }
     }
 
-    impl<'a, const C: usize, N, W> LocalSpawner<'a> for ISRExecutor<'a, C, N, W, Local>
+    impl<'a, const C: usize, N, W> LocalSpawner<'a> for EmbeddedExecutor<'a, C, N, W, Local>
     where
         N: NotifyFactory,
     {
@@ -168,7 +235,7 @@ pub mod isr {
         }
     }
 
-    impl<'a, const C: usize, N, W, S> Executor for ISRExecutor<'a, C, N, W, S>
+    impl<'a, const C: usize, N, W, S> Executor for EmbeddedExecutor<'a, C, N, W, S>
     where
         N: RunContextFactory,
     {
@@ -180,7 +247,7 @@ pub mod isr {
         {
             self.notify_factory.prerun();
 
-            let result = run(self, &RunContext(()));
+            let result = run(self, &RunContext(PrivateData));
 
             self.notify_factory.postrun();
 
@@ -198,13 +265,54 @@ pub mod isr {
         }
     }
 
-    impl<'a, const C: usize, N, W, S> WaitableExecutor for ISRExecutor<'a, C, N, W, S>
+    impl<'a, const C: usize, N, W, S> WaitableExecutor for EmbeddedExecutor<'a, C, N, W, S>
     where
         N: RunContextFactory,
         W: Wait,
     {
         fn wait(&mut self, _context: &RunContext) {
             self.wait.wait();
+        }
+    }
+
+    pub struct EmbeddedBlocker<N, W>(N, W);
+
+    impl<N, W> EmbeddedBlocker<N, W> {
+        pub const fn new(notify_factory: N, wait: W) -> Self {
+            Self(notify_factory, wait)
+        }
+    }
+
+    impl<N, W> Blocker for EmbeddedBlocker<N, W>
+    where
+        N: NotifyFactory,
+        N::Notify: 'static,
+        W: Wait,
+    {
+        fn block_on<F>(&self, f: F) -> F::Output
+        where
+            F: Future,
+        {
+            log::trace!("ISR block_on(): started");
+
+            pin!(f);
+
+            let notify = self.0.notifier();
+
+            let waker = waker_fn::waker_fn(move || {
+                notify.notify();
+            });
+
+            let cx = &mut Context::from_waker(&waker);
+
+            loop {
+                if let Poll::Ready(t) = f.as_mut().poll(cx) {
+                    log::trace!("ISR block_on(): completed");
+                    return t;
+                }
+
+                self.1.wait();
+            }
         }
     }
 }
