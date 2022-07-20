@@ -16,9 +16,9 @@ default = ["std", "use_serde", "use_strum", "use_numenum", "json_io"]
 
 # Uncomment once 0.7 which has no_std support is released
 #experimental = ["futures", "embedded-io/async", "domain"]
-experimental = ["futures", "embedded-io/async"]
+experimental = ["futures", "embedded-io/async", "isr-async-executor"]
 
-std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std", "serde_json?/std"]
+std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std", "serde_json?/std", "async-io", "futures-lite", "waker-fn" ]
 alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "serde_json?/alloc"]
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
@@ -28,7 +28,7 @@ json_io_core = ["serde-json-core"]
 isr-async-executor = ["alloc", "experimental", "async-task"]
 
 [dependencies]
-heapless = { version = "0.7", default-features = false }
+heapless = { version = "0.7" }
 embedded-io = { version = "0.3", default-features = false }
 log = { version = "0.4", default-features = false }
 no-std-net = { version = "0.5", default-features = false }
@@ -43,4 +43,7 @@ serde-json-core = { version = "0.4", optional = true }
 # Uncomment once 0.7 which has no_std support is released
 #domain = { version = "0.7", optional = true, default-features = false }
 async-task = { version = "4", default-features = false, optional = true }
+async-io = { version = "1.7", default-features = false, optional = true }
+futures-lite = { version = "1.12", default-features = false, optional = true }
+waker-fn = { version = "1.1", default-features = false, optional = true }
 anyhow = { version = "1", default-features = false, optional = true } # Only used by the deprecated httpd module
