@@ -15,67 +15,11 @@ impl fmt::Display for SpawnError {
 impl ::std::error::Error for SpawnError {}
 
 #[cfg(all(
-    //feature = "std-async-executor",
-    feature = "std",
-))]
-pub mod std {
-    use crate::unblocker::asynch::Blocker;
-
-    struct PrivateData;
-
-    pub struct StdBlocker(PrivateData);
-
-    impl StdBlocker {
-        pub const fn new() -> Self {
-            Self(PrivateData)
-        }
-    }
-
-    impl Blocker for StdBlocker {
-        fn block_on<F>(&self, f: F) -> F::Output
-        where
-            F: futures::Future,
-        {
-            async_io::block_on(f)
-        }
-    }
-
-    // pub struct StdLocalExecutor<'a>(async_executor::LocalExecutor<'a>);
-
-    // impl<'a> SmolLocalSpawner<'a> {
-    //     pub fn new(executor: LocalExecutor<'a>) -> Self {
-    //         Self(executor)
-    //     }
-
-    //     pub fn executor(&mut self) -> &mut LocalExecutor<'a> {
-    //         &mut self.0
-    //     }
-    // }
-
-    // impl<'a> Spawner<'a> for SmolLocalSpawner<'a> {
-    //     type Error = Infallible;
-
-    //     type Task<T>
-    //     = Task<T>
-    //     where
-    //         T: 'a;
-
-    //     fn spawn<F, T>(&mut self, fut: F) -> Result<Self::Task<T>, Self::Error>
-    //     where
-    //         F: futures::Future<Output = T> + Send + 'a,
-    //         T: 'a,
-    //     {
-    //         Ok(self.0.spawn(fut))
-    //     }
-    // }
-}
-
-#[cfg(all(
-    feature = "isr-async-executor",
+    feature = "embedded-async-executor",
     feature = "alloc",
     target_has_atomic = "ptr"
 ))]
-pub mod isr {
+pub mod embedded {
     use core::future::Future;
     use core::marker::PhantomData;
     use core::task::{Context, Poll};
@@ -84,12 +28,13 @@ pub mod isr {
     use alloc::sync::Arc;
 
     use async_task::{Runnable, Task};
-    use futures_lite::pin;
 
     use heapless::mpmc::MpMcQueue;
 
     use crate::executor::asynch::{Executor, LocalSpawner, Spawner, WaitableExecutor};
+    use crate::mutex::RawCondvar;
     use crate::unblocker::asynch::Blocker;
+    use crate::utils::mutex::{Condvar, Mutex};
 
     use super::SpawnError;
 
@@ -130,16 +75,80 @@ pub mod isr {
         fn postrun(&self) {}
     }
 
-    // mod std {
-    //     pub struct CondvarNotifyFactory(super::PrivateData);
+    pub struct CondvarWait<R>(Mutex<R::RawMutex, ()>, Arc<Condvar<R>>)
+    where
+        R: RawCondvar;
 
-    //     pub struct CondvarNotify(RawCondvar);
-    // }
+    impl<R> CondvarWait<R>
+    where
+        R: RawCondvar,
+    {
+        pub fn new() -> Self {
+            Self(Mutex::new(()), Arc::new(Condvar::new()))
+        }
+
+        pub fn notify_factory(&self) -> Arc<Condvar<R>> {
+            self.1.clone()
+        }
+    }
+
+    impl<R> Wait for CondvarWait<R>
+    where
+        R: RawCondvar + Send + Sync,
+    {
+        fn wait(&self) {
+            let guard = self.0.lock();
+
+            self.1.wait(guard);
+        }
+    }
+
+    impl<R> NotifyFactory for Arc<Condvar<R>>
+    where
+        R: RawCondvar + Send + Sync,
+    {
+        type Notify = Self;
+
+        fn notifier(&self) -> Self::Notify {
+            self.clone()
+        }
+    }
+
+    impl<R> RunContextFactory for Arc<Condvar<R>> where R: RawCondvar + Send + Sync {}
+
+    impl<R> Notify for Arc<Condvar<R>>
+    where
+        R: RawCondvar + Send + Sync,
+    {
+        fn notify(&self) {
+            self.notify_one();
+        }
+    }
 
     struct PrivateData;
 
     pub struct RunContext(PrivateData);
 
+    /// WORK IN PROGRESS
+    /// `EmbeddedExecutor` is an implementation of the [Spawner], [LocalSpawner], [Executor] and [Blocker] traits
+    /// that is useful specfically for embedded environments.
+    ///
+    /// The implementation is in fact a thin wrapper around [smol](::smol)'s [async-task](::async-task) crate.
+    ///
+    /// Highlights:
+    /// - `no_std` (but does need `alloc`; for a `no_std` *and* "no_alloc" executor, look at [Embassy](::embassy), which statically pre-allocates all tasks);
+    ///            (note also that usage of `alloc` is very limited - only when a new task is being spawn, as well as the executor itself);
+    /// - Does not assume an RTOS and can run completely bare-metal (or on top of an RTOS);
+    /// - Pluggable [Wait] & [Notify] mechanism which makes it ISR-friendly. In particular:
+    ///   - Tasks can be woken up (and thus re-scheduled) from within an ISR;
+    ///   - The executor itself can run not just in the main "thread", but from within an ISR as well;
+    ///     the latter is important for bare-metal non-RTOS use-cases, as it allows - by running multiple executors -
+    ///     one in the main "thread" and the others - on ISR interrupts - to achieve RTOS-like pre-emptive execution by scheduling higher-priority
+    ///     tasks in executors that run on (higher-level) ISRs and thus pre-empt the executors
+    ///     scheduled on lower-level ISR and the "main thread" one; note that deploying an executor in an ISR requires the allocator to be usable
+    ///     from an ISR (i.e. allocation/deallocation routines should be protected by critical sections that disable/enable interrupts);
+    ///   - Out of the box implementations for [Wait] & [Notify] based on condvars, compatible with Rust STD
+    ///     (for cases where notifying from / running in ISRs is not important).
     pub struct EmbeddedExecutor<'a, const C: usize, N, W, S = ()> {
         queue: Arc<MpMcQueue<Runnable, C>>,
         notify_factory: N,
@@ -289,13 +298,13 @@ pub mod isr {
         N::Notify: 'static,
         W: Wait,
     {
-        fn block_on<F>(&self, f: F) -> F::Output
+        fn block_on<F>(&self, mut f: F) -> F::Output
         where
             F: Future,
         {
-            log::trace!("ISR block_on(): started");
+            log::trace!("block_on(): started");
 
-            pin!(f);
+            let mut f = unsafe { core::pin::Pin::new_unchecked(&mut f) };
 
             let notify = self.0.notifier();
 
@@ -307,7 +316,7 @@ pub mod isr {
 
             loop {
                 if let Poll::Ready(t) = f.as_mut().poll(cx) {
-                    log::trace!("ISR block_on(): completed");
+                    log::trace!("block_on(): completed");
                     return t;
                 }
 
