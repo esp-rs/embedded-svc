@@ -72,7 +72,9 @@ where
 {
     #[inline(always)]
     fn new(mutex: &'a Mutex<R, T>) -> Self {
-        mutex.lock();
+        unsafe {
+            mutex.0.lock();
+        }
 
         Self(mutex)
     }
