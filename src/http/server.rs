@@ -357,6 +357,18 @@ pub mod asynch {
                 lended_io: BlockingIo::None,
             }
         }
+
+        pub fn blocker(&self) -> &B {
+            &self.blocker
+        }
+
+        pub fn api(&self) -> &C {
+            &self.connection
+        }
+
+        pub fn api_mut(&mut self) -> &mut C {
+            &mut self.connection
+        }
     }
 
     impl<B, C> Io for BlockingConnection<B, C>
@@ -517,6 +529,14 @@ pub mod asynch {
                 connection,
                 lended_io: TrivialAsyncIo::None,
             }
+        }
+
+        pub fn api(&self) -> &C {
+            &self.connection
+        }
+
+        pub fn api_mut(&mut self) -> &mut C {
+            &mut self.connection
         }
     }
 
