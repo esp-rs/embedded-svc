@@ -1,6 +1,4 @@
-use core::fmt::Debug;
 use core::future::Future;
-use core::marker::PhantomData;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 use core::{mem, slice};
@@ -19,21 +17,28 @@ use crate::mutex::RawCondvar;
 use crate::utils::mutex::{Condvar, Mutex};
 use crate::ws::{server::*, *};
 
-pub struct AsyncSender<U, S> {
+pub struct AsyncConnection<U, C, S>
+where
+    C: RawCondvar,
+{
     unblocker: U,
     sender: S,
+    shared: Arc<Mutex<C::RawMutex, SharedReceiverState>>,
+    condvar: Arc<Condvar<C>>,
 }
 
-impl<U, S> ErrorType for AsyncSender<U, S>
+impl<U, C, S> ErrorType for AsyncConnection<U, C, S>
 where
+    C: RawCondvar,
     S: ErrorType,
 {
     type Error = S::Error;
 }
 
-impl<U, S> asynch::Sender for AsyncSender<U, S>
+impl<U, C, S> asynch::Sender for AsyncConnection<U, C, S>
 where
     U: Unblocker,
+    C: RawCondvar,
     S: Sender + SessionProvider + Send + Clone + 'static,
     S::Error: Send + Sync + 'static,
 {
@@ -58,8 +63,9 @@ where
     }
 }
 
-impl<S> asynch::Sender for AsyncSender<(), S>
+impl<C, S> asynch::Sender for AsyncConnection<(), C, S>
 where
+    C: RawCondvar,
     S: Sender + SessionProvider + Send + Clone + 'static,
 {
     type SendFuture<'a>
@@ -79,6 +85,26 @@ where
         let frame_data: Option<Vec<u8>> = frame_data.map(|frame_data| frame_data.to_owned());
 
         async move { sender.send(frame_type, frame_data.as_deref()) }
+    }
+}
+
+impl<U, C, S> asynch::Receiver for AsyncConnection<U, C, S>
+where
+    U: Send,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
+    S: ErrorType + Send,
+{
+    type ReceiveFuture<'a>
+    where
+        Self: 'a,
+    = AsyncReceiverFuture<'a, U, C, S>;
+
+    fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
+        AsyncReceiverFuture {
+            receiver: self,
+            frame_data_buf,
+        }
     }
 }
 
@@ -102,19 +128,20 @@ pub struct ConnectionState<M, S> {
     receiver_state: Arc<M>,
 }
 
-pub struct AsyncReceiverFuture<'a, C, E>
+pub struct AsyncReceiverFuture<'a, U, C, S>
 where
     C: RawCondvar,
 {
-    receiver: &'a mut AsyncReceiver<C, E>,
+    receiver: &'a mut AsyncConnection<U, C, S>,
     frame_data_buf: &'a mut [u8],
 }
 
-impl<'a, C, E> Future for AsyncReceiverFuture<'a, C, E>
+impl<'a, U, C, S> Future for AsyncReceiverFuture<'a, U, C, S>
 where
     C: RawCondvar,
+    S: ErrorType,
 {
-    type Output = Result<(FrameType, usize), E>;
+    type Output = Result<(FrameType, usize), S::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let frame_data_buf_ptr = self.frame_data_buf.as_mut_ptr();
@@ -140,42 +167,6 @@ where
         } else {
             shared.waker = Some(cx.waker().clone());
             Poll::Pending
-        }
-    }
-}
-
-pub struct AsyncReceiver<C, E>
-where
-    C: RawCondvar,
-{
-    _error: PhantomData<fn() -> E>,
-    shared: Arc<Mutex<C::RawMutex, SharedReceiverState>>,
-    condvar: Arc<Condvar<C>>,
-}
-
-impl<C, E> ErrorType for AsyncReceiver<C, E>
-where
-    C: RawCondvar,
-    E: Debug,
-{
-    type Error = E;
-}
-
-impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
-where
-    C: RawCondvar + Send + Sync,
-    C::RawMutex: Send + Sync,
-    E: Debug,
-{
-    type ReceiveFuture<'a>
-    where
-        Self: 'a,
-    = AsyncReceiverFuture<'a, C, E>;
-
-    fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
-        AsyncReceiverFuture {
-            receiver: self,
-            frame_data_buf,
         }
     }
 }
@@ -211,37 +202,30 @@ where
     type Error = <S as ErrorType>::Error;
 }
 
-impl<'a, U, C, S> Future for &'a mut AsyncAcceptor<U, C, S>
+impl<'a, U, C, S> Future for &'a AsyncAcceptor<U, C, S>
 where
     U: Clone,
     C: RawCondvar + Send + Sync,
     C::RawMutex: Send + Sync,
     S: Sender + Send + Clone + 'static,
 {
-    type Output = Result<
-        Option<(AsyncSender<U, S>, AsyncReceiver<C, <S as ErrorType>::Error>)>,
-        <S as ErrorType>::Error,
-    >;
+    type Output = Result<Option<AsyncConnection<U, C, S>>, <S as ErrorType>::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut accept = self.accept.lock();
 
         match mem::replace(&mut accept.data, None) {
             Some(Some((shared, sender))) => {
-                let sender = AsyncSender {
+                let connection = AsyncConnection {
                     unblocker: self.unblocker.clone(),
                     sender,
-                };
-
-                let receiver = AsyncReceiver {
-                    _error: PhantomData,
                     shared,
                     condvar: self.condvar.clone(),
                 };
 
                 self.condvar.notify_all();
 
-                Poll::Ready(Ok(Some((sender, receiver))))
+                Poll::Ready(Ok(Some(connection)))
             }
             Some(None) => {
                 accept.data = Some(None);
@@ -257,22 +241,23 @@ where
 
 impl<U, C, S> asynch::Acceptor for AsyncAcceptor<U, C, S>
 where
-    U: Unblocker + Clone + Send,
+    U: Unblocker + Clone + Send + Sync,
     C: RawCondvar + Send + Sync,
     C::RawMutex: Send + Sync,
     S: Sender + SessionProvider + Send + Clone + 'static,
     S::Error: Send + Sync + 'static,
 {
-    type Sender = AsyncSender<U, S>;
-
-    type Receiver = AsyncReceiver<C, <S as ErrorType>::Error>;
+    type Connection<'m>
+    where
+        Self: 'm,
+    = AsyncConnection<U, C, S>;
 
     type AcceptFuture<'a>
     where
         Self: 'a,
-    = &'a mut Self;
+    = &'a Self;
 
-    fn accept(&mut self) -> Self::AcceptFuture<'_> {
+    fn accept(&self) -> Self::AcceptFuture<'_> {
         self
     }
 }
@@ -283,44 +268,43 @@ where
     C::RawMutex: Send + Sync,
     S: Sender + SessionProvider + Send + Clone + 'static,
 {
-    type Sender = AsyncSender<(), S>;
-
-    type Receiver = AsyncReceiver<C, <S as ErrorType>::Error>;
+    type Connection<'m>
+    where
+        Self: 'm,
+    = AsyncConnection<(), C, S>;
 
     type AcceptFuture<'a>
     where
         Self: 'a,
-    = &'a mut Self;
+    = &'a Self;
 
-    fn accept(&mut self) -> Self::AcceptFuture<'_> {
+    fn accept(&self) -> Self::AcceptFuture<'_> {
         self
     }
 }
 
-pub struct Processor<C, S, R, const N: usize, const F: usize>
+pub struct Processor<const N: usize, const F: usize, C, W>
 where
     C: RawCondvar + Send + Sync,
     C::RawMutex: Send + Sync,
-    S: SenderFactory,
-    S::Sender: Send,
-    R: SessionProvider,
+    W: SenderFactory + SessionProvider,
+    W::Sender: Send,
 {
     connections:
-        heapless::Vec<ConnectionState<Mutex<C::RawMutex, SharedReceiverState>, R::Session>, N>,
+        heapless::Vec<ConnectionState<Mutex<C::RawMutex, SharedReceiverState>, W::Session>, N>,
     frame_data_buf: [u8; F],
-    accept: Arc<Mutex<C::RawMutex, SharedAcceptorState<C, S::Sender>>>,
+    accept: Arc<Mutex<C::RawMutex, SharedAcceptorState<C, W::Sender>>>,
     condvar: Arc<Condvar<C>>,
 }
 
-impl<C, S, R, const N: usize, const F: usize> Processor<C, S, R, N, F>
+impl<const N: usize, const F: usize, C, W> Processor<N, F, C, W>
 where
     C: RawCondvar + Send + Sync,
     C::RawMutex: Send + Sync,
-    S: SenderFactory,
-    S::Sender: Send,
-    R: SessionProvider,
+    W: SenderFactory + SessionProvider,
+    W::Sender: Send,
 {
-    pub fn new<U>(unblocker: U) -> (Self, AsyncAcceptor<U, C, S::Sender>) {
+    pub fn new<U>(unblocker: U) -> (Self, AsyncAcceptor<U, C, W::Sender>) {
         let this = Self {
             connections: heapless::Vec::new(),
             frame_data_buf: [0_u8; F],
@@ -340,21 +324,20 @@ where
         (this, acceptor)
     }
 
-    pub fn process<'a>(&'a mut self, receiver: &'a mut R, sender: &'a mut S) -> Result<(), R::Error>
+    pub fn process<'a>(&'a mut self, connection: &'a mut W) -> Result<(), W::Error>
     where
-        R: Receiver,
-        S: Sender<Error = R::Error>,
+        W: Sender + Receiver,
     {
-        if receiver.is_new() {
-            let session = receiver.session();
+        if connection.is_new() {
+            let session = connection.session();
 
             info!("New WS connection {:?}", session);
 
-            if !self.process_accept(session, sender) {
-                return sender.send(FrameType::Close, None);
+            if !self.process_accept(session, connection) {
+                return connection.send(FrameType::Close, None);
             }
-        } else if receiver.is_closed() {
-            let session = receiver.session();
+        } else if connection.is_closed() {
+            let session = connection.session();
 
             if let Some(index) = self
                 .connections
@@ -368,27 +351,27 @@ where
                 info!("Closed WS connection {:?}", session);
             }
         } else {
-            let session = receiver.session();
-            let (frame_type, len) = receiver.recv(&mut self.frame_data_buf)?;
+            let session = connection.session();
+            let (frame_type, len) = connection.recv(&mut self.frame_data_buf)?;
 
             info!(
                 "Incoming data (frame_type={:?}, frame_len={}) from WS connection {:?}",
                 frame_type, len, session
             );
 
-            if let Some(receiver) = self
+            if let Some(connection) = self
                 .connections
                 .iter()
-                .find(|receiver| receiver.session == session)
+                .find(|connection| connection.session == session)
             {
-                self.process_receive(&receiver.receiver_state, frame_type, len)
+                self.process_receive(&connection.receiver_state, frame_type, len)
             }
         }
 
         Ok(())
     }
 
-    fn process_accept<'a>(&'a mut self, session: R::Session, sender: &'a mut S) -> bool {
+    fn process_accept<'a>(&'a mut self, session: W::Session, sender: &'a mut W) -> bool {
         if self.connections.len() < F {
             let receiver_state = Arc::new(Mutex::new(SharedReceiverState {
                 waker: None,
@@ -475,13 +458,12 @@ where
     }
 }
 
-impl<C, S, R, const N: usize, const F: usize> Drop for Processor<C, S, R, N, F>
+impl<const N: usize, const F: usize, C, W> Drop for Processor<N, F, C, W>
 where
     C: RawCondvar + Send + Sync,
     C::RawMutex: Send + Sync,
-    S: SenderFactory,
-    S::Sender: Send,
-    R: SessionProvider,
+    W: SenderFactory + SessionProvider,
+    W::Sender: Send,
 {
     fn drop(&mut self) {
         self.process_accept_close();
