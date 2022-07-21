@@ -53,26 +53,24 @@ impl FrameType {
 }
 
 pub trait Acceptor: ErrorType {
-    // TODO:
-    // - We probably need to parameterize Sender & Receiver by <'a>
-    // - Consequently, we need to change `accept(&mut self)` to `accept(&self)`
+    type Connection<'m>: Sender<Error = Self::Error> + Receiver<Error = Self::Error> + Send
+    where
+        Self: 'm;
 
-    type Sender: Sender<Error = Self::Error> + Send;
-    type Receiver: Receiver<Error = Self::Error> + Send;
-
-    fn accept(&mut self) -> Result<Option<(Self::Sender, Self::Receiver)>, Self::Error>;
+    fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error>;
 }
 
-impl<A> Acceptor for &mut A
+impl<A> Acceptor for &A
 where
     A: Acceptor,
 {
-    type Sender = A::Sender;
+    type Connection<'m>
+    where
+        Self: 'm,
+    = A::Connection<'m>;
 
-    type Receiver = A::Receiver;
-
-    fn accept(&mut self) -> Result<Option<(Self::Sender, Self::Receiver)>, Self::Error> {
-        (*self).accept()
+    fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error> {
+        (**self).accept()
     }
 }
 
@@ -110,40 +108,38 @@ where
 pub mod asynch {
     use core::future::Future;
 
-    use crate::executor::asynch::{Blocker, Blocking};
+    use crate::executor::asynch::{Blocker, Blocking, TrivialAsync};
 
     pub use super::{ErrorType, Fragmented, FrameType};
 
     pub trait Acceptor: ErrorType {
-        type Sender: Sender<Error = Self::Error> + Send;
-        type Receiver: Receiver<Error = Self::Error> + Send;
+        type Connection<'m>: Sender<Error = Self::Error> + Receiver<Error = Self::Error> + Send
+        where
+            Self: 'm;
 
-        type AcceptFuture<'a>: Future<Output = Result<Option<(Self::Sender, Self::Receiver)>, Self::Error>>
+        type AcceptFuture<'a>: Future<Output = Result<Option<Self::Connection<'a>>, Self::Error>>
             + Send
         where
             Self: 'a;
 
-        fn accept(&mut self) -> Self::AcceptFuture<'_>;
+        fn accept(&self) -> Self::AcceptFuture<'_>;
     }
 
-    impl<A> Acceptor for &mut A
+    impl<A> Acceptor for &A
     where
         A: Acceptor,
     {
-        // TODO:
-        // - We probably need to parameterize Sender & Receiver by <'a>
-        // - Consequently, we need to change `accept(&mut self)` to `accept(&self)`
-
-        type Sender = A::Sender;
-
-        type Receiver = A::Receiver;
+        type Connection<'m>
+        where
+            Self: 'm,
+        = A::Connection<'m>;
 
         type AcceptFuture<'a>
         where
             Self: 'a,
         = A::AcceptFuture<'a>;
 
-        fn accept(&mut self) -> Self::AcceptFuture<'_> {
+        fn accept(&self) -> Self::AcceptFuture<'_> {
             (*self).accept()
         }
     }
@@ -212,19 +208,15 @@ pub mod asynch {
         B: Blocker + Clone + Send,
         A: Acceptor,
     {
-        type Sender = Blocking<B, A::Sender>;
+        type Connection<'m>
+        where
+            Self: 'm,
+        = Blocking<B, A::Connection<'m>>;
 
-        type Receiver = Blocking<B, A::Receiver>;
-
-        fn accept(&mut self) -> Result<Option<(Self::Sender, Self::Receiver)>, Self::Error> {
+        fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error> {
             let r = self.0.block_on(self.1.accept())?;
 
-            Ok(r.map(|(sender, receiver)| {
-                (
-                    Blocking::new(self.0.clone(), sender),
-                    Blocking::new(self.0.clone(), receiver),
-                )
-            }))
+            Ok(r.map(|connection| Blocking::new(self.0.clone(), connection)))
         }
     }
 
@@ -249,6 +241,57 @@ pub mod asynch {
     {
         fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error> {
             self.0.block_on(self.1.recv(frame_data_buf))
+        }
+    }
+
+    impl<A> Acceptor for TrivialAsync<A>
+    where
+        A: super::Acceptor + Send + Sync,
+    {
+        type Connection<'m>
+        where
+            Self: 'm,
+        = TrivialAsync<A::Connection<'m>>;
+
+        type AcceptFuture<'a>
+        where
+            Self: 'a,
+        = impl Future<Output = Result<Option<Self::Connection<'a>>, Self::Error>>;
+
+        fn accept(&self) -> Self::AcceptFuture<'_> {
+            async move { Ok(self.1.accept()?.map(TrivialAsync::new_async)) }
+        }
+    }
+
+    impl<S> Sender for TrivialAsync<S>
+    where
+        S: super::Sender + Send,
+    {
+        type SendFuture<'a>
+        where
+            Self: 'a,
+        = impl Future<Output = Result<(), Self::Error>>;
+
+        fn send<'a>(
+            &'a mut self,
+            frame_type: FrameType,
+            frame_data: Option<&'a [u8]>,
+        ) -> Self::SendFuture<'a> {
+            async move { self.1.send(frame_type, frame_data) }
+        }
+    }
+
+    impl<R> Receiver for TrivialAsync<R>
+    where
+        R: super::Receiver + Send,
+    {
+        type ReceiveFuture<'a>
+        where
+            Self: 'a,
+        = impl Future<Output = Result<(FrameType, usize), Self::Error>>;
+
+        fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
+            async move { self.1.recv(frame_data_buf) }
         }
     }
 }
