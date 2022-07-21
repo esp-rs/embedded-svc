@@ -74,6 +74,20 @@ where
     }
 }
 
+impl<A> Acceptor for &mut A
+where
+    A: Acceptor,
+{
+    type Connection<'m>
+    where
+        Self: 'm,
+    = A::Connection<'m>;
+
+    fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error> {
+        (**self).accept()
+    }
+}
+
 pub trait Receiver: ErrorType {
     fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error>;
 }
