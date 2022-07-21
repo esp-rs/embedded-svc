@@ -13,6 +13,18 @@ pub mod asynch {
         {
             Self(blocker, api)
         }
+
+        pub fn blocker(&self) -> &B {
+            &self.0
+        }
+
+        pub fn api(&self) -> &T {
+            &self.1
+        }
+
+        pub fn api_mut(&mut self) -> &mut T {
+            &mut self.1
+        }
     }
 
     impl<T> Blocking<(), T> {

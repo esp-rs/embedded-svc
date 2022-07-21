@@ -25,6 +25,7 @@ pub mod embedded {
     use core::task::{Context, Poll};
 
     extern crate alloc;
+    use alloc::rc::Rc;
     use alloc::sync::Arc;
 
     use async_task::{Runnable, Task};
@@ -75,7 +76,8 @@ pub mod embedded {
         fn postrun(&self) {}
     }
 
-    pub struct CondvarWait<R>(Mutex<R::RawMutex, ()>, Arc<Condvar<R>>)
+    #[derive(Clone)]
+    pub struct CondvarWait<R>(Rc<Mutex<R::RawMutex, ()>>, Arc<Condvar<R>>)
     where
         R: RawCondvar;
 
@@ -84,7 +86,7 @@ pub mod embedded {
         R: RawCondvar,
     {
         pub fn new() -> Self {
-            Self(Mutex::new(()), Arc::new(Condvar::new()))
+            Self(Rc::new(Mutex::new(())), Arc::new(Condvar::new()))
         }
 
         pub fn notify_factory(&self) -> Arc<Condvar<R>> {
@@ -284,6 +286,7 @@ pub mod embedded {
         }
     }
 
+    #[derive(Clone)]
     pub struct EmbeddedBlocker<N, W>(N, W);
 
     impl<N, W> EmbeddedBlocker<N, W> {
