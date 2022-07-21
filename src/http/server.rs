@@ -179,8 +179,8 @@ pub mod asynch {
 
     use embedded_io::blocking::{Read as _, Write as _};
 
+    use crate::executor::asynch::{Blocker, Blocking};
     use crate::io::{asynch::Read, asynch::Write};
-    use crate::unblocker::asynch::{Blocker, Blocking};
 
     pub use super::{HandlerError, HandlerResult, Headers, Method, Query, Status};
     pub use crate::io::Io;

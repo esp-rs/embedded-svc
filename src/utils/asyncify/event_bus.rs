@@ -9,8 +9,8 @@ use alloc::sync::Arc;
 
 use crate::channel::asynch::{Receiver, Sender};
 use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider};
+use crate::executor::asynch::Unblocker;
 use crate::mutex::RawCondvar;
-use crate::unblocker::asynch::Unblocker;
 use crate::utils::mutex::{Condvar, Mutex};
 
 pub struct AsyncPostbox<U, P, PB> {

@@ -30,7 +30,6 @@ pub mod signal;
 pub mod storage;
 pub mod sys_time;
 pub mod timer;
-pub mod unblocker;
 pub mod utils;
 pub mod wifi;
 #[cfg(feature = "experimental")]

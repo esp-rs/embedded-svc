@@ -254,8 +254,8 @@ where
 pub mod asynch {
     use core::future::Future;
 
+    use crate::executor::asynch::{Blocker, Blocking};
     use crate::io::asynch::{Io, Read, Write};
-    use crate::unblocker::asynch::{Blocker, Blocking};
     use crate::utils::io::asynch::*;
 
     pub use super::{FirmwareInfo, FirmwareInfoLoader, LoadResult, OtaSlot, SlotState};
