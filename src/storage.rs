@@ -69,6 +69,7 @@ impl<'a, const N: usize> StorageBase for DynStorageImpl<'a, N> {
 }
 
 impl<'a, const N: usize> DynStorage<'a> for DynStorageImpl<'a, N> {
+    #[allow(clippy::unnecessary_lazy_evaluations)]
     fn get(&self, name: &str) -> Result<Option<&'a dyn Any>, Self::Error> {
         Ok(self.0.iter().find_map(|entry| {
             entry
