@@ -32,9 +32,8 @@ pub mod embedded {
 
     use heapless::mpmc::MpMcQueue;
 
-    use crate::executor::asynch::{Executor, LocalSpawner, Spawner, WaitableExecutor};
+    use crate::executor::asynch::{Blocker, Executor, LocalSpawner, Spawner, WaitableExecutor};
     use crate::mutex::RawCondvar;
-    use crate::unblocker::asynch::Blocker;
     use crate::utils::mutex::{Condvar, Mutex};
 
     use super::SpawnError;

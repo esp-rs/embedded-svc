@@ -90,10 +90,8 @@ pub mod asynch {
     use core::fmt::Debug;
     use core::future::Future;
 
-    use crate::{
-        ipv4,
-        unblocker::asynch::{Blocker, Blocking},
-    };
+    use crate::executor::asynch::{Blocker, Blocking};
+    use crate::ipv4;
 
     pub use super::{Configuration, Reply, Summary};
 

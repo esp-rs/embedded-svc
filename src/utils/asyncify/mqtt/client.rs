@@ -9,11 +9,11 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
+use crate::executor::asynch::Unblocker;
 use crate::mqtt::client::asynch::{Client, Connection, Event, MessageId, Publish, QoS};
 use crate::mqtt::client::utils::ConnStateGuard;
 use crate::mqtt::client::ErrorType;
 use crate::mutex::{RawCondvar, RawMutex};
-use crate::unblocker::asynch::Unblocker;
 use crate::utils::mutex::Mutex;
 
 async fn enqueue_publish<'a, E>(

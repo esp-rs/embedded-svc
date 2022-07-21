@@ -84,8 +84,8 @@ pub trait Response: Status + Headers + Read {
 pub mod asynch {
     use core::future::Future;
 
+    use crate::executor::asynch::{Blocker, Blocking};
     use crate::io::{asynch::Read, asynch::Write, Io};
-    use crate::unblocker::asynch::{Blocker, Blocking};
 
     pub use crate::http::asynch::*;
     pub use crate::http::{Headers, Method, Status};
