@@ -4,8 +4,10 @@ use core::task::{Context, Poll};
 
 pub mod channel;
 pub mod executor;
+pub mod mutex;
 pub mod select;
 pub mod signal;
+pub mod waker;
 
 /// Yield from the current task once, allowing other tasks to run.
 //

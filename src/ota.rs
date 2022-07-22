@@ -517,37 +517,37 @@ pub mod asynch {
         = Blocking<&'a B, O::Update<'a>>;
 
         fn get_boot_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
-            self.0.block_on(self.1.get_boot_slot())
+            self.blocker.block_on(self.api.get_boot_slot())
         }
 
         fn get_running_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
-            self.0.block_on(self.1.get_running_slot())
+            self.blocker.block_on(self.api.get_running_slot())
         }
 
         fn get_update_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
-            self.0.block_on(self.1.get_update_slot())
+            self.blocker.block_on(self.api.get_update_slot())
         }
 
         fn is_factory_reset_supported(&self) -> Result<bool, Self::Error> {
-            self.1.is_factory_reset_supported()
+            self.api.is_factory_reset_supported()
         }
 
         fn factory_reset(&mut self) -> Result<(), Self::Error> {
-            self.0.block_on(self.1.factory_reset())
+            self.blocker.block_on(self.api.factory_reset())
         }
 
         fn initiate_update(&mut self) -> Result<Self::Update<'_>, Self::Error> {
-            let update = self.0.block_on(self.1.initiate_update())?;
+            let update = self.blocker.block_on(self.api.initiate_update())?;
 
-            Ok(Blocking::new(&self.0, update))
+            Ok(Blocking::new(&self.blocker, update))
         }
 
         fn mark_running_slot_valid(&mut self) -> Result<(), Self::Error> {
-            self.0.block_on(self.1.mark_running_slot_valid())
+            self.blocker.block_on(self.api.mark_running_slot_valid())
         }
 
         fn mark_running_slot_invalid_and_reboot(&mut self) -> Self::Error {
-            self.1.mark_running_slot_invalid_and_reboot()
+            self.api.mark_running_slot_invalid_and_reboot()
         }
     }
 
@@ -557,11 +557,11 @@ pub mod asynch {
         U: OtaUpdate,
     {
         fn complete(self) -> Result<(), Self::Error> {
-            self.0.block_on(self.1.complete())
+            self.blocker.block_on(self.api.complete())
         }
 
         fn abort(self) -> Result<(), Self::Error> {
-            self.0.block_on(self.1.abort())
+            self.blocker.block_on(self.api.abort())
         }
     }
 }

@@ -1,3 +1,5 @@
+//! (Copied from Embassy with small adaptations)
+
 use core::cell::UnsafeCell;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};

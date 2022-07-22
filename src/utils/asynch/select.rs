@@ -1,3 +1,5 @@
+//! (Copied from Embassy with small adaptations)
+
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};

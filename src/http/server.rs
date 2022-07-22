@@ -1,6 +1,6 @@
 use core::fmt::{self, Debug, Display, Write as _};
 
-use crate::io::{Read, Write};
+use crate::io::{Error, Read, Write};
 
 pub use super::{Headers, Method, Query, Status};
 pub use crate::io::Io;
@@ -15,6 +15,11 @@ pub trait Connection: Io {
     type Read: Read<Error = Self::Error>;
 
     type Write: Write<Error = Self::Error>;
+
+    type RawConnectionError: Error;
+
+    type RawConnection: Read<Error = Self::RawConnectionError>
+        + Write<Error = Self::RawConnectionError>;
 
     fn split<'a>(
         &'a mut self,
@@ -50,6 +55,8 @@ pub trait Connection: Io {
     }
 
     fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write;
+
+    fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
 }
 
 pub struct HandlerError(heapless::String<128>);
@@ -177,13 +184,11 @@ where
 pub mod asynch {
     use core::future::Future;
 
-    use embedded_io::blocking::{Read as _, Write as _};
-
-    use crate::executor::asynch::{Blocker, Blocking};
+    use crate::executor::asynch::{Blocker, RawBlocking, RawTrivialAsync};
     use crate::io::{asynch::Read, asynch::Write};
 
     pub use super::{HandlerError, HandlerResult, Headers, Method, Query, Status};
-    pub use crate::io::Io;
+    pub use crate::io::{Error, Io};
 
     pub trait Connection: Io {
         type Request;
@@ -195,6 +200,11 @@ pub mod asynch {
         type Read: Read<Error = Self::Error>;
 
         type Write: Write<Error = Self::Error>;
+
+        type RawConnectionError: Error;
+
+        type RawConnection: Read<Error = Self::RawConnectionError>
+            + Write<Error = Self::RawConnectionError>;
 
         type IntoResponseFuture<'a>: Future<Output = Result<Self::Response, Self::Error>>
         where
@@ -237,6 +247,8 @@ pub mod asynch {
         }
 
         fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write;
+
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
     }
 
     pub trait Handler<C>: Send
@@ -343,31 +355,23 @@ pub mod asynch {
     {
         blocker: B,
         connection: C,
-        lended_io: BlockingIo<B, C>,
+        lended_read: RawBlocking<B, C::Read>,
+        lended_write: RawBlocking<B, C::Write>,
+        lended_raw: RawBlocking<B, C::RawConnection>,
     }
 
     impl<B, C> BlockingConnection<B, C>
     where
         C: Connection,
     {
-        pub const fn new(blocker: B, connection: C) -> Self {
+        pub fn new(blocker: B, connection: C) -> Self {
             Self {
                 blocker,
                 connection,
-                lended_io: BlockingIo::None,
+                lended_read: unsafe { RawBlocking::new() },
+                lended_write: unsafe { RawBlocking::new() },
+                lended_raw: unsafe { RawBlocking::new() },
             }
-        }
-
-        pub fn blocker(&self) -> &B {
-            &self.blocker
-        }
-
-        pub fn api(&self) -> &C {
-            &self.connection
-        }
-
-        pub fn api_mut(&mut self) -> &mut C {
-            &mut self.connection
         }
     }
 
@@ -389,9 +393,13 @@ pub mod asynch {
 
         type Headers = C::Headers;
 
-        type Read = BlockingIo<B, C>;
+        type Read = RawBlocking<B, C::Read>;
 
-        type Write = BlockingIo<B, C>;
+        type Write = RawBlocking<B, C::Write>;
+
+        type RawConnectionError = C::RawConnectionError;
+
+        type RawConnection = RawBlocking<B, C::RawConnection>;
 
         fn split<'a>(
             &'a mut self,
@@ -399,9 +407,10 @@ pub mod asynch {
         ) -> (&'a Self::Headers, &'a mut Self::Read) {
             let (headers, read) = self.connection.split(request);
 
-            self.lended_io = BlockingIo::Reader(Blocking::new(self.blocker.clone(), read));
+            self.lended_read.blocker = &self.blocker;
+            self.lended_read.api = read;
 
-            (headers, &mut self.lended_io)
+            (headers, &mut self.lended_read)
         }
 
         fn headers<'a>(&'a self, request: &'a Self::Request) -> &'a Self::Headers {
@@ -411,9 +420,10 @@ pub mod asynch {
         fn reader<'a>(&'a mut self, request: &'a mut Self::Request) -> &'a mut Self::Read {
             let read = self.connection.reader(request);
 
-            self.lended_io = BlockingIo::Reader(Blocking::new(self.blocker.clone(), read));
+            self.lended_read.blocker = &self.blocker;
+            self.lended_read.api = read;
 
-            &mut self.lended_io
+            &mut self.lended_read
         }
 
         fn into_response<'a>(
@@ -434,61 +444,19 @@ pub mod asynch {
         fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write {
             let write = self.connection.writer(response);
 
-            self.lended_io = BlockingIo::Writer(Blocking::new(self.blocker.clone(), write));
+            self.lended_write.blocker = &self.blocker;
+            self.lended_write.api = write;
 
-            &mut self.lended_io
-        }
-    }
-
-    pub enum BlockingIo<B, C>
-    where
-        C: Connection,
-    {
-        None,
-        Reader(Blocking<B, *mut C::Read>),
-        Writer(Blocking<B, *mut C::Write>),
-    }
-
-    impl<B, C> Io for BlockingIo<B, C>
-    where
-        C: Connection,
-    {
-        type Error = C::Error;
-    }
-
-    impl<B, C> crate::io::Read for BlockingIo<B, C>
-    where
-        B: Blocker,
-        C: Connection,
-    {
-        fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-            match self {
-                Self::None => panic!(),
-                Self::Reader(r) => r.0.block_on(unsafe { r.1.as_mut().unwrap() }.read(buf)),
-                Self::Writer(_) => panic!(),
-            }
-        }
-    }
-
-    impl<B, C> crate::io::Write for BlockingIo<B, C>
-    where
-        B: Blocker,
-        C: Connection,
-    {
-        fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-            match self {
-                Self::None => panic!(),
-                Self::Reader(_) => panic!(),
-                Self::Writer(w) => w.0.block_on(unsafe { w.1.as_mut().unwrap() }.write(buf)),
-            }
+            &mut self.lended_write
         }
 
-        fn flush(&mut self) -> Result<(), Self::Error> {
-            match self {
-                Self::None => panic!(),
-                Self::Reader(_) => panic!(),
-                Self::Writer(w) => w.0.block_on(unsafe { w.1.as_mut().unwrap() }.flush()),
-            }
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+            let connection = self.connection.raw_connection()?;
+
+            self.lended_raw.blocker = &self.blocker;
+            self.lended_raw.api = connection;
+
+            Ok(&mut self.lended_raw)
         }
     }
 
@@ -510,24 +478,21 @@ pub mod asynch {
         C: super::Connection,
     {
         connection: C,
-        lended_io: TrivialAsyncIo<C>,
-    }
-
-    impl<C> Io for TrivialAsyncConnection<C>
-    where
-        C: super::Connection,
-    {
-        type Error = C::Error;
+        lended_read: RawTrivialAsync<C::Read>,
+        lended_write: RawTrivialAsync<C::Write>,
+        lended_raw: RawTrivialAsync<C::RawConnection>,
     }
 
     impl<C> TrivialAsyncConnection<C>
     where
         C: super::Connection,
     {
-        pub const fn new(connection: C) -> Self {
+        pub fn new(connection: C) -> Self {
             Self {
                 connection,
-                lended_io: TrivialAsyncIo::None,
+                lended_read: unsafe { RawTrivialAsync::new() },
+                lended_write: unsafe { RawTrivialAsync::new() },
+                lended_raw: unsafe { RawTrivialAsync::new() },
             }
         }
 
@@ -540,6 +505,13 @@ pub mod asynch {
         }
     }
 
+    impl<C> Io for TrivialAsyncConnection<C>
+    where
+        C: super::Connection,
+    {
+        type Error = C::Error;
+    }
+
     impl<C> Connection for TrivialAsyncConnection<C>
     where
         C: super::Connection,
@@ -550,9 +522,13 @@ pub mod asynch {
 
         type Headers = C::Headers;
 
-        type Read = TrivialAsyncIo<C>;
+        type Read = RawTrivialAsync<C::Read>;
 
-        type Write = TrivialAsyncIo<C>;
+        type Write = RawTrivialAsync<C::Write>;
+
+        type RawConnectionError = C::RawConnectionError;
+
+        type RawConnection = RawTrivialAsync<C::RawConnection>;
 
         type IntoResponseFuture<'a>
         where
@@ -565,9 +541,9 @@ pub mod asynch {
         ) -> (&'a Self::Headers, &'a mut Self::Read) {
             let (headers, read) = self.connection.split(request);
 
-            self.lended_io = TrivialAsyncIo::Reader(read);
+            self.lended_read.api = read;
 
-            (headers, &mut self.lended_io)
+            (headers, &mut self.lended_read)
         }
 
         fn headers<'a>(&'a self, request: &'a Self::Request) -> &'a Self::Headers {
@@ -591,80 +567,17 @@ pub mod asynch {
         fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write {
             let write = self.connection.writer(response);
 
-            self.lended_io = TrivialAsyncIo::Writer(write);
+            self.lended_write.api = write;
 
-            &mut self.lended_io
-        }
-    }
-
-    pub enum TrivialAsyncIo<C>
-    where
-        C: super::Connection,
-    {
-        None,
-        Reader(*mut C::Read),
-        Writer(*mut C::Write),
-    }
-
-    impl<C> Io for TrivialAsyncIo<C>
-    where
-        C: super::Connection,
-    {
-        type Error = C::Error;
-    }
-
-    impl<C> Read for TrivialAsyncIo<C>
-    where
-        C: super::Connection,
-    {
-        type ReadFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<usize, Self::Error>>;
-
-        fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
-            async move {
-                match self {
-                    Self::None => panic!(),
-                    Self::Reader(r) => unsafe { r.as_mut().unwrap() }.read(buf),
-                    Self::Writer(_) => panic!(),
-                }
-            }
-        }
-    }
-
-    impl<C> Write for TrivialAsyncIo<C>
-    where
-        C: super::Connection,
-    {
-        type WriteFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<usize, Self::Error>>;
-
-        type FlushFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>>;
-
-        fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
-            async move {
-                match self {
-                    Self::None => panic!(),
-                    Self::Reader(_) => panic!(),
-                    Self::Writer(w) => unsafe { w.as_mut().unwrap() }.write(buf),
-                }
-            }
+            &mut self.lended_write
         }
 
-        fn flush(&mut self) -> Self::FlushFuture<'_> {
-            async move {
-                match self {
-                    Self::None => panic!(),
-                    Self::Reader(_) => panic!(),
-                    Self::Writer(w) => unsafe { w.as_mut().unwrap() }.flush(),
-                }
-            }
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+            let raw_connection = self.connection.raw_connection()?;
+
+            self.lended_raw.api = raw_connection;
+
+            Ok(&mut self.lended_raw)
         }
     }
 
