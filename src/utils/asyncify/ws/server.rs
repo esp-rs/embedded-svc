@@ -239,7 +239,7 @@ where
     }
 }
 
-impl<U, C, S> asynch::Acceptor for AsyncAcceptor<U, C, S>
+impl<U, C, S> asynch::server::Acceptor for AsyncAcceptor<U, C, S>
 where
     U: Unblocker + Clone + Send + Sync,
     C: RawCondvar + Send + Sync,
@@ -262,7 +262,7 @@ where
     }
 }
 
-impl<C, S> asynch::Acceptor for AsyncAcceptor<(), C, S>
+impl<C, S> asynch::server::Acceptor for AsyncAcceptor<(), C, S>
 where
     C: RawCondvar + Send + Sync,
     C::RawMutex: Send + Sync,
