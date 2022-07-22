@@ -154,7 +154,7 @@ pub mod asynch {
         Q: super::Query,
     {
         fn query(&self) -> &'_ str {
-            self.1.query()
+            self.api.query()
         }
     }
 
@@ -163,7 +163,7 @@ pub mod asynch {
         H: super::Headers,
     {
         fn header(&self, name: &str) -> Option<&'_ str> {
-            self.1.header(name)
+            self.api.header(name)
         }
     }
 
@@ -172,11 +172,11 @@ pub mod asynch {
         S: super::Status,
     {
         fn status(&self) -> u16 {
-            self.1.status()
+            self.api.status()
         }
 
         fn status_message(&self) -> Option<&'_ str> {
-            self.1.status_message()
+            self.api.status_message()
         }
     }
 }

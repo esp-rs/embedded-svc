@@ -538,11 +538,11 @@ pub mod asynch {
         C: Client,
     {
         fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error> {
-            self.0.block_on(self.1.subscribe(topic, qos))
+            self.blocker.block_on(self.api.subscribe(topic, qos))
         }
 
         fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error> {
-            self.0.block_on(self.1.unsubscribe(topic))
+            self.blocker.block_on(self.api.unsubscribe(topic))
         }
     }
 
@@ -558,7 +558,8 @@ pub mod asynch {
             retain: bool,
             payload: &'a [u8],
         ) -> Result<MessageId, Self::Error> {
-            self.0.block_on(self.1.publish(topic, qos, retain, payload))
+            self.blocker
+                .block_on(self.api.publish(topic, qos, retain, payload))
         }
     }
 
@@ -570,7 +571,7 @@ pub mod asynch {
         type Message = C::Message;
 
         fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>> {
-            self.0.block_on(self.1.next())
+            self.blocker.block_on(self.api.next())
         }
     }
 }
