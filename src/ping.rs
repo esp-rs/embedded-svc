@@ -149,7 +149,7 @@ pub mod asynch {
             ip: ipv4::Ipv4Addr,
             conf: &Configuration,
         ) -> Result<Summary, Self::Error> {
-            self.0.block_on(self.1.ping(ip, conf))
+            self.blocker.block_on(self.api.ping(ip, conf))
         }
 
         fn ping_details<F: Fn(&Summary, &Reply)>(
@@ -158,8 +158,8 @@ pub mod asynch {
             conf: &Configuration,
             reply_callback: &F,
         ) -> Result<Summary, Self::Error> {
-            self.0
-                .block_on(self.1.ping_details(ip, conf, reply_callback))
+            self.blocker
+                .block_on(self.api.ping_details(ip, conf, reply_callback))
         }
     }
 }

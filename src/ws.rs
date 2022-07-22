@@ -246,7 +246,7 @@ pub mod asynch {
             frame_type: FrameType,
             frame_data: Option<&[u8]>,
         ) -> Result<(), Self::Error> {
-            self.0.block_on(self.1.send(frame_type, frame_data))
+            self.blocker.block_on(self.api.send(frame_type, frame_data))
         }
     }
 
@@ -256,8 +256,15 @@ pub mod asynch {
         R: Receiver,
     {
         fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error> {
-            self.0.block_on(self.1.recv(frame_data_buf))
+            self.blocker.block_on(self.api.recv(frame_data_buf))
         }
+    }
+
+    impl<E> ErrorType for TrivialAsync<E>
+    where
+        E: ErrorType,
+    {
+        type Error = E::Error;
     }
 
     impl<S> Sender for TrivialAsync<S>
@@ -274,7 +281,7 @@ pub mod asynch {
             frame_type: FrameType,
             frame_data: Option<&'a [u8]>,
         ) -> Self::SendFuture<'a> {
-            async move { self.1.send(frame_type, frame_data) }
+            async move { self.api.send(frame_type, frame_data) }
         }
     }
 
@@ -288,7 +295,7 @@ pub mod asynch {
         = impl Future<Output = Result<(FrameType, usize), Self::Error>>;
 
         fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
-            async move { self.1.recv(frame_data_buf) }
+            async move { self.api.recv(frame_data_buf) }
         }
     }
 
@@ -351,9 +358,9 @@ pub mod asynch {
                 uri: &'a str,
                 headers: &'a [(&'a str, &'a str)],
             ) -> Result<Self::Connection<'a>, Self::Error> {
-                let connection = self.0.block_on(self.1.request_ws(uri, headers))?;
+                let connection = self.blocker.block_on(self.api.request_ws(uri, headers))?;
 
-                Ok(Blocking::new(self.0.clone(), connection))
+                Ok(Blocking::new(self.blocker.clone(), connection))
             }
         }
 
@@ -377,7 +384,7 @@ pub mod asynch {
                 uri: &'a str,
                 headers: &'a [(&'a str, &'a str)],
             ) -> Self::RequestWsFuture<'a> {
-                async move { Ok(TrivialAsync::new_async(self.1.request_ws(uri, headers)?)) }
+                async move { Ok(TrivialAsync::new(self.api.request_ws(uri, headers)?)) }
             }
         }
     }
@@ -432,9 +439,9 @@ pub mod asynch {
             = Blocking<B, A::Connection<'m>>;
 
             fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error> {
-                let r = self.0.block_on(self.1.accept())?;
+                let r = self.blocker.block_on(self.api.accept())?;
 
-                Ok(r.map(|connection| Blocking::new(self.0.clone(), connection)))
+                Ok(r.map(|connection| Blocking::new(self.blocker.clone(), connection)))
             }
         }
 
@@ -453,7 +460,7 @@ pub mod asynch {
             = impl Future<Output = Result<Option<Self::Connection<'a>>, Self::Error>>;
 
             fn accept(&self) -> Self::AcceptFuture<'_> {
-                async move { Ok(self.1.accept()?.map(TrivialAsync::new_async)) }
+                async move { Ok(self.api.accept()?.map(TrivialAsync::new)) }
             }
         }
     }
