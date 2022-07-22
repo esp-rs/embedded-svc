@@ -15,7 +15,7 @@ use log::info;
 use crate::executor::asynch::Unblocker;
 use crate::mutex::RawCondvar;
 use crate::utils::mutex::{Condvar, Mutex};
-use crate::ws::{server::*, *};
+use crate::ws::{callback_server::*, *};
 
 pub struct AsyncConnection<U, C, S>
 where
@@ -47,19 +47,19 @@ where
         Self: 'a,
     = U::UnblockFuture<Result<(), S::Error>>;
 
-    fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>) -> Self::SendFuture<'_> {
+    fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Self::SendFuture<'_> {
         info!(
             "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
             frame_type,
-            frame_data.map(|d| d.len()).unwrap_or(0),
+            frame_data.len(),
             self.sender.session()
         );
 
         let mut sender = self.sender.clone();
-        let frame_data: Option<Vec<u8>> = frame_data.map(|frame_data| frame_data.to_owned());
+        let frame_data: Vec<u8> = frame_data.to_owned();
 
         self.unblocker
-            .unblock(move || sender.send(frame_type, frame_data.as_deref()))
+            .unblock(move || sender.send(frame_type, &frame_data))
     }
 }
 
@@ -73,18 +73,18 @@ where
         Self: 'a,
     = impl Future<Output = Result<(), Self::Error>>;
 
-    fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>) -> Self::SendFuture<'_> {
+    fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Self::SendFuture<'_> {
         info!(
             "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
             frame_type,
-            frame_data.map(|d| d.len()).unwrap_or(0),
+            frame_data.len(),
             self.sender.session()
         );
 
         let mut sender = self.sender.clone();
-        let frame_data: Option<Vec<u8>> = frame_data.map(|frame_data| frame_data.to_owned());
+        let frame_data: Vec<u8> = frame_data.to_owned();
 
-        async move { sender.send(frame_type, frame_data.as_deref()) }
+        async move { sender.send(frame_type, &frame_data) }
     }
 }
 
@@ -193,6 +193,18 @@ where
     condvar: Arc<Condvar<C>>,
 }
 
+impl<U, C, S> AsyncAcceptor<U, C, S>
+where
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
+    S: Sender + SessionProvider + Send + Clone + 'static,
+    S::Error: Send + Sync + 'static,
+{
+    pub fn accept(&self) -> &AsyncAcceptor<U, C, S> {
+        self
+    }
+}
+
 impl<U, C, S> ErrorType for AsyncAcceptor<U, C, S>
 where
     C: RawCondvar + Send + Sync,
@@ -236,50 +248,6 @@ where
                 Poll::Pending
             }
         }
-    }
-}
-
-impl<U, C, S> asynch::server::Acceptor for AsyncAcceptor<U, C, S>
-where
-    U: Unblocker + Clone + Send + Sync,
-    C: RawCondvar + Send + Sync,
-    C::RawMutex: Send + Sync,
-    S: Sender + SessionProvider + Send + Clone + 'static,
-    S::Error: Send + Sync + 'static,
-{
-    type Connection<'m>
-    where
-        Self: 'm,
-    = AsyncConnection<U, C, S>;
-
-    type AcceptFuture<'a>
-    where
-        Self: 'a,
-    = &'a Self;
-
-    fn accept(&self) -> Self::AcceptFuture<'_> {
-        self
-    }
-}
-
-impl<C, S> asynch::server::Acceptor for AsyncAcceptor<(), C, S>
-where
-    C: RawCondvar + Send + Sync,
-    C::RawMutex: Send + Sync,
-    S: Sender + SessionProvider + Send + Clone + 'static,
-{
-    type Connection<'m>
-    where
-        Self: 'm,
-    = AsyncConnection<(), C, S>;
-
-    type AcceptFuture<'a>
-    where
-        Self: 'a,
-    = &'a Self;
-
-    fn accept(&self) -> Self::AcceptFuture<'_> {
-        self
     }
 }
 
@@ -334,7 +302,7 @@ where
             info!("New WS connection {:?}", session);
 
             if !self.process_accept(session, connection) {
-                return connection.send(FrameType::Close, None);
+                return connection.send(FrameType::Close, &[]);
             }
         } else if connection.is_closed() {
             let session = connection.session();
