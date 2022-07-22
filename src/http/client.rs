@@ -1,4 +1,4 @@
-use crate::io::{Io, Read, Write};
+use crate::io::{Error, Io, Read, Write};
 
 pub use super::{Headers, Method, Status};
 
@@ -6,6 +6,11 @@ pub trait Client: Io {
     type RequestWrite<'a>: RequestWrite<Error = Self::Error>
     where
         Self: 'a;
+
+    type RawConnectionError: Error;
+
+    type RawConnection: Read<Error = Self::RawConnectionError>
+        + Write<Error = Self::RawConnectionError>;
 
     fn get<'a>(&'a mut self, uri: &'a str) -> Result<Self::RequestWrite<'a>, Self::Error> {
         self.request(Method::Get, uri, &[])
@@ -37,6 +42,8 @@ pub trait Client: Io {
         uri: &'a str,
         headers: &'a [(&'a str, &'a str)],
     ) -> Result<Self::RequestWrite<'a>, Self::Error>;
+
+    fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
 }
 
 impl<'c, C> Client for &'c mut C
@@ -48,6 +55,10 @@ where
         Self: 'a,
     = C::RequestWrite<'a>;
 
+    type RawConnectionError = C::RawConnectionError;
+
+    type RawConnection = C::RawConnection;
+
     fn request<'a>(
         &'a mut self,
         method: Method,
@@ -55,6 +66,10 @@ where
         headers: &'a [(&'a str, &'a str)],
     ) -> Result<Self::RequestWrite<'a>, Self::Error> {
         (*self).request(method, uri, headers)
+    }
+
+    fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+        (*self).raw_connection()
     }
 }
 
@@ -71,17 +86,15 @@ pub trait Response: Status + Headers + Read {
 
     type Read: Read<Error = Self::Error>;
 
-    fn split<'a>(&'a mut self) -> (&'a Self::Headers, &'a mut Self::Read)
-    where
-        Self: Sized;
+    fn split<'a>(&'a mut self) -> (&'a Self::Headers, &'a mut Self::Read);
 }
 
 #[cfg(feature = "experimental")]
 pub mod asynch {
     use core::future::Future;
 
-    use crate::executor::asynch::{Blocker, Blocking, TrivialAsync};
-    use crate::io::{asynch::Read, asynch::Write, Io, Read as _};
+    use crate::executor::asynch::{Blocker, Blocking, RawBlocking, RawTrivialAsync, TrivialAsync};
+    use crate::io::{asynch::Read, asynch::Write, Error, Io, Read as _};
 
     pub use crate::http::asynch::*;
     pub use crate::http::{Headers, Method, Status};
@@ -90,6 +103,11 @@ pub mod asynch {
         type RequestWrite<'a>: RequestWrite<Error = Self::Error>
         where
             Self: 'a;
+
+        type RawConnectionError: Error;
+
+        type RawConnection: Read<Error = Self::RawConnectionError>
+            + Write<Error = Self::RawConnectionError>;
 
         type RequestFuture<'a>: Future<Output = Result<Self::RequestWrite<'a>, Self::Error>>
         where
@@ -125,6 +143,8 @@ pub mod asynch {
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::RequestFuture<'a>;
+
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
     }
 
     impl<C> Client for &mut C
@@ -135,6 +155,10 @@ pub mod asynch {
         where
             Self: 'a,
         = C::RequestWrite<'a>;
+
+        type RawConnectionError = C::RawConnectionError;
+
+        type RawConnection = C::RawConnection;
 
         type RequestFuture<'a>
         where
@@ -148,6 +172,10 @@ pub mod asynch {
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::RequestFuture<'a> {
             (*self).request(method, uri, headers)
+        }
+
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+            (*self).raw_connection()
         }
     }
 
@@ -166,12 +194,40 @@ pub mod asynch {
 
         type Read: Read<Error = Self::Error>;
 
-        fn split<'a>(&'a mut self) -> (&'a Self::Headers, &'a mut Self::Read)
-        where
-            Self: Sized;
+        fn split<'a>(&'a mut self) -> (&'a Self::Headers, &'a mut Self::Read);
     }
 
-    impl<B, C> super::Client for Blocking<B, C>
+    pub struct BlockingClient<B, C>
+    where
+        C: Client,
+    {
+        blocker: B,
+        client: C,
+        lended_raw: RawBlocking<B, C::RawConnection>,
+    }
+
+    impl<B, C> BlockingClient<B, C>
+    where
+        B: Blocker,
+        C: Client,
+    {
+        pub fn new(blocker: B, client: C) -> Self {
+            Self {
+                blocker,
+                client,
+                lended_raw: unsafe { RawBlocking::new() },
+            }
+        }
+    }
+
+    impl<B, C> Io for BlockingClient<B, C>
+    where
+        C: Client,
+    {
+        type Error = C::Error;
+    }
+
+    impl<B, C> super::Client for BlockingClient<B, C>
     where
         B: Blocker,
         C: Client,
@@ -181,15 +237,30 @@ pub mod asynch {
             Self: 'a,
         = Blocking<&'a B, C::RequestWrite<'a>>;
 
+        type RawConnectionError = C::RawConnectionError;
+
+        type RawConnection = RawBlocking<B, C::RawConnection>;
+
         fn request<'a>(
             &'a mut self,
             method: Method,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
         ) -> Result<Self::RequestWrite<'a>, Self::Error> {
-            let request_write = self.0.block_on(self.1.request(method, uri, headers))?;
+            let request_write = self
+                .blocker
+                .block_on(self.client.request(method, uri, headers))?;
 
-            Ok(Blocking::new(&mut self.0, request_write))
+            Ok(Blocking::new(&mut self.blocker, request_write))
+        }
+
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+            let connection = self.client.raw_connection()?;
+
+            self.lended_raw.blocker = &self.blocker;
+            self.lended_raw.api = connection;
+
+            Ok(&mut self.lended_raw)
         }
     }
 
@@ -204,9 +275,9 @@ pub mod asynch {
         where
             Self: Sized,
         {
-            let response = self.0.block_on(self.1.submit())?;
+            let response = self.blocker.block_on(self.api.submit())?;
 
-            Ok(BlockingResponse::new(self.0, response))
+            Ok(BlockingResponse::new(self.blocker, response))
         }
     }
 
@@ -216,18 +287,18 @@ pub mod asynch {
     {
         blocker: B,
         response: R,
-        lended_io: BlockingIo<B, R>,
+        lended_read: RawBlocking<B, R::Read>,
     }
 
     impl<B, R> BlockingResponse<B, R>
     where
         R: Response,
     {
-        const fn new(blocker: B, response: R) -> Self {
+        fn new(blocker: B, response: R) -> Self {
             Self {
                 blocker,
                 response,
-                lended_io: BlockingIo::None,
+                lended_read: unsafe { RawBlocking::new() },
             }
         }
 
@@ -290,49 +361,46 @@ pub mod asynch {
     {
         type Headers = R::Headers;
 
-        type Read = BlockingIo<B, R>;
+        type Read = RawBlocking<B, R::Read>;
 
-        fn split<'a>(&'a mut self) -> (&'a Self::Headers, &'a mut Self::Read)
-        where
-            Self: Sized,
-        {
+        fn split<'a>(&'a mut self) -> (&'a Self::Headers, &'a mut Self::Read) {
             let (headers, body) = self.response.split();
 
-            self.lended_io = BlockingIo::Reader(Blocking::new(self.blocker.clone(), body));
+            self.lended_read.blocker = &self.blocker;
+            self.lended_read.api = body;
 
-            (headers, &mut self.lended_io)
+            (headers, &mut self.lended_read)
         }
     }
 
-    pub enum BlockingIo<B, R>
+    pub struct TrivialAsyncClient<C>
     where
-        R: Response,
+        C: super::Client,
     {
-        None,
-        Reader(Blocking<B, *mut R::Read>),
+        client: C,
+        lended_raw: RawTrivialAsync<C::RawConnection>,
     }
 
-    impl<B, R> Io for BlockingIo<B, R>
+    impl<C> TrivialAsyncClient<C>
     where
-        R: Response,
+        C: super::Client,
     {
-        type Error = R::Error;
-    }
-
-    impl<B, R> crate::io::Read for BlockingIo<B, R>
-    where
-        B: Blocker,
-        R: Response,
-    {
-        fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-            match self {
-                Self::None => panic!(),
-                Self::Reader(r) => r.0.block_on(unsafe { r.1.as_mut().unwrap() }.read(buf)),
+        pub fn new(client: C) -> Self {
+            Self {
+                client,
+                lended_raw: unsafe { RawTrivialAsync::new() },
             }
         }
     }
 
-    impl<C> Client for TrivialAsync<C>
+    impl<C> Io for TrivialAsyncClient<C>
+    where
+        C: super::Client,
+    {
+        type Error = C::Error;
+    }
+
+    impl<C> Client for TrivialAsyncClient<C>
     where
         C: super::Client,
     {
@@ -340,6 +408,10 @@ pub mod asynch {
         where
             Self: 'a,
         = TrivialAsync<C::RequestWrite<'a>>;
+
+        type RawConnectionError = C::RawConnectionError;
+
+        type RawConnection = RawTrivialAsync<C::RawConnection>;
 
         type RequestFuture<'a>
         where
@@ -353,10 +425,16 @@ pub mod asynch {
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::RequestFuture<'a> {
             async move {
-                let request_write = self.1.request(method, uri, headers)?;
+                let request_write = self.client.request(method, uri, headers)?;
 
-                Ok(TrivialAsync::new_async(request_write))
+                Ok(TrivialAsync::new(request_write))
             }
+        }
+
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+            self.lended_raw.api = self.client.raw_connection()?;
+
+            Ok(&mut self.lended_raw)
         }
     }
 
@@ -372,7 +450,7 @@ pub mod asynch {
         where
             Self: Sized,
         {
-            async move { Ok(TrivialAsyncResponse::new(self.1.submit()?)) }
+            async move { Ok(TrivialAsyncResponse::new(self.api.submit()?)) }
         }
     }
 
@@ -455,10 +533,7 @@ pub mod asynch {
 
         type Read = TrivialAsyncIo<R>;
 
-        fn split<'a>(&'a mut self) -> (&'a Self::Headers, &'a mut Self::Read)
-        where
-            Self: Sized,
-        {
+        fn split<'a>(&'a mut self) -> (&'a Self::Headers, &'a mut Self::Read) {
             let (headers, body) = self.response.split();
 
             self.lended_io = TrivialAsyncIo::Reader(body);

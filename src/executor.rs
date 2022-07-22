@@ -3,6 +3,14 @@ pub mod asynch {
     use core::fmt::Debug;
     use core::future::Future;
     use core::result::Result;
+    use core::task::Waker;
+
+    pub trait WakerRegistration {
+        fn new() -> Self;
+
+        fn register(&mut self, waker: &Waker);
+        fn wake(&mut self);
+    }
 
     pub trait Blocker {
         fn block_on<F>(&self, future: F) -> F::Output
@@ -22,35 +30,52 @@ pub mod asynch {
         }
     }
 
-    pub type TrivialAsync<T> = Blocking<(), T>;
-
     #[derive(Clone)]
-    pub struct Blocking<B, T>(pub(crate) B, pub(crate) T);
+    pub struct Blocking<B, T> {
+        pub blocker: B,
+        pub api: T,
+    }
 
     impl<B, T> Blocking<B, T> {
-        pub const fn new(blocker: B, api: T) -> Self
-        where
-            B: Blocker,
-        {
-            Self(blocker, api)
-        }
-
-        pub fn blocker(&self) -> &B {
-            &self.0
-        }
-
-        pub fn api(&self) -> &T {
-            &self.1
-        }
-
-        pub fn api_mut(&mut self) -> &mut T {
-            &mut self.1
+        pub const fn new(blocker: B, api: T) -> Self {
+            Self { blocker, api }
         }
     }
 
-    impl<T> Blocking<(), T> {
-        pub const fn new_async(api: T) -> Self {
-            Self((), api)
+    #[derive(Clone)]
+    pub struct RawBlocking<B, T> {
+        pub blocker: *const B,
+        pub api: *mut T,
+    }
+
+    impl<B, T> RawBlocking<B, T> {
+        pub unsafe fn new() -> Self {
+            Self {
+                blocker: core::ptr::null(),
+                api: core::ptr::null_mut(),
+            }
+        }
+    }
+
+    pub struct TrivialAsync<T> {
+        pub api: T,
+    }
+
+    impl<T> TrivialAsync<T> {
+        pub const fn new(api: T) -> Self {
+            Self { api }
+        }
+    }
+
+    pub struct RawTrivialAsync<T> {
+        pub api: *mut T,
+    }
+
+    impl<T> RawTrivialAsync<T> {
+        pub unsafe fn new() -> Self {
+            Self {
+                api: core::ptr::null_mut(),
+            }
         }
     }
 
