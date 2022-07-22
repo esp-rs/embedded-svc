@@ -72,6 +72,10 @@ pub trait Headers {
     fn connection(&self) -> Option<&'_ str> {
         self.header("Connection")
     }
+
+    fn upgrade(&self) -> Option<&'_ str> {
+        self.header("Upgrade")
+    }
 }
 
 impl<H> Headers for &H
@@ -142,6 +146,10 @@ pub mod headers {
 
     pub fn location<'a>(location: &'a str) -> (&'a str, &'a str) {
         ("Location", location)
+    }
+
+    pub fn upgrade<'a>(upgrade: &'a str) -> (&'a str, &'a str) {
+        ("Upgrade", upgrade)
     }
 }
 
