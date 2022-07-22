@@ -21,7 +21,7 @@ where
 pub type Fragmented = bool;
 pub type Final = bool;
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum FrameType {
     Text(Fragmented),
     Binary(Fragmented),
@@ -64,79 +64,20 @@ where
 }
 
 pub trait Sender: ErrorType {
-    fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>)
-        -> Result<(), Self::Error>;
+    fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Result<(), Self::Error>;
 }
 
 impl<S> Sender for &mut S
 where
     S: Sender,
 {
-    fn send(
-        &mut self,
-        frame_type: FrameType,
-        frame_data: Option<&[u8]>,
-    ) -> Result<(), Self::Error> {
+    fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Result<(), Self::Error> {
         (*self).send(frame_type, frame_data)
     }
 }
 
-pub mod client {
-    use crate::io::Io;
-
+pub mod callback_server {
     pub use super::*;
-
-    pub trait WsClient: Io {
-        type Connection<'a>: Sender<Error = Self::Error> + Receiver<Error = Self::Error>
-        where
-            Self: 'a;
-
-        fn request_ws<'a>(
-            &'a mut self,
-            uri: &'a str,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Result<Self::Connection<'a>, Self::Error>;
-    }
-}
-
-pub mod server {
-    pub use super::*;
-
-    pub trait Acceptor: ErrorType {
-        type Connection<'m>: Sender<Error = Self::Error> + Receiver<Error = Self::Error> + Send
-        where
-            Self: 'm;
-
-        fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error>;
-    }
-
-    impl<A> Acceptor for &A
-    where
-        A: Acceptor,
-    {
-        type Connection<'m>
-        where
-            Self: 'm,
-        = A::Connection<'m>;
-
-        fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error> {
-            (**self).accept()
-        }
-    }
-
-    impl<A> Acceptor for &mut A
-    where
-        A: Acceptor,
-    {
-        type Connection<'m>
-        where
-            Self: 'm,
-        = A::Connection<'m>;
-
-        fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error> {
-            (**self).accept()
-        }
-    }
 
     pub trait SessionProvider {
         type Session: Clone + Send + PartialEq + Debug;
@@ -152,22 +93,6 @@ pub mod server {
 
         fn create(&self) -> Result<Self::Sender, Self::Error>;
     }
-
-    // pub trait Registry {
-    //     type Error: Debug;
-
-    //     type SendReceiveError: Debug;
-
-    //     type Connection: Receiver<Error = Self::SendReceiveError>
-    //         + Sender<Error = Self::SendReceiveError>
-    //         + SessionProvider
-    //         + SenderFactory<Error = Self::SendReceiveError>;
-
-    //     fn handle_ws<H, E>(&mut self, uri: &str, handler: H) -> Result<&mut Self, Self::Error>
-    //     where
-    //         H: for<'a> Fn(&'a mut Self::Connection) -> Result<(), E> + Send + 'static,
-    //         E: Debug;
-    // }
 }
 
 pub mod asynch {
@@ -178,7 +103,7 @@ pub mod asynch {
     pub use super::{ErrorType, Fragmented, FrameType};
 
     pub trait Receiver: ErrorType {
-        type ReceiveFuture<'a>: Future<Output = Result<(FrameType, usize), Self::Error>> + Send
+        type ReceiveFuture<'a>: Future<Output = Result<(FrameType, usize), Self::Error>>
         where
             Self: 'a;
 
@@ -200,14 +125,14 @@ pub mod asynch {
     }
 
     pub trait Sender: ErrorType {
-        type SendFuture<'a>: Future<Output = Result<(), Self::Error>> + Send
+        type SendFuture<'a>: Future<Output = Result<(), Self::Error>>
         where
             Self: 'a;
 
         fn send<'a>(
             &'a mut self,
             frame_type: FrameType,
-            frame_data: Option<&'a [u8]>,
+            frame_data: &'a [u8],
         ) -> Self::SendFuture<'a>;
     }
 
@@ -223,7 +148,7 @@ pub mod asynch {
         fn send<'a>(
             &'a mut self,
             frame_type: FrameType,
-            frame_data: Option<&'a [u8]>,
+            frame_data: &'a [u8],
         ) -> Self::SendFuture<'a> {
             (*self).send(frame_type, frame_data)
         }
@@ -241,11 +166,7 @@ pub mod asynch {
         B: Blocker,
         S: Sender,
     {
-        fn send(
-            &mut self,
-            frame_type: FrameType,
-            frame_data: Option<&[u8]>,
-        ) -> Result<(), Self::Error> {
+        fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Result<(), Self::Error> {
             self.blocker.block_on(self.api.send(frame_type, frame_data))
         }
     }
@@ -279,7 +200,7 @@ pub mod asynch {
         fn send<'a>(
             &'a mut self,
             frame_type: FrameType,
-            frame_data: Option<&'a [u8]>,
+            frame_data: &'a [u8],
         ) -> Self::SendFuture<'a> {
             async move { self.api.send(frame_type, frame_data) }
         }
@@ -296,172 +217,6 @@ pub mod asynch {
 
         fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
             async move { self.api.recv(frame_data_buf) }
-        }
-    }
-
-    pub mod client {
-        use crate::io::Io;
-
-        pub use super::*;
-
-        pub trait WsClient: Io {
-            type Connection<'a>: Sender<Error = Self::Error> + Receiver<Error = Self::Error>
-            where
-                Self: 'a;
-
-            type RequestWsFuture<'a>: Future<Output = Result<Self::Connection<'a>, Self::Error>>
-            where
-                Self: 'a;
-
-            fn request_ws<'a>(
-                &'a mut self,
-                uri: &'a str,
-                headers: &'a [(&'a str, &'a str)],
-            ) -> Self::RequestWsFuture<'a>;
-        }
-
-        impl<C> WsClient for &mut C
-        where
-            C: WsClient,
-        {
-            type Connection<'a>
-            where
-                Self: 'a,
-            = C::Connection<'a>;
-
-            type RequestWsFuture<'a>
-            where
-                Self: 'a,
-            = C::RequestWsFuture<'a>;
-
-            fn request_ws<'a>(
-                &'a mut self,
-                uri: &'a str,
-                headers: &'a [(&'a str, &'a str)],
-            ) -> Self::RequestWsFuture<'a> {
-                (*self).request_ws(uri, headers)
-            }
-        }
-
-        impl<B, C> crate::ws::client::WsClient for Blocking<B, C>
-        where
-            B: Blocker + Clone,
-            C: WsClient,
-        {
-            type Connection<'a>
-            where
-                Self: 'a,
-            = Blocking<B, C::Connection<'a>>;
-
-            fn request_ws<'a>(
-                &'a mut self,
-                uri: &'a str,
-                headers: &'a [(&'a str, &'a str)],
-            ) -> Result<Self::Connection<'a>, Self::Error> {
-                let connection = self.blocker.block_on(self.api.request_ws(uri, headers))?;
-
-                Ok(Blocking::new(self.blocker.clone(), connection))
-            }
-        }
-
-        impl<C> WsClient for TrivialAsync<C>
-        where
-            C: crate::ws::client::WsClient,
-            for<'m> C::Connection<'m>: Send,
-        {
-            type Connection<'a>
-            where
-                Self: 'a,
-            = TrivialAsync<C::Connection<'a>>;
-
-            type RequestWsFuture<'a>
-            where
-                Self: 'a,
-            = impl Future<Output = Result<Self::Connection<'a>, Self::Error>>;
-
-            fn request_ws<'a>(
-                &'a mut self,
-                uri: &'a str,
-                headers: &'a [(&'a str, &'a str)],
-            ) -> Self::RequestWsFuture<'a> {
-                async move { Ok(TrivialAsync::new(self.api.request_ws(uri, headers)?)) }
-            }
-        }
-    }
-
-    pub mod server {
-        use core::future::Future;
-
-        use crate::executor::asynch::{Blocker, Blocking, TrivialAsync};
-
-        pub use super::{ErrorType, Receiver, Sender};
-
-        pub trait Acceptor: ErrorType {
-            type Connection<'m>: Sender<Error = Self::Error> + Receiver<Error = Self::Error> + Send
-            where
-                Self: 'm;
-
-            type AcceptFuture<'a>: Future<Output = Result<Option<Self::Connection<'a>>, Self::Error>>
-                + Send
-            where
-                Self: 'a;
-
-            fn accept(&self) -> Self::AcceptFuture<'_>;
-        }
-
-        impl<A> Acceptor for &A
-        where
-            A: Acceptor,
-        {
-            type Connection<'m>
-            where
-                Self: 'm,
-            = A::Connection<'m>;
-
-            type AcceptFuture<'a>
-            where
-                Self: 'a,
-            = A::AcceptFuture<'a>;
-
-            fn accept(&self) -> Self::AcceptFuture<'_> {
-                (*self).accept()
-            }
-        }
-
-        impl<B, A> crate::ws::server::Acceptor for Blocking<B, A>
-        where
-            B: Blocker + Clone + Send,
-            A: Acceptor,
-        {
-            type Connection<'m>
-            where
-                Self: 'm,
-            = Blocking<B, A::Connection<'m>>;
-
-            fn accept(&self) -> Result<Option<Self::Connection<'_>>, Self::Error> {
-                let r = self.blocker.block_on(self.api.accept())?;
-
-                Ok(r.map(|connection| Blocking::new(self.blocker.clone(), connection)))
-            }
-        }
-
-        impl<A> Acceptor for TrivialAsync<A>
-        where
-            A: crate::ws::server::Acceptor + Send + Sync,
-        {
-            type Connection<'m>
-            where
-                Self: 'm,
-            = TrivialAsync<A::Connection<'m>>;
-
-            type AcceptFuture<'a>
-            where
-                Self: 'a,
-            = impl Future<Output = Result<Option<Self::Connection<'a>>, Self::Error>>;
-
-            fn accept(&self) -> Self::AcceptFuture<'_> {
-                async move { Ok(self.api.accept()?.map(TrivialAsync::new)) }
-            }
         }
     }
 }
