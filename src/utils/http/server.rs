@@ -88,73 +88,81 @@ pub mod registration {
     pub struct ServerHandler<H>(H);
 
     impl ServerHandler<()> {
-        pub fn new() -> Self {
+        pub const fn empty() -> Self {
             Self(())
         }
     }
 
     impl<H> ServerHandler<H> {
-        pub fn register_get<H2, C>(
+        pub const fn new(registration: H) -> Self {
+            Self(registration)
+        }
+
+        pub fn register_get<C, H2>(
             self,
             path: &'static str,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             self.register(path, Method::Get, handler)
         }
 
-        pub fn register_post<H2, C>(
+        pub fn register_post<C, H2>(
             self,
             path: &'static str,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             self.register(path, Method::Post, handler)
         }
 
-        pub fn register_put<H2, C>(
+        pub fn register_put<C, H2>(
             self,
             path: &'static str,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             self.register(path, Method::Put, handler)
         }
 
-        pub fn register_delete<H2, C>(
+        pub fn register_delete<C, H2>(
             self,
             path: &'static str,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             self.register(path, Method::Delete, handler)
         }
 
-        pub fn register<H2, C>(
+        pub fn register<C, H2>(
             self,
             path: &'static str,
             method: Method,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             ServerHandler(SimpleHandlerRegistration::new(
                 path, method, handler, self.0,
             ))
+        }
+
+        pub fn release(self) -> H {
+            self.0
         }
 
         pub fn handle<'a, C>(
@@ -165,8 +173,8 @@ pub mod registration {
             request: C::Request,
         ) -> HandlerResult
         where
-            H: HandlerRegistration<C>,
             C: Connection,
+            H: HandlerRegistration<C>,
         {
             self.0.handle(false, path, method, connection, request)
         }
@@ -290,73 +298,81 @@ pub mod registration {
         pub struct ServerHandler<H>(H);
 
         impl ServerHandler<()> {
-            pub fn new() -> Self {
+            pub const fn empty() -> Self {
                 Self(())
             }
         }
 
         impl<H> ServerHandler<H> {
-            pub fn register_get<H2, C>(
+            pub const fn new(registration: H) -> Self {
+                Self(registration)
+            }
+
+            pub fn register_get<C, H2>(
                 self,
                 path: &'static str,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 self.register(path, Method::Get, handler)
             }
 
-            pub fn register_post<H2, C>(
+            pub fn register_post<C, H2>(
                 self,
                 path: &'static str,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 self.register(path, Method::Post, handler)
             }
 
-            pub fn register_put<H2, C>(
+            pub fn register_put<C, H2>(
                 self,
                 path: &'static str,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 self.register(path, Method::Put, handler)
             }
 
-            pub fn register_delete<H2, C>(
+            pub fn register_delete<C, H2>(
                 self,
                 path: &'static str,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 self.register(path, Method::Delete, handler)
             }
 
-            pub fn register<H2, C>(
+            pub fn register<C, H2>(
                 self,
                 path: &'static str,
                 method: Method,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 ServerHandler(SimpleHandlerRegistration::new(
                     path, method, handler, self.0,
                 ))
+            }
+
+            pub fn release(self) -> H {
+                self.0
             }
 
             pub async fn handle<'a, C>(
@@ -367,8 +383,8 @@ pub mod registration {
                 request: C::Request,
             ) -> HandlerResult
             where
-                H: HandlerRegistration<C>,
                 C: Connection,
+                H: HandlerRegistration<C>,
             {
                 self.0
                     .handle(false, path, method, connection, request)
