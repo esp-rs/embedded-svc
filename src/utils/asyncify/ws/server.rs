@@ -351,7 +351,9 @@ where
                 receiver_state: receiver_state.clone(),
             };
 
-            self.connections.push(state).unwrap_or_else(|_| panic!());
+            self.connections
+                .push(state)
+                .unwrap_or_else(|_| unreachable!());
 
             let sender = sender.create().unwrap();
 
