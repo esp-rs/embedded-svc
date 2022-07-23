@@ -569,7 +569,7 @@ pub mod asynch {
         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
             async move {
                 match self {
-                    Self::None => panic!(),
+                    Self::None => unreachable!(),
                     Self::Reader(r) => unsafe { r.as_mut().unwrap() }.read(buf),
                 }
             }
