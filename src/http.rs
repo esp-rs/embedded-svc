@@ -73,6 +73,10 @@ pub trait Headers {
         self.header("Connection")
     }
 
+    fn cache_control(&self) -> Option<&'_ str> {
+        self.header("Cache-Control")
+    }
+
     fn upgrade(&self) -> Option<&'_ str> {
         self.header("Upgrade")
     }
@@ -140,8 +144,32 @@ pub mod headers {
         ("Transfer-Encoding", encoding)
     }
 
+    pub fn transfer_encoding_chunked<'a>() -> (&'a str, &'a str) {
+        transfer_encoding("Chunked")
+    }
+
     pub fn connection<'a>(connection: &'a str) -> (&'a str, &'a str) {
         ("Connection", connection)
+    }
+
+    pub fn connection_upgrade<'a>() -> (&'a str, &'a str) {
+        connection("Upgrade")
+    }
+
+    pub fn connection_keepalive<'a>() -> (&'a str, &'a str) {
+        connection("Keep-Alive")
+    }
+
+    pub fn connection_close<'a>() -> (&'a str, &'a str) {
+        connection("Close")
+    }
+
+    pub fn cache_control<'a>(cache: &'a str) -> (&'a str, &'a str) {
+        ("Cache-Control", cache)
+    }
+
+    pub fn cache_control_no_cache<'a>() -> (&'a str, &'a str) {
+        cache_control("No-Cache")
     }
 
     pub fn location<'a>(location: &'a str) -> (&'a str, &'a str) {
@@ -150,6 +178,10 @@ pub mod headers {
 
     pub fn upgrade<'a>(upgrade: &'a str) -> (&'a str, &'a str) {
         ("Upgrade", upgrade)
+    }
+
+    pub fn upgrade_websocket<'a>() -> (&'a str, &'a str) {
+        upgrade("websocket")
     }
 }
 
