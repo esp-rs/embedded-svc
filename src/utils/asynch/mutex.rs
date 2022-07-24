@@ -12,6 +12,8 @@ use futures::future::poll_fn;
 use crate::executor::asynch::WakerRegistration;
 use crate::mutex::RawMutex;
 
+pub type AsyncMutex<M, W, T> = Mutex<M, W, T>;
+
 /// Error returned by [`Mutex::try_lock`]
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
