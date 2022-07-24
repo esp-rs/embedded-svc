@@ -4,6 +4,7 @@ use core::task::{Context, Poll};
 
 pub mod channel;
 pub mod executor;
+pub mod mpmc;
 pub mod mutex;
 pub mod select;
 pub mod signal;
