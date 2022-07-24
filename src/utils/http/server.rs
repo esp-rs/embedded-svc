@@ -88,12 +88,16 @@ pub mod registration {
     pub struct ServerHandler<H>(H);
 
     impl ServerHandler<()> {
-        pub fn new() -> Self {
+        pub const fn empty() -> Self {
             Self(())
         }
     }
 
     impl<H> ServerHandler<H> {
+        pub const fn new(registration: H) -> Self {
+            Self(registration)
+        }
+
         pub fn register_get<C, H2>(
             self,
             path: &'static str,
@@ -155,6 +159,10 @@ pub mod registration {
             ServerHandler(SimpleHandlerRegistration::new(
                 path, method, handler, self.0,
             ))
+        }
+
+        pub fn release(self) -> H {
+            self.0
         }
 
         pub fn handle<'a, C>(
@@ -290,12 +298,16 @@ pub mod registration {
         pub struct ServerHandler<H>(H);
 
         impl ServerHandler<()> {
-            pub fn new() -> Self {
+            pub const fn empty() -> Self {
                 Self(())
             }
         }
 
         impl<H> ServerHandler<H> {
+            pub const fn new(registration: H) -> Self {
+                Self(registration)
+            }
+
             pub fn register_get<C, H2>(
                 self,
                 path: &'static str,
@@ -357,6 +369,10 @@ pub mod registration {
                 ServerHandler(SimpleHandlerRegistration::new(
                     path, method, handler, self.0,
                 ))
+            }
+
+            pub fn release(self) -> H {
+                self.0
             }
 
             pub async fn handle<'a, C>(
