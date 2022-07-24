@@ -94,63 +94,63 @@ pub mod registration {
     }
 
     impl<H> ServerHandler<H> {
-        pub fn register_get<H2, C>(
+        pub fn register_get<C, H2>(
             self,
             path: &'static str,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             self.register(path, Method::Get, handler)
         }
 
-        pub fn register_post<H2, C>(
+        pub fn register_post<C, H2>(
             self,
             path: &'static str,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             self.register(path, Method::Post, handler)
         }
 
-        pub fn register_put<H2, C>(
+        pub fn register_put<C, H2>(
             self,
             path: &'static str,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             self.register(path, Method::Put, handler)
         }
 
-        pub fn register_delete<H2, C>(
+        pub fn register_delete<C, H2>(
             self,
             path: &'static str,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             self.register(path, Method::Delete, handler)
         }
 
-        pub fn register<H2, C>(
+        pub fn register<C, H2>(
             self,
             path: &'static str,
             method: Method,
             handler: H2,
         ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
         where
-            H2: Handler<C> + 'static,
             C: Connection,
+            H2: Handler<C> + 'static,
         {
             ServerHandler(SimpleHandlerRegistration::new(
                 path, method, handler, self.0,
@@ -165,8 +165,8 @@ pub mod registration {
             request: C::Request,
         ) -> HandlerResult
         where
-            H: HandlerRegistration<C>,
             C: Connection,
+            H: HandlerRegistration<C>,
         {
             self.0.handle(false, path, method, connection, request)
         }
@@ -296,63 +296,63 @@ pub mod registration {
         }
 
         impl<H> ServerHandler<H> {
-            pub fn register_get<H2, C>(
+            pub fn register_get<C, H2>(
                 self,
                 path: &'static str,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 self.register(path, Method::Get, handler)
             }
 
-            pub fn register_post<H2, C>(
+            pub fn register_post<C, H2>(
                 self,
                 path: &'static str,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 self.register(path, Method::Post, handler)
             }
 
-            pub fn register_put<H2, C>(
+            pub fn register_put<C, H2>(
                 self,
                 path: &'static str,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 self.register(path, Method::Put, handler)
             }
 
-            pub fn register_delete<H2, C>(
+            pub fn register_delete<C, H2>(
                 self,
                 path: &'static str,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 self.register(path, Method::Delete, handler)
             }
 
-            pub fn register<H2, C>(
+            pub fn register<C, H2>(
                 self,
                 path: &'static str,
                 method: Method,
                 handler: H2,
             ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
             where
-                H2: Handler<C> + 'static,
                 C: Connection,
+                H2: Handler<C> + 'static,
             {
                 ServerHandler(SimpleHandlerRegistration::new(
                     path, method, handler, self.0,
@@ -367,8 +367,8 @@ pub mod registration {
                 request: C::Request,
             ) -> HandlerResult
             where
-                H: HandlerRegistration<C>,
                 C: Connection,
+                H: HandlerRegistration<C>,
             {
                 self.0
                     .handle(false, path, method, connection, request)
