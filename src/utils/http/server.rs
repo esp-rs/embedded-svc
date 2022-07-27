@@ -1,394 +1,91 @@
 pub mod registration {
-    use crate::http::server::{Connection, Handler, HandlerResult, Method};
+    use crate::http::Method;
 
-    pub trait HandlerRegistration<C>
-    where
-        C: Connection,
-    {
-        fn handle<'a>(
-            &'a self,
-            path_registered: bool,
-            path: &'a str,
-            method: Method,
-            connection: &'a mut C,
-            request: C::Request,
-        ) -> HandlerResult;
+    pub struct ChainHandler<H, N> {
+        pub path: &'static str,
+        pub method: Method,
+        pub handler: H,
+        pub next: N,
     }
 
-    impl<C> HandlerRegistration<C> for ()
-    where
-        C: Connection,
-    {
-        fn handle<'a>(
-            &'a self,
-            path_registered: bool,
-            _path: &'a str,
-            _method: Method,
-            connection: &'a mut C,
-            request: C::Request,
-        ) -> HandlerResult {
-            connection.into_status_response(request, if path_registered { 405 } else { 404 })?;
-
-            Ok(())
+    impl<H, N> ChainHandler<H, N> {
+        pub fn get<H2>(
+            self,
+            path: &'static str,
+            handler: H2,
+        ) -> ChainHandler<H2, ChainHandler<H, N>> {
+            self.request(path, Method::Get, handler)
         }
-    }
 
-    pub struct SimpleHandlerRegistration<H, N> {
-        path: &'static str,
-        method: Method,
-        handler: H,
-        next: N,
-    }
+        pub fn post<H2>(
+            self,
+            path: &'static str,
+            handler: H2,
+        ) -> ChainHandler<H2, ChainHandler<H, N>> {
+            self.request(path, Method::Post, handler)
+        }
 
-    impl<H, N> SimpleHandlerRegistration<H, N> {
-        const fn new(path: &'static str, method: Method, handler: H, next: N) -> Self {
-            Self {
+        pub fn put<H2>(
+            self,
+            path: &'static str,
+            handler: H2,
+        ) -> ChainHandler<H2, ChainHandler<H, N>> {
+            self.request(path, Method::Put, handler)
+        }
+
+        pub fn delete<H2>(
+            self,
+            path: &'static str,
+            handler: H2,
+        ) -> ChainHandler<H2, ChainHandler<H, N>> {
+            self.request(path, Method::Delete, handler)
+        }
+
+        pub fn request<H2>(
+            self,
+            path: &'static str,
+            method: Method,
+            handler: H2,
+        ) -> ChainHandler<H2, ChainHandler<H, N>> {
+            ChainHandler {
                 path,
                 method,
                 handler,
-                next,
+                next: self,
             }
         }
     }
 
-    impl<H, C, N> HandlerRegistration<C> for SimpleHandlerRegistration<H, N>
-    where
-        H: Handler<C>,
-        N: HandlerRegistration<C>,
-        C: Connection,
-    {
-        fn handle<'a>(
-            &'a self,
-            path_registered: bool,
-            path: &'a str,
+    pub struct ChainRoot;
+
+    impl ChainRoot {
+        pub fn get<H2>(self, path: &'static str, handler: H2) -> ChainHandler<H2, ChainRoot> {
+            self.request(path, Method::Get, handler)
+        }
+
+        pub fn post<H2>(self, path: &'static str, handler: H2) -> ChainHandler<H2, ChainRoot> {
+            self.request(path, Method::Post, handler)
+        }
+
+        pub fn put<H2>(self, path: &'static str, handler: H2) -> ChainHandler<H2, ChainRoot> {
+            self.request(path, Method::Put, handler)
+        }
+
+        pub fn delete<H2>(self, path: &'static str, handler: H2) -> ChainHandler<H2, ChainRoot> {
+            self.request(path, Method::Delete, handler)
+        }
+
+        pub fn request<H2>(
+            self,
+            path: &'static str,
             method: Method,
-            connection: &'a mut C,
-            request: C::Request,
-        ) -> HandlerResult {
-            let path_registered2 = if self.path == path {
-                if self.method == method {
-                    return self.handler.handle(connection, request);
-                }
-
-                true
-            } else {
-                false
-            };
-
-            self.next.handle(
-                path_registered || path_registered2,
+            handler: H2,
+        ) -> ChainHandler<H2, ChainRoot> {
+            ChainHandler {
                 path,
                 method,
-                connection,
-                request,
-            )
-        }
-    }
-
-    pub struct ServerHandler<H>(H);
-
-    impl ServerHandler<()> {
-        pub const fn empty() -> Self {
-            Self(())
-        }
-    }
-
-    impl<H> ServerHandler<H> {
-        pub const fn new(registration: H) -> Self {
-            Self(registration)
-        }
-
-        pub fn register_get<C, H2>(
-            self,
-            path: &'static str,
-            handler: H2,
-        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-        where
-            C: Connection,
-            H2: Handler<C> + 'static,
-        {
-            self.register(path, Method::Get, handler)
-        }
-
-        pub fn register_post<C, H2>(
-            self,
-            path: &'static str,
-            handler: H2,
-        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-        where
-            C: Connection,
-            H2: Handler<C> + 'static,
-        {
-            self.register(path, Method::Post, handler)
-        }
-
-        pub fn register_put<C, H2>(
-            self,
-            path: &'static str,
-            handler: H2,
-        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-        where
-            C: Connection,
-            H2: Handler<C> + 'static,
-        {
-            self.register(path, Method::Put, handler)
-        }
-
-        pub fn register_delete<C, H2>(
-            self,
-            path: &'static str,
-            handler: H2,
-        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-        where
-            C: Connection,
-            H2: Handler<C> + 'static,
-        {
-            self.register(path, Method::Delete, handler)
-        }
-
-        pub fn register<C, H2>(
-            self,
-            path: &'static str,
-            method: Method,
-            handler: H2,
-        ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-        where
-            C: Connection,
-            H2: Handler<C> + 'static,
-        {
-            ServerHandler(SimpleHandlerRegistration::new(
-                path, method, handler, self.0,
-            ))
-        }
-
-        pub fn release(self) -> H {
-            self.0
-        }
-
-        pub fn handle<'a, C>(
-            &'a self,
-            path: &'a str,
-            method: Method,
-            connection: &'a mut C,
-            request: C::Request,
-        ) -> HandlerResult
-        where
-            C: Connection,
-            H: HandlerRegistration<C>,
-        {
-            self.0.handle(false, path, method, connection, request)
-        }
-    }
-
-    #[cfg(feature = "experimental")]
-    pub mod asynch {
-        use core::future::Future;
-
-        use crate::http::server::asynch::{Connection, Handler, HandlerResult, Method};
-
-        pub trait HandlerRegistration<C>
-        where
-            C: Connection,
-        {
-            type HandleFuture<'a>: Future<Output = HandlerResult>
-            where
-                Self: 'a,
-                C: 'a;
-
-            fn handle<'a>(
-                &'a self,
-                path_registered: bool,
-                path: &'a str,
-                method: Method,
-                connection: &'a mut C,
-                request: C::Request,
-            ) -> Self::HandleFuture<'a>;
-        }
-
-        impl<C> HandlerRegistration<C> for ()
-        where
-            C: Connection,
-        {
-            type HandleFuture<'a>
-            where
-                Self: 'a,
-                C: 'a,
-            = impl Future<Output = HandlerResult>;
-
-            fn handle<'a>(
-                &'a self,
-                path_registered: bool,
-                _path: &'a str,
-                _method: Method,
-                connection: &'a mut C,
-                request: C::Request,
-            ) -> Self::HandleFuture<'a> {
-                async move {
-                    connection
-                        .into_status_response(request, if path_registered { 405 } else { 404 })
-                        .await?;
-
-                    Ok(())
-                }
-            }
-        }
-
-        pub struct SimpleHandlerRegistration<H, N> {
-            path: &'static str,
-            method: Method,
-            handler: H,
-            next: N,
-        }
-
-        impl<H, N> SimpleHandlerRegistration<H, N> {
-            const fn new(path: &'static str, method: Method, handler: H, next: N) -> Self {
-                Self {
-                    path,
-                    method,
-                    handler,
-                    next,
-                }
-            }
-        }
-
-        impl<H, C, N> HandlerRegistration<C> for SimpleHandlerRegistration<H, N>
-        where
-            H: Handler<C>,
-            N: HandlerRegistration<C>,
-            C: Connection,
-        {
-            type HandleFuture<'a>
-            where
-                Self: 'a,
-                C: 'a,
-            = impl Future<Output = HandlerResult>;
-
-            fn handle<'a>(
-                &'a self,
-                path_registered: bool,
-                path: &'a str,
-                method: Method,
-                connection: &'a mut C,
-                request: C::Request,
-            ) -> Self::HandleFuture<'a> {
-                async move {
-                    let path_registered2 = if self.path == path {
-                        if self.method == method {
-                            return self.handler.handle(connection, request).await;
-                        }
-
-                        true
-                    } else {
-                        false
-                    };
-
-                    self.next
-                        .handle(
-                            path_registered || path_registered2,
-                            path,
-                            method,
-                            connection,
-                            request,
-                        )
-                        .await
-                }
-            }
-        }
-
-        pub struct ServerHandler<H>(H);
-
-        impl ServerHandler<()> {
-            pub const fn empty() -> Self {
-                Self(())
-            }
-        }
-
-        impl<H> ServerHandler<H> {
-            pub const fn new(registration: H) -> Self {
-                Self(registration)
-            }
-
-            pub fn register_get<C, H2>(
-                self,
-                path: &'static str,
-                handler: H2,
-            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-            where
-                C: Connection,
-                H2: Handler<C> + 'static,
-            {
-                self.register(path, Method::Get, handler)
-            }
-
-            pub fn register_post<C, H2>(
-                self,
-                path: &'static str,
-                handler: H2,
-            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-            where
-                C: Connection,
-                H2: Handler<C> + 'static,
-            {
-                self.register(path, Method::Post, handler)
-            }
-
-            pub fn register_put<C, H2>(
-                self,
-                path: &'static str,
-                handler: H2,
-            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-            where
-                C: Connection,
-                H2: Handler<C> + 'static,
-            {
-                self.register(path, Method::Put, handler)
-            }
-
-            pub fn register_delete<C, H2>(
-                self,
-                path: &'static str,
-                handler: H2,
-            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-            where
-                C: Connection,
-                H2: Handler<C> + 'static,
-            {
-                self.register(path, Method::Delete, handler)
-            }
-
-            pub fn register<C, H2>(
-                self,
-                path: &'static str,
-                method: Method,
-                handler: H2,
-            ) -> ServerHandler<SimpleHandlerRegistration<H2, H>>
-            where
-                C: Connection,
-                H2: Handler<C> + 'static,
-            {
-                ServerHandler(SimpleHandlerRegistration::new(
-                    path, method, handler, self.0,
-                ))
-            }
-
-            pub fn release(self) -> H {
-                self.0
-            }
-
-            pub async fn handle<'a, C>(
-                &'a self,
-                path: &'a str,
-                method: Method,
-                connection: &'a mut C,
-                request: C::Request,
-            ) -> HandlerResult
-            where
-                C: Connection,
-                H: HandlerRegistration<C>,
-            {
-                self.0
-                    .handle(false, path, method, connection, request)
-                    .await
+                handler,
+                next: ChainRoot,
             }
         }
     }
