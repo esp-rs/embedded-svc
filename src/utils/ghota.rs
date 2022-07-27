@@ -85,22 +85,25 @@ impl<'a> Asset<'a> {
     }
 }
 
-pub struct GitHubOtaService<'a, C, const B: usize = 1024, const U: usize = 256> {
+pub struct GitHubOtaService<'a, C, const B: usize = 1024, const U: usize = 256>
+where
+    C: Connection,
+{
     base_url: heapless::String<U>,
     label: &'a str,
-    client: C,
+    client: Client<C>,
     buf: [u8; B],
 }
 
 impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
 where
-    C: Io,
+    C: Connection,
 {
-    pub fn new(base_url: &str, label: &'a str, client: C) -> Result<Self, Error<C::Error>> {
+    pub fn new(base_url: &str, label: &'a str, connection: C) -> Result<Self, Error<C::Error>> {
         Ok(Self {
             base_url: base_url.try_into().map_err(|_| Error::UrlOverflow)?,
             label,
-            client,
+            client: Client::wrap(connection),
             buf: [0_u8; B],
         })
     }
@@ -124,7 +127,7 @@ where
 
 impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
 where
-    C: Client,
+    C: Connection,
 {
     fn get_gh_releases_n<const N: usize>(
         &mut self,
@@ -177,30 +180,33 @@ where
     }
 }
 
-pub struct GitHubOtaRead<R> {
-    size: Option<usize>,
-    response: R,
-}
-
-impl<S> Io for GitHubOtaRead<S>
+pub struct GitHubOtaRead<'a, C>
 where
-    S: Response,
+    C: Connection,
 {
-    type Error = Error<S::Error>;
+    size: Option<usize>,
+    response: Response<'a, C>,
 }
 
-impl<R> OtaRead for GitHubOtaRead<R>
+impl<'a, C> Io for GitHubOtaRead<'a, C>
 where
-    R: Response,
+    C: Connection,
+{
+    type Error = Error<C::Error>;
+}
+
+impl<'a, C> OtaRead for GitHubOtaRead<'a, C>
+where
+    C: Connection,
 {
     fn size(&self) -> Option<usize> {
         self.size
     }
 }
 
-impl<R> Read for GitHubOtaRead<R>
+impl<'a, C> Read for GitHubOtaRead<'a, C>
 where
-    R: Response,
+    C: Connection,
 {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         self.response.read(buf).map_err(Error::Http)
@@ -209,19 +215,19 @@ where
 
 impl<'a, C> Io for GitHubOtaService<'a, C>
 where
-    C: Io,
+    C: Connection,
 {
     type Error = Error<C::Error>;
 }
 
 impl<'a, C> OtaServer for GitHubOtaService<'a, C>
 where
-    C: Client + 'static,
+    C: Connection + 'static,
 {
     type OtaRead<'b>
     where
         Self: 'b,
-    = GitHubOtaRead<<<C as Client>::RequestWrite<'b> as RequestWrite>::Response>;
+    = GitHubOtaRead<'b, C>;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
         let label = self.label;
@@ -331,22 +337,25 @@ pub mod asynch {
 
     pub use super::Error;
 
-    pub struct GitHubOtaService<'a, C, const B: usize = 1024, const U: usize = 256> {
+    pub struct GitHubOtaService<'a, C, const B: usize = 1024, const U: usize = 256>
+    where
+        C: Connection,
+    {
         base_url: heapless::String<U>,
         label: &'a str,
-        client: C,
+        client: Client<C>,
         buf: [u8; B],
     }
 
     impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
     where
-        C: Io,
+        C: Connection,
     {
-        pub fn new(base_url: &str, label: &'a str, client: C) -> Result<Self, Error<C::Error>> {
+        pub fn new(base_url: &str, label: &'a str, connection: C) -> Result<Self, Error<C::Error>> {
             Ok(Self {
                 base_url: base_url.try_into().map_err(|_| Error::UrlOverflow)?,
                 label,
-                client,
+                client: Client::wrap(connection),
                 buf: [0_u8; B],
             })
         }
@@ -370,7 +379,7 @@ pub mod asynch {
 
     impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
     where
-        C: Client,
+        C: Connection,
     {
         async fn get_gh_releases_n<const N: usize>(
             &mut self,
@@ -437,56 +446,59 @@ pub mod asynch {
         }
     }
 
-    pub struct GitHubOtaRead<R> {
-        size: Option<usize>,
-        response: R,
-    }
-
-    impl<S> Io for GitHubOtaRead<S>
+    pub struct GitHubOtaRead<'a, C>
     where
-        S: Response,
+        C: Connection,
     {
-        type Error = Error<S::Error>;
+        size: Option<usize>,
+        response: Response<'a, C>,
     }
 
-    impl<R> OtaRead for GitHubOtaRead<R>
+    impl<'a, C> Io for GitHubOtaRead<'a, C>
     where
-        R: Response,
+        C: Connection,
+    {
+        type Error = Error<C::Error>;
+    }
+
+    impl<'a, C> OtaRead for GitHubOtaRead<'a, C>
+    where
+        C: Connection,
     {
         fn size(&self) -> Option<usize> {
             self.size
         }
     }
 
-    impl<R> Read for GitHubOtaRead<R>
+    impl<'a, C> Read for GitHubOtaRead<'a, C>
     where
-        R: Response,
+        C: Connection + 'a,
     {
-        type ReadFuture<'a>
+        type ReadFuture<'b>
         where
-            Self: 'a,
+            Self: 'b,
         = impl Future<Output = Result<usize, Self::Error>>;
 
-        fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'_> {
+        fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Self::ReadFuture<'b> {
             async move { self.response.read(buf).await.map_err(Error::Http) }
         }
     }
 
     impl<'a, C> Io for GitHubOtaService<'a, C>
     where
-        C: Io,
+        C: Connection,
     {
         type Error = Error<C::Error>;
     }
 
     impl<'a, C> OtaServer for GitHubOtaService<'a, C>
     where
-        C: Client + 'static,
+        C: Connection + 'static,
     {
         type OtaRead<'b>
         where
             Self: 'b,
-        = GitHubOtaRead<<<C as Client>::RequestWrite<'b> as RequestWrite>::Response>;
+        = GitHubOtaRead<'b, C>;
 
         type GetLatestReleaseFuture<'b>
         where
