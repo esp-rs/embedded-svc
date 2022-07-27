@@ -121,7 +121,6 @@ pub trait Connection: Io {
 
     fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error>;
     fn request<'a>(&'a mut self) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error>;
-    fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error>;
 
     fn into_response<'a>(
         &'a mut self,
@@ -130,7 +129,49 @@ pub trait Connection: Io {
         headers: &'a [(&'a str, &'a str)],
     ) -> Result<(), Self::Error>;
 
+    fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error>;
+
     fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
+}
+
+impl<C> Connection for &mut C
+where
+    C: Connection,
+{
+    type Headers = C::Headers;
+
+    type Read = C::Read;
+
+    type Write = C::Write;
+
+    type RawConnectionError = C::RawConnectionError;
+
+    type RawConnection = C::RawConnection;
+
+    fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+        (**self).headers()
+    }
+
+    fn request<'a>(&'a mut self) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+        (*self).request()
+    }
+
+    fn into_response<'a>(
+        &'a mut self,
+        status: u16,
+        message: Option<&'a str>,
+        headers: &'a [(&'a str, &'a str)],
+    ) -> Result<(), Self::Error> {
+        (*self).into_response(status, message, headers)
+    }
+
+    fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+        (*self).response()
+    }
+
+    fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+        (*self).raw_connection()
+    }
 }
 
 pub struct HandlerError(heapless::String<128>);
@@ -301,7 +342,6 @@ pub mod asynch {
         fn request<'a>(
             &'a mut self,
         ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error>;
-        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error>;
 
         fn into_response<'a>(
             &'a mut self,
@@ -310,7 +350,56 @@ pub mod asynch {
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoResponseFuture<'a>;
 
+        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error>;
+
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
+    }
+
+    impl<C> Connection for &mut C
+    where
+        C: Connection,
+    {
+        type Headers = C::Headers;
+
+        type Read = C::Read;
+
+        type Write = C::Write;
+
+        type RawConnectionError = C::RawConnectionError;
+
+        type RawConnection = C::RawConnection;
+
+        type IntoResponseFuture<'a>
+        where
+            Self: 'a,
+        = C::IntoResponseFuture<'a>;
+
+        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+            (**self).headers()
+        }
+
+        fn request<'a>(
+            &'a mut self,
+        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+            (*self).request()
+        }
+
+        fn into_response<'a>(
+            &'a mut self,
+            status: u16,
+            message: Option<&'a str>,
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::IntoResponseFuture<'a> {
+            (*self).into_response(status, message, headers)
+        }
+
+        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+            (*self).response()
+        }
+
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+            (*self).raw_connection()
+        }
     }
 
     pub trait Handler<C>: Send
