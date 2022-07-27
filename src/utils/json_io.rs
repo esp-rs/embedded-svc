@@ -49,9 +49,8 @@ where
 }
 
 #[cfg(feature = "json_io")]
-pub fn response<const N: usize, C, T>(
-    connection: &mut C,
-    request: C::Request,
+pub fn response<'a, const N: usize, C, T>(
+    request: crate::http::server::Request<'a, C>,
     value: &T,
 ) -> Result<(), SerdeError<C::Error>>
 where
@@ -60,11 +59,11 @@ where
 {
     use crate::http::headers::content_type;
 
-    let mut response = connection
-        .into_response(request, 200, None, &[content_type("application/json")])
+    let mut response = request
+        .into_response(200, None, &[content_type("application/json")])
         .map_err(SerdeError::IoError)?;
 
-    write::<N, _, _>(connection.writer(&mut response), value)?;
+    write::<N, _, _>(&mut response, value)?;
 
     Ok(())
 }

@@ -5,11 +5,109 @@ use crate::io::{Error, Read, Write};
 pub use super::{Headers, Method, Query, Status};
 pub use crate::io::Io;
 
+pub struct Request<'a, C>(&'a mut C);
+
+impl<'a, C> Request<'a, C>
+where
+    C: Connection,
+{
+    pub fn wrap(connection: &mut C) -> Result<Request<'_, C>, C::Error> {
+        connection.request()?;
+
+        Ok(Request(connection))
+    }
+
+    pub fn split(&mut self) -> (&C::Headers, &mut C::Read) {
+        self.0.request().unwrap()
+    }
+
+    pub fn into_response<'b>(
+        self,
+        status: u16,
+        message: Option<&'b str>,
+        headers: &'b [(&'b str, &'b str)],
+    ) -> Result<Response<'a, C>, C::Error> {
+        self.0.into_response(status, message, headers)?;
+
+        Ok(Response(self.0))
+    }
+
+    pub fn into_status_response<'b>(self, status: u16) -> Result<Response<'a, C>, C::Error> {
+        self.into_response(status, None, &[])
+    }
+
+    pub fn into_ok_response<'b>(self) -> Result<Response<'a, C>, C::Error> {
+        self.into_response(200, Some("OK"), &[])
+    }
+
+    pub fn release(self) -> &'a mut C {
+        self.0
+    }
+}
+
+impl<'a, C> Io for Request<'a, C>
+where
+    C: Io,
+{
+    type Error = C::Error;
+}
+
+impl<'a, C> Read for Request<'a, C>
+where
+    C: Connection,
+{
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.0.request().unwrap().1.read(buf)
+    }
+}
+
+impl<'a, C> Headers for Request<'a, C>
+where
+    C: Connection,
+{
+    fn header(&self, name: &str) -> Option<&'_ str> {
+        self.0.headers().unwrap().header(name)
+    }
+}
+
+pub struct Response<'a, C>(&'a mut C);
+
+impl<'a, C> Response<'a, C>
+where
+    C: Connection,
+{
+    pub fn wrap(connection: &mut C) -> Result<Response<'_, C>, C::Error> {
+        connection.response()?;
+
+        Ok(Response(connection))
+    }
+
+    pub fn release(self) -> &'a mut C {
+        self.0
+    }
+}
+
+impl<'a, C> Io for Response<'a, C>
+where
+    C: Io,
+{
+    type Error = C::Error;
+}
+
+impl<'a, C> Write for Response<'a, C>
+where
+    C: Connection,
+{
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        self.0.response().unwrap().write(buf)
+    }
+
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.0.response().unwrap().flush()
+    }
+}
+
 pub trait Connection: Io {
-    type Request;
-
-    type Response;
-
     type Headers: Query + Headers;
 
     type Read: Read<Error = Self::Error>;
@@ -21,42 +119,59 @@ pub trait Connection: Io {
     type RawConnection: Read<Error = Self::RawConnectionError>
         + Write<Error = Self::RawConnectionError>;
 
-    fn split<'a>(
+    fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error>;
+    fn request<'a>(&'a mut self) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error>;
+
+    fn into_response<'a>(
         &'a mut self,
-        request: &'a mut Self::Request,
-    ) -> (&'a Self::Headers, &'a mut Self::Read);
+        status: u16,
+        message: Option<&'a str>,
+        headers: &'a [(&'a str, &'a str)],
+    ) -> Result<(), Self::Error>;
 
-    fn headers<'a>(&'a self, request: &'a Self::Request) -> &'a Self::Headers;
+    fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error>;
 
-    fn reader<'a>(&'a mut self, request: &'a mut Self::Request) -> &'a mut Self::Read {
-        let (_, read) = self.split(request);
+    fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
+}
 
-        read
+impl<C> Connection for &mut C
+where
+    C: Connection,
+{
+    type Headers = C::Headers;
+
+    type Read = C::Read;
+
+    type Write = C::Write;
+
+    type RawConnectionError = C::RawConnectionError;
+
+    type RawConnection = C::RawConnection;
+
+    fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+        (**self).headers()
+    }
+
+    fn request<'a>(&'a mut self) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+        (*self).request()
     }
 
     fn into_response<'a>(
         &'a mut self,
-        request: Self::Request,
         status: u16,
         message: Option<&'a str>,
         headers: &'a [(&'a str, &'a str)],
-    ) -> Result<Self::Response, Self::Error>;
-
-    fn into_status_response(
-        &mut self,
-        request: Self::Request,
-        status: u16,
-    ) -> Result<Self::Response, Self::Error> {
-        self.into_response(request, status, None, &[])
+    ) -> Result<(), Self::Error> {
+        (*self).into_response(status, message, headers)
     }
 
-    fn into_ok_response(&mut self, request: Self::Request) -> Result<Self::Response, Self::Error> {
-        self.into_response(request, 200, Some("OK"), &[])
+    fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+        (*self).response()
     }
 
-    fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write;
-
-    fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
+    fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+        (*self).raw_connection()
+    }
 }
 
 pub struct HandlerError(heapless::String<128>);
@@ -98,7 +213,7 @@ pub trait Handler<C>: Send
 where
     C: Connection,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C, request: C::Request) -> HandlerResult;
+    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult;
 }
 
 impl<C, H> Handler<C> for &H
@@ -106,8 +221,8 @@ where
     C: Connection,
     H: Handler<C> + Send + Sync,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C, request: C::Request) -> HandlerResult {
-        (*self).handle(connection, request)
+    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult {
+        (*self).handle(connection)
     }
 }
 
@@ -117,7 +232,7 @@ impl<F> FnHandler<F> {
     pub const fn new<C>(f: F) -> Self
     where
         C: Connection,
-        F: Fn(&mut C, C::Request) -> HandlerResult,
+        F: Fn(&mut C) -> HandlerResult + Send,
     {
         Self(f)
     }
@@ -126,10 +241,32 @@ impl<F> FnHandler<F> {
 impl<C, F> Handler<C> for FnHandler<F>
 where
     C: Connection,
-    F: Fn(&mut C, C::Request) -> HandlerResult + Send,
+    F: Fn(&mut C) -> HandlerResult + Send,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C, request: C::Request) -> HandlerResult {
-        self.0(connection, request)
+    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult {
+        self.0(connection)
+    }
+}
+
+pub struct FnRequestHandler<F>(F);
+
+impl<F> FnRequestHandler<F> {
+    pub const fn new<C>(f: F) -> Self
+    where
+        C: Connection,
+        F: for<'a> Fn(Request<'a, C>) -> HandlerResult + Send,
+    {
+        Self(f)
+    }
+}
+
+impl<C, F> Handler<C> for FnRequestHandler<F>
+where
+    C: Connection,
+    F: for<'a> Fn(Request<'a, C>) -> HandlerResult + Send,
+{
+    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult {
+        self.0(Request::wrap(connection)?)
     }
 }
 
@@ -137,12 +274,7 @@ pub trait Middleware<C>: Send
 where
     C: Connection,
 {
-    fn handle<'a, H>(
-        &'a self,
-        connection: &'a mut C,
-        request: C::Request,
-        handler: &'a H,
-    ) -> HandlerResult
+    fn handle<'a, H>(&'a self, connection: &'a mut C, handler: &'a H) -> HandlerResult
     where
         H: Handler<C>;
 
@@ -175,8 +307,8 @@ where
     H: Handler<C>,
     C: Connection,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C, request: C::Request) -> HandlerResult {
-        self.middleware.handle(connection, request, &self.handler)
+    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult {
+        self.middleware.handle(connection, &self.handler)
     }
 }
 
@@ -191,10 +323,6 @@ pub mod asynch {
     pub use crate::io::{Error, Io};
 
     pub trait Connection: Io {
-        type Request;
-
-        type Response;
-
         type Headers: Query + Headers;
 
         type Read: Read<Error = Self::Error>;
@@ -206,49 +334,72 @@ pub mod asynch {
         type RawConnection: Read<Error = Self::RawConnectionError>
             + Write<Error = Self::RawConnectionError>;
 
-        type IntoResponseFuture<'a>: Future<Output = Result<Self::Response, Self::Error>>
+        type IntoResponseFuture<'a>: Future<Output = Result<(), Self::Error>>
         where
             Self: 'a;
 
-        fn split<'a>(
+        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error>;
+        fn request<'a>(
             &'a mut self,
-            request: &'a mut Self::Request,
-        ) -> (&'a Self::Headers, &'a mut Self::Read);
-
-        fn headers<'a>(&'a self, request: &'a Self::Request) -> &'a Self::Headers;
-
-        fn reader<'a>(&'a mut self, request: &'a mut Self::Request) -> &'a mut Self::Read {
-            let (_, read) = self.split(request);
-
-            read
-        }
+        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error>;
 
         fn into_response<'a>(
             &'a mut self,
-            request: Self::Request,
             status: u16,
             message: Option<&'a str>,
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoResponseFuture<'a>;
 
-        fn into_status_response<'a>(
-            &'a mut self,
-            request: Self::Request,
-            status: u16,
-        ) -> Self::IntoResponseFuture<'a> {
-            self.into_response(request, status, None, &[])
-        }
-
-        fn into_ok_response<'a>(
-            &'a mut self,
-            request: Self::Request,
-        ) -> Self::IntoResponseFuture<'a> {
-            self.into_response(request, 200, None, &[])
-        }
-
-        fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write;
+        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error>;
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
+    }
+
+    impl<C> Connection for &mut C
+    where
+        C: Connection,
+    {
+        type Headers = C::Headers;
+
+        type Read = C::Read;
+
+        type Write = C::Write;
+
+        type RawConnectionError = C::RawConnectionError;
+
+        type RawConnection = C::RawConnection;
+
+        type IntoResponseFuture<'a>
+        where
+            Self: 'a,
+        = C::IntoResponseFuture<'a>;
+
+        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+            (**self).headers()
+        }
+
+        fn request<'a>(
+            &'a mut self,
+        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+            (*self).request()
+        }
+
+        fn into_response<'a>(
+            &'a mut self,
+            status: u16,
+            message: Option<&'a str>,
+            headers: &'a [(&'a str, &'a str)],
+        ) -> Self::IntoResponseFuture<'a> {
+            (*self).into_response(status, message, headers)
+        }
+
+        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+            (*self).response()
+        }
+
+        fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
+            (*self).raw_connection()
+        }
     }
 
     pub trait Handler<C>: Send
@@ -260,11 +411,7 @@ pub mod asynch {
             Self: 'a,
             C: 'a;
 
-        fn handle<'a>(
-            &'a self,
-            connection: &'a mut C,
-            request: C::Request,
-        ) -> Self::HandleFuture<'a>;
+        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a>;
     }
 
     impl<H, C> Handler<C> for &H
@@ -278,12 +425,8 @@ pub mod asynch {
             C: 'a,
         = H::HandleFuture<'a>;
 
-        fn handle<'a>(
-            &'a self,
-            connection: &'a mut C,
-            request: C::Request,
-        ) -> Self::HandleFuture<'a> {
-            (*self).handle(connection, request)
+        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a> {
+            (*self).handle(connection)
         }
     }
 
@@ -296,12 +439,7 @@ pub mod asynch {
             Self: 'a,
             C: 'a;
 
-        fn handle<'a, H>(
-            &'a self,
-            connection: &'a mut C,
-            request: C::Request,
-            handler: &'a H,
-        ) -> Self::HandleFuture<'a>
+        fn handle<'a, H>(&'a self, connection: &'a mut C, handler: &'a H) -> Self::HandleFuture<'a>
         where
             H: Handler<C>;
 
@@ -340,12 +478,8 @@ pub mod asynch {
             C: 'a,
         = impl Future<Output = HandlerResult> + Send;
 
-        fn handle<'a>(
-            &'a self,
-            connection: &'a mut C,
-            request: C::Request,
-        ) -> Self::HandleFuture<'a> {
-            self.middleware.handle(connection, request, &self.handler)
+        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a> {
+            self.middleware.handle(connection, &self.handler)
         }
     }
 
@@ -387,10 +521,6 @@ pub mod asynch {
         B: Blocker + Clone,
         C: Connection,
     {
-        type Request = C::Request;
-
-        type Response = C::Response;
-
         type Headers = C::Headers;
 
         type Read = RawBlocking<B, C::Read>;
@@ -401,53 +531,40 @@ pub mod asynch {
 
         type RawConnection = RawBlocking<B, C::RawConnection>;
 
-        fn split<'a>(
+        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+            self.connection.headers()
+        }
+
+        fn request<'a>(
             &'a mut self,
-            request: &'a mut Self::Request,
-        ) -> (&'a Self::Headers, &'a mut Self::Read) {
-            let (headers, read) = self.connection.split(request);
+        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+            let (headers, read) = self.connection.request()?;
 
             self.lended_read.blocker = &self.blocker;
             self.lended_read.api = read;
 
-            (headers, &mut self.lended_read)
-        }
-
-        fn headers<'a>(&'a self, request: &'a Self::Request) -> &'a Self::Headers {
-            self.connection.headers(request)
-        }
-
-        fn reader<'a>(&'a mut self, request: &'a mut Self::Request) -> &'a mut Self::Read {
-            let read = self.connection.reader(request);
-
-            self.lended_read.blocker = &self.blocker;
-            self.lended_read.api = read;
-
-            &mut self.lended_read
+            Ok((headers, &mut self.lended_read))
         }
 
         fn into_response<'a>(
             &'a mut self,
-            request: Self::Request,
             status: u16,
             message: Option<&'a str>,
             headers: &'a [(&'a str, &'a str)],
-        ) -> Result<Self::Response, Self::Error> {
-            let response = self.blocker.block_on(
-                self.connection
-                    .into_response(request, status, message, headers),
-            )?;
+        ) -> Result<(), Self::Error> {
+            self.blocker
+                .block_on(self.connection.into_response(status, message, headers))?;
 
-            Ok(response)
+            Ok(())
         }
 
-        fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write {
-            let write = self.connection.writer(response);
+        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+            let write = self.connection.response()?;
 
             self.lended_write.blocker = &self.blocker;
             self.lended_write.api = write;
 
-            &mut self.lended_write
+            Ok(&mut self.lended_write)
         }
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
@@ -516,10 +633,6 @@ pub mod asynch {
     where
         C: super::Connection,
     {
-        type Request = C::Request;
-
-        type Response = C::Response;
-
         type Headers = C::Headers;
 
         type Read = RawTrivialAsync<C::Read>;
@@ -533,43 +646,36 @@ pub mod asynch {
         type IntoResponseFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Result<Self::Response, Self::Error>>;
+        = impl Future<Output = Result<(), Self::Error>>;
 
-        fn split<'a>(
+        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+            self.connection.headers()
+        }
+
+        fn request<'a>(
             &'a mut self,
-            request: &'a mut Self::Request,
-        ) -> (&'a Self::Headers, &'a mut Self::Read) {
-            let (headers, read) = self.connection.split(request);
+        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+            let (headers, read) = self.connection.request()?;
 
             self.lended_read.api = read;
 
-            (headers, &mut self.lended_read)
+            Ok((headers, &mut self.lended_read))
         }
 
-        fn headers<'a>(&'a self, request: &'a Self::Request) -> &'a Self::Headers {
-            self.connection.headers(request)
+        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+            let write = self.connection.response()?;
+            self.lended_write.api = write;
+
+            Ok(&mut self.lended_write)
         }
 
         fn into_response<'a>(
             &'a mut self,
-            request: Self::Request,
             status: u16,
             message: Option<&'a str>,
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoResponseFuture<'a> {
-            async move {
-                Ok(self
-                    .connection
-                    .into_response(request, status, message, headers)?)
-            }
-        }
-
-        fn writer<'a>(&'a mut self, response: &'a mut Self::Response) -> &'a mut Self::Write {
-            let write = self.connection.writer(response);
-
-            self.lended_write.api = write;
-
-            &mut self.lended_write
+            async move { self.connection.into_response(status, message, headers) }
         }
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
