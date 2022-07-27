@@ -17,7 +17,7 @@ where
         self.0
     }
 
-    pub fn get<'a>(&'a mut self, uri: &'a str) -> Result<Request<'a, C>, C::Error> {
+    pub fn get<'a>(&'a mut self, uri: &'a str) -> Result<Request<&'a mut C>, C::Error> {
         self.request(Method::Get, uri, &[])
     }
 
@@ -25,7 +25,7 @@ where
         &'a mut self,
         uri: &'a str,
         headers: &'a [(&'a str, &'a str)],
-    ) -> Result<Request<'a, C>, C::Error> {
+    ) -> Result<Request<&'a mut C>, C::Error> {
         self.request(Method::Post, uri, headers)
     }
 
@@ -33,11 +33,11 @@ where
         &'a mut self,
         uri: &'a str,
         headers: &'a [(&'a str, &'a str)],
-    ) -> Result<Request<'a, C>, C::Error> {
+    ) -> Result<Request<&'a mut C>, C::Error> {
         self.request(Method::Put, uri, headers)
     }
 
-    pub fn delete<'a>(&'a mut self, uri: &'a str) -> Result<Request<'a, C>, C::Error> {
+    pub fn delete<'a>(&'a mut self, uri: &'a str) -> Result<Request<&'a mut C>, C::Error> {
         self.request(Method::Delete, uri, &[])
     }
 
@@ -46,7 +46,7 @@ where
         method: Method,
         uri: &'a str,
         headers: &'a [(&'a str, &'a str)],
-    ) -> Result<Request<'a, C>, C::Error> {
+    ) -> Result<Request<&'a mut C>, C::Error> {
         self.0.into_request(method, uri, headers)?;
 
         Request::wrap(&mut self.0)
@@ -65,37 +65,37 @@ where
 }
 
 #[derive(Debug)]
-pub struct Request<'a, C>(&'a mut C);
+pub struct Request<C>(C);
 
-impl<'a, C> Request<'a, C>
+impl<C> Request<C>
 where
     C: Connection,
 {
-    pub fn wrap(connection: &mut C) -> Result<Request<'_, C>, C::Error> {
+    pub fn wrap(mut connection: C) -> Result<Request<C>, C::Error> {
         connection.request()?;
 
         Ok(Request(connection))
     }
 
-    pub fn submit(self) -> Result<Response<'a, C>, C::Error> {
+    pub fn submit(mut self) -> Result<Response<C>, C::Error> {
         self.0.into_response()?;
 
         Ok(Response(self.0))
     }
 
-    pub fn release(self) -> &'a mut C {
+    pub fn release(self) -> C {
         self.0
     }
 }
 
-impl<'a, C> Io for Request<'a, C>
+impl<C> Io for Request<C>
 where
     C: Io,
 {
     type Error = C::Error;
 }
 
-impl<'a, C> Write for Request<'a, C>
+impl<C> Write for Request<C>
 where
     C: Connection,
 {
@@ -109,13 +109,13 @@ where
 }
 
 #[derive(Debug)]
-pub struct Response<'a, C>(&'a mut C);
+pub struct Response<C>(C);
 
-impl<'a, C> Response<'a, C>
+impl<C> Response<C>
 where
     C: Connection,
 {
-    pub fn wrap(connection: &mut C) -> Result<Response<'_, C>, C::Error> {
+    pub fn wrap(mut connection: C) -> Result<Response<C>, C::Error> {
         connection.response()?;
 
         Ok(Response(connection))
@@ -125,12 +125,12 @@ where
         self.0.response().unwrap()
     }
 
-    pub fn release(self) -> &'a mut C {
+    pub fn release(self) -> C {
         self.0
     }
 }
 
-impl<'a, C> Status for Response<'a, C>
+impl<C> Status for Response<C>
 where
     C: Connection,
 {
@@ -143,7 +143,7 @@ where
     }
 }
 
-impl<'a, C> Headers for Response<'a, C>
+impl<C> Headers for Response<C>
 where
     C: Connection,
 {
@@ -152,14 +152,14 @@ where
     }
 }
 
-impl<'a, C> Io for Response<'a, C>
+impl<C> Io for Response<C>
 where
     C: Io,
 {
     type Error = C::Error;
 }
 
-impl<'a, C> Read for Response<'a, C>
+impl<C> Read for Response<C>
 where
     C: Connection,
 {
@@ -265,7 +265,7 @@ pub mod asynch {
             self.0
         }
 
-        pub async fn get<'a>(&'a mut self, uri: &'a str) -> Result<Request<'a, C>, C::Error> {
+        pub async fn get<'a>(&'a mut self, uri: &'a str) -> Result<Request<&'a mut C>, C::Error> {
             self.request(Method::Get, uri, &[]).await
         }
 
@@ -273,7 +273,7 @@ pub mod asynch {
             &'a mut self,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
-        ) -> Result<Request<'a, C>, C::Error> {
+        ) -> Result<Request<&'a mut C>, C::Error> {
             self.request(Method::Post, uri, headers).await
         }
 
@@ -281,11 +281,14 @@ pub mod asynch {
             &'a mut self,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
-        ) -> Result<Request<'a, C>, C::Error> {
+        ) -> Result<Request<&'a mut C>, C::Error> {
             self.request(Method::Put, uri, headers).await
         }
 
-        pub async fn delete<'a>(&'a mut self, uri: &'a str) -> Result<Request<'a, C>, C::Error> {
+        pub async fn delete<'a>(
+            &'a mut self,
+            uri: &'a str,
+        ) -> Result<Request<&'a mut C>, C::Error> {
             self.request(Method::Delete, uri, &[]).await
         }
 
@@ -294,7 +297,7 @@ pub mod asynch {
             method: Method,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
-        ) -> Result<Request<'a, C>, C::Error> {
+        ) -> Result<Request<&'a mut C>, C::Error> {
             self.0.into_request(method, uri, headers).await?;
 
             Request::wrap(&mut self.0)
@@ -313,39 +316,39 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
-    pub struct Request<'a, C>(&'a mut C);
+    pub struct Request<C>(C);
 
-    impl<'a, C> Request<'a, C>
+    impl<C> Request<C>
     where
         C: Connection,
     {
-        pub fn wrap(connection: &mut C) -> Result<Request<'_, C>, C::Error> {
+        pub fn wrap(mut connection: C) -> Result<Request<C>, C::Error> {
             connection.request()?;
 
             Ok(Request(connection))
         }
 
-        pub async fn submit(self) -> Result<Response<'a, C>, C::Error> {
+        pub async fn submit(mut self) -> Result<Response<C>, C::Error> {
             self.0.into_response().await?;
 
             Ok(Response(self.0))
         }
 
-        pub fn release(self) -> &'a mut C {
+        pub fn release(self) -> C {
             self.0
         }
     }
 
-    impl<'a, C> Io for Request<'a, C>
+    impl<C> Io for Request<C>
     where
         C: Io,
     {
         type Error = C::Error;
     }
 
-    impl<'a, C> Write for Request<'a, C>
+    impl<C> Write for Request<C>
     where
-        C: Connection + 'a,
+        C: Connection,
     {
         type WriteFuture<'b>
         where
@@ -367,13 +370,13 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
-    pub struct Response<'a, C>(&'a mut C);
+    pub struct Response<C>(C);
 
-    impl<'a, C> Response<'a, C>
+    impl<C> Response<C>
     where
         C: Connection,
     {
-        pub fn wrap(connection: &mut C) -> Result<Response<'_, C>, C::Error> {
+        pub fn wrap(mut connection: C) -> Result<Response<C>, C::Error> {
             connection.response()?;
 
             Ok(Response(connection))
@@ -383,12 +386,12 @@ pub mod asynch {
             self.0.response().unwrap()
         }
 
-        pub fn release(self) -> &'a mut C {
+        pub fn release(self) -> C {
             self.0
         }
     }
 
-    impl<'a, C> Status for Response<'a, C>
+    impl<C> Status for Response<C>
     where
         C: Connection,
     {
@@ -401,7 +404,7 @@ pub mod asynch {
         }
     }
 
-    impl<'a, C> Headers for Response<'a, C>
+    impl<C> Headers for Response<C>
     where
         C: Connection,
     {
@@ -410,16 +413,16 @@ pub mod asynch {
         }
     }
 
-    impl<'a, C> Io for Response<'a, C>
+    impl<C> Io for Response<C>
     where
         C: Io,
     {
         type Error = C::Error;
     }
 
-    impl<'a, C> Read for Response<'a, C>
+    impl<C> Read for Response<C>
     where
-        C: Connection + 'a,
+        C: Connection,
     {
         type ReadFuture<'b>
         where
