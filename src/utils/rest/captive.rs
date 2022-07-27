@@ -2,7 +2,7 @@ use core::fmt::Write as _;
 
 use embedded_io::blocking::Write;
 
-use crate::http::server::{Connection, Handler, HandlerResult, Middleware};
+use crate::http::server::{Connection, Handler, HandlerResult, Middleware, Request};
 use crate::http::{headers, Headers};
 use crate::mutex::*;
 
@@ -32,32 +32,32 @@ where
     M: Mutex<Data = bool> + Send,
     F: Fn(&str) -> bool + Send,
 {
-    fn handle<H>(&self, connection: &mut C, mut request: C::Request, handler: &H) -> HandlerResult
+    fn handle<H>(&self, connection: &mut C, handler: &H) -> HandlerResult
     where
         H: Handler<C>,
     {
+        let request = Request::wrap(connection)?;
+
         let captive = *self.captive.lock();
 
         let allow = !captive
-            || connection
-                .headers(&mut request)
+            || request
                 .header("host")
                 .map(|host| (self.allowed_hosts)(host))
                 .unwrap_or(true);
 
         if allow {
-            handler.handle(connection, request)
+            handler.handle(connection)
         } else {
-            connection.into_response(request, 307, None, &[headers::location(self.portal_uri)])?;
+            request.into_response(307, None, &[headers::location(self.portal_uri)])?;
 
             Ok(())
         }
     }
 }
 
-pub fn get_status<C, M, const N: usize>(
-    connection: &mut C,
-    request: C::Request,
+pub fn get_status<'a, C, M, const N: usize>(
+    request: Request<'a, C>,
     portal_uri: &str,
     captive: &M,
 ) -> HandlerResult
@@ -79,14 +79,11 @@ where
     )
     .unwrap();
 
-    let mut response = connection.into_response(
-        request,
+    let mut response = request.into_response(
         200,
         None,
         &[headers::content_type("application/captive+json")],
     )?;
 
-    Ok(connection
-        .writer(&mut response)
-        .write_all(data.as_bytes())?)
+    Ok(response.write_all(data.as_bytes())?)
 }
