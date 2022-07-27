@@ -5,6 +5,7 @@ use crate::io::{Error, Read, Write};
 pub use super::{Headers, Method, Query, Status};
 pub use crate::io::Io;
 
+#[derive(Debug)]
 pub struct Request<'a, C>(&'a mut C);
 
 impl<'a, C> Request<'a, C>
@@ -70,6 +71,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Response<'a, C>(&'a mut C);
 
 impl<'a, C> Response<'a, C>
@@ -322,6 +324,128 @@ pub mod asynch {
     pub use super::{HandlerError, HandlerResult, Headers, Method, Query, Status};
     pub use crate::io::{Error, Io};
 
+    #[derive(Debug)]
+    pub struct Request<'a, C>(&'a mut C);
+
+    impl<'a, C> Request<'a, C>
+    where
+        C: Connection,
+    {
+        pub fn wrap(connection: &mut C) -> Result<Request<'_, C>, C::Error> {
+            connection.request()?;
+
+            Ok(Request(connection))
+        }
+
+        pub fn split(&mut self) -> (&C::Headers, &mut C::Read) {
+            self.0.request().unwrap()
+        }
+
+        pub async fn into_response<'b>(
+            self,
+            status: u16,
+            message: Option<&'b str>,
+            headers: &'b [(&'b str, &'b str)],
+        ) -> Result<Response<'a, C>, C::Error> {
+            self.0.into_response(status, message, headers).await?;
+
+            Ok(Response(self.0))
+        }
+
+        pub async fn into_status_response<'b>(
+            self,
+            status: u16,
+        ) -> Result<Response<'a, C>, C::Error> {
+            self.into_response(status, None, &[]).await
+        }
+
+        pub async fn into_ok_response<'b>(self) -> Result<Response<'a, C>, C::Error> {
+            self.into_response(200, Some("OK"), &[]).await
+        }
+
+        pub fn release(self) -> &'a mut C {
+            self.0
+        }
+    }
+
+    impl<'a, C> Io for Request<'a, C>
+    where
+        C: Io,
+    {
+        type Error = C::Error;
+    }
+
+    impl<'a, C> Read for Request<'a, C>
+    where
+        C: Connection + 'a,
+    {
+        type ReadFuture<'b>
+        where
+            Self: 'b,
+        = impl Future<Output = Result<usize, Self::Error>>;
+
+        fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Self::ReadFuture<'b> {
+            async move { self.0.request().unwrap().1.read(buf).await }
+        }
+    }
+
+    impl<'a, C> Headers for Request<'a, C>
+    where
+        C: Connection,
+    {
+        fn header(&self, name: &str) -> Option<&'_ str> {
+            self.0.headers().unwrap().header(name)
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Response<'a, C>(&'a mut C);
+
+    impl<'a, C> Response<'a, C>
+    where
+        C: Connection,
+    {
+        pub fn wrap(connection: &mut C) -> Result<Response<'_, C>, C::Error> {
+            connection.response()?;
+
+            Ok(Response(connection))
+        }
+
+        pub fn release(self) -> &'a mut C {
+            self.0
+        }
+    }
+
+    impl<'a, C> Io for Response<'a, C>
+    where
+        C: Io,
+    {
+        type Error = C::Error;
+    }
+
+    impl<'a, C> Write for Response<'a, C>
+    where
+        C: Connection + 'a,
+    {
+        type WriteFuture<'b>
+        where
+            Self: 'b,
+        = impl Future<Output = Result<usize, Self::Error>>;
+
+        fn write<'b>(&'b mut self, buf: &'b [u8]) -> Self::WriteFuture<'b> {
+            async move { self.0.response().unwrap().write(buf).await }
+        }
+
+        type FlushFuture<'b>
+        where
+            Self: 'b,
+        = impl Future<Output = Result<(), Self::Error>>;
+
+        fn flush<'b>(&'b mut self) -> Self::FlushFuture<'b> {
+            async move { self.0.response().unwrap().flush().await }
+        }
+    }
+
     pub trait Connection: Io {
         type Headers: Query + Headers;
 
@@ -518,7 +642,7 @@ pub mod asynch {
 
     impl<B, C> super::Connection for BlockingConnection<B, C>
     where
-        B: Blocker + Clone,
+        B: Blocker,
         C: Connection,
     {
         type Headers = C::Headers;
