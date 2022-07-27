@@ -32,7 +32,7 @@ where
     M: Mutex<Data = bool> + Send,
     F: Fn(&str) -> bool + Send,
 {
-    fn handle<H>(&self, connection: &mut C, handler: &H) -> HandlerResult
+    fn handle<H>(&self, connection: C, handler: &H) -> HandlerResult
     where
         H: Handler<C>,
     {
@@ -47,7 +47,7 @@ where
                 .unwrap_or(true);
 
         if allow {
-            handler.handle(connection)
+            handler.handle(request.release())
         } else {
             request.into_response(307, None, &[headers::location(self.portal_uri)])?;
 
@@ -56,8 +56,8 @@ where
     }
 }
 
-pub fn get_status<'a, C, M, const N: usize>(
-    request: Request<'a, C>,
+pub fn get_status<C, M, const N: usize>(
+    request: Request<C>,
     portal_uri: &str,
     captive: &M,
 ) -> HandlerResult

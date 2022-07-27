@@ -180,22 +180,22 @@ where
     }
 }
 
-pub struct GitHubOtaRead<'a, C>
+pub struct GitHubOtaRead<C>
 where
     C: Connection,
 {
     size: Option<usize>,
-    response: Response<'a, C>,
+    response: Response<C>,
 }
 
-impl<'a, C> Io for GitHubOtaRead<'a, C>
+impl<C> Io for GitHubOtaRead<C>
 where
     C: Connection,
 {
     type Error = Error<C::Error>;
 }
 
-impl<'a, C> OtaRead for GitHubOtaRead<'a, C>
+impl<C> OtaRead for GitHubOtaRead<C>
 where
     C: Connection,
 {
@@ -204,7 +204,7 @@ where
     }
 }
 
-impl<'a, C> Read for GitHubOtaRead<'a, C>
+impl<C> Read for GitHubOtaRead<C>
 where
     C: Connection,
 {
@@ -222,12 +222,12 @@ where
 
 impl<'a, C> OtaServer for GitHubOtaService<'a, C>
 where
-    C: Connection + 'static,
+    C: Connection,
 {
     type OtaRead<'b>
     where
         Self: 'b,
-    = GitHubOtaRead<'b, C>;
+    = GitHubOtaRead<&'b mut C>;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
         let label = self.label;
@@ -446,22 +446,22 @@ pub mod asynch {
         }
     }
 
-    pub struct GitHubOtaRead<'a, C>
+    pub struct GitHubOtaRead<C>
     where
         C: Connection,
     {
         size: Option<usize>,
-        response: Response<'a, C>,
+        response: Response<C>,
     }
 
-    impl<'a, C> Io for GitHubOtaRead<'a, C>
+    impl<'a, C> Io for GitHubOtaRead<C>
     where
         C: Connection,
     {
         type Error = Error<C::Error>;
     }
 
-    impl<'a, C> OtaRead for GitHubOtaRead<'a, C>
+    impl<'a, C> OtaRead for GitHubOtaRead<C>
     where
         C: Connection,
     {
@@ -470,9 +470,9 @@ pub mod asynch {
         }
     }
 
-    impl<'a, C> Read for GitHubOtaRead<'a, C>
+    impl<C> Read for GitHubOtaRead<C>
     where
-        C: Connection + 'a,
+        C: Connection,
     {
         type ReadFuture<'b>
         where
@@ -493,12 +493,12 @@ pub mod asynch {
 
     impl<'a, C> OtaServer for GitHubOtaService<'a, C>
     where
-        C: Connection + 'static,
+        C: Connection,
     {
         type OtaRead<'b>
         where
             Self: 'b,
-        = GitHubOtaRead<'b, C>;
+        = GitHubOtaRead<&'b mut C>;
 
         type GetLatestReleaseFuture<'b>
         where
