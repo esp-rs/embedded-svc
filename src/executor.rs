@@ -30,7 +30,7 @@ pub mod asynch {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct Blocking<B, T> {
         pub blocker: B,
         pub api: T,
@@ -42,7 +42,7 @@ pub mod asynch {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct RawBlocking<B, T> {
         pub blocker: *const B,
         pub api: *mut T,
@@ -57,6 +57,7 @@ pub mod asynch {
         }
     }
 
+    #[derive(Debug)]
     pub struct TrivialAsync<T> {
         pub api: T,
     }
@@ -67,6 +68,7 @@ pub mod asynch {
         }
     }
 
+    #[derive(Debug)]
     pub struct RawTrivialAsync<T> {
         pub api: *mut T,
     }

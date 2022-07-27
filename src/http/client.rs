@@ -2,6 +2,7 @@ use crate::io::{Error, Io, Read, Write};
 
 pub use super::{Headers, Method, Status};
 
+#[derive(Debug)]
 pub struct Client<C>(C);
 
 impl<C> Client<C>
@@ -63,6 +64,7 @@ where
     type Error = C::Error;
 }
 
+#[derive(Debug)]
 pub struct Request<'a, C>(&'a mut C);
 
 impl<'a, C> Request<'a, C>
@@ -106,6 +108,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Response<'a, C>(&'a mut C);
 
 impl<'a, C> Response<'a, C>
@@ -247,6 +250,7 @@ pub mod asynch {
     pub use crate::http::asynch::*;
     pub use crate::http::{Headers, Method, Status};
 
+    #[derive(Debug)]
     pub struct Client<C>(C);
 
     impl<C> Client<C>
@@ -308,6 +312,7 @@ pub mod asynch {
         type Error = C::Error;
     }
 
+    #[derive(Debug)]
     pub struct Request<'a, C>(&'a mut C);
 
     impl<'a, C> Request<'a, C>
@@ -361,6 +366,7 @@ pub mod asynch {
         }
     }
 
+    #[derive(Debug)]
     pub struct Response<'a, C>(&'a mut C);
 
     impl<'a, C> Response<'a, C>
@@ -516,6 +522,7 @@ pub mod asynch {
         }
     }
 
+    #[derive(Debug)]
     pub struct BlockingConnection<B, C>
     where
         C: Connection,
@@ -552,7 +559,7 @@ pub mod asynch {
 
     impl<B, C> super::Connection for BlockingConnection<B, C>
     where
-        B: Blocker + Clone,
+        B: Blocker,
         C: Connection,
     {
         type Headers = C::Headers;
