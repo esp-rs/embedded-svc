@@ -6,13 +6,13 @@ pub use super::{Headers, Method, Query, Status};
 pub use crate::io::Io;
 
 #[derive(Debug)]
-pub struct Request<'a, C>(&'a mut C);
+pub struct Request<C>(C);
 
-impl<'a, C> Request<'a, C>
+impl<C> Request<C>
 where
     C: Connection,
 {
-    pub fn wrap(connection: &mut C) -> Result<Request<'_, C>, C::Error> {
+    pub fn wrap(mut connection: C) -> Result<Request<C>, C::Error> {
         connection.request()?;
 
         Ok(Request(connection))
@@ -23,37 +23,37 @@ where
     }
 
     pub fn into_response<'b>(
-        self,
+        mut self,
         status: u16,
         message: Option<&'b str>,
         headers: &'b [(&'b str, &'b str)],
-    ) -> Result<Response<'a, C>, C::Error> {
+    ) -> Result<Response<C>, C::Error> {
         self.0.into_response(status, message, headers)?;
 
         Ok(Response(self.0))
     }
 
-    pub fn into_status_response<'b>(self, status: u16) -> Result<Response<'a, C>, C::Error> {
+    pub fn into_status_response<'b>(self, status: u16) -> Result<Response<C>, C::Error> {
         self.into_response(status, None, &[])
     }
 
-    pub fn into_ok_response<'b>(self) -> Result<Response<'a, C>, C::Error> {
+    pub fn into_ok_response<'b>(self) -> Result<Response<C>, C::Error> {
         self.into_response(200, Some("OK"), &[])
     }
 
-    pub fn release(self) -> &'a mut C {
+    pub fn release(self) -> C {
         self.0
     }
 }
 
-impl<'a, C> Io for Request<'a, C>
+impl<C> Io for Request<C>
 where
     C: Io,
 {
     type Error = C::Error;
 }
 
-impl<'a, C> Read for Request<'a, C>
+impl<C> Read for Request<C>
 where
     C: Connection,
 {
@@ -62,7 +62,7 @@ where
     }
 }
 
-impl<'a, C> Headers for Request<'a, C>
+impl<C> Headers for Request<C>
 where
     C: Connection,
 {
@@ -72,31 +72,31 @@ where
 }
 
 #[derive(Debug)]
-pub struct Response<'a, C>(&'a mut C);
+pub struct Response<C>(C);
 
-impl<'a, C> Response<'a, C>
+impl<C> Response<C>
 where
     C: Connection,
 {
-    pub fn wrap(connection: &mut C) -> Result<Response<'_, C>, C::Error> {
+    pub fn wrap(mut connection: C) -> Result<Response<C>, C::Error> {
         connection.response()?;
 
         Ok(Response(connection))
     }
 
-    pub fn release(self) -> &'a mut C {
+    pub fn release(self) -> C {
         self.0
     }
 }
 
-impl<'a, C> Io for Response<'a, C>
+impl<C> Io for Response<C>
 where
     C: Io,
 {
     type Error = C::Error;
 }
 
-impl<'a, C> Write for Response<'a, C>
+impl<C> Write for Response<C>
 where
     C: Connection,
 {
@@ -215,7 +215,7 @@ pub trait Handler<C>: Send
 where
     C: Connection,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult;
+    fn handle(&self, connection: C) -> HandlerResult;
 }
 
 impl<C, H> Handler<C> for &H
@@ -223,7 +223,7 @@ where
     C: Connection,
     H: Handler<C> + Send + Sync,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult {
+    fn handle(&self, connection: C) -> HandlerResult {
         (*self).handle(connection)
     }
 }
@@ -234,7 +234,7 @@ impl<F> FnHandler<F> {
     pub const fn new<C>(f: F) -> Self
     where
         C: Connection,
-        F: Fn(&mut C) -> HandlerResult + Send,
+        F: Fn(C) -> HandlerResult + Send,
     {
         Self(f)
     }
@@ -243,9 +243,9 @@ impl<F> FnHandler<F> {
 impl<C, F> Handler<C> for FnHandler<F>
 where
     C: Connection,
-    F: Fn(&mut C) -> HandlerResult + Send,
+    F: Fn(C) -> HandlerResult + Send,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult {
+    fn handle(&self, connection: C) -> HandlerResult {
         self.0(connection)
     }
 }
@@ -256,7 +256,7 @@ impl<F> FnRequestHandler<F> {
     pub const fn new<C>(f: F) -> Self
     where
         C: Connection,
-        F: for<'a> Fn(Request<'a, C>) -> HandlerResult + Send,
+        F: for<'a> Fn(Request<C>) -> HandlerResult + Send,
     {
         Self(f)
     }
@@ -265,9 +265,9 @@ impl<F> FnRequestHandler<F> {
 impl<C, F> Handler<C> for FnRequestHandler<F>
 where
     C: Connection,
-    F: for<'a> Fn(Request<'a, C>) -> HandlerResult + Send,
+    F: for<'a> Fn(Request<C>) -> HandlerResult + Send,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult {
+    fn handle<'a>(&'a self, connection: C) -> HandlerResult {
         self.0(Request::wrap(connection)?)
     }
 }
@@ -276,7 +276,7 @@ pub trait Middleware<C>: Send
 where
     C: Connection,
 {
-    fn handle<'a, H>(&'a self, connection: &'a mut C, handler: &'a H) -> HandlerResult
+    fn handle<'a, H>(&'a self, connection: C, handler: &'a H) -> HandlerResult
     where
         H: Handler<C>;
 
@@ -309,7 +309,7 @@ where
     H: Handler<C>,
     C: Connection,
 {
-    fn handle<'a>(&'a self, connection: &'a mut C) -> HandlerResult {
+    fn handle<'a>(&'a self, connection: C) -> HandlerResult {
         self.middleware.handle(connection, &self.handler)
     }
 }
@@ -325,13 +325,13 @@ pub mod asynch {
     pub use crate::io::{Error, Io};
 
     #[derive(Debug)]
-    pub struct Request<'a, C>(&'a mut C);
+    pub struct Request<C>(C);
 
-    impl<'a, C> Request<'a, C>
+    impl<C> Request<C>
     where
         C: Connection,
     {
-        pub fn wrap(connection: &mut C) -> Result<Request<'_, C>, C::Error> {
+        pub fn wrap(mut connection: C) -> Result<Request<C>, C::Error> {
             connection.request()?;
 
             Ok(Request(connection))
@@ -342,42 +342,39 @@ pub mod asynch {
         }
 
         pub async fn into_response<'b>(
-            self,
+            mut self,
             status: u16,
             message: Option<&'b str>,
             headers: &'b [(&'b str, &'b str)],
-        ) -> Result<Response<'a, C>, C::Error> {
+        ) -> Result<Response<C>, C::Error> {
             self.0.into_response(status, message, headers).await?;
 
             Ok(Response(self.0))
         }
 
-        pub async fn into_status_response<'b>(
-            self,
-            status: u16,
-        ) -> Result<Response<'a, C>, C::Error> {
+        pub async fn into_status_response<'b>(self, status: u16) -> Result<Response<C>, C::Error> {
             self.into_response(status, None, &[]).await
         }
 
-        pub async fn into_ok_response<'b>(self) -> Result<Response<'a, C>, C::Error> {
+        pub async fn into_ok_response<'b>(self) -> Result<Response<C>, C::Error> {
             self.into_response(200, Some("OK"), &[]).await
         }
 
-        pub fn release(self) -> &'a mut C {
+        pub fn release(self) -> C {
             self.0
         }
     }
 
-    impl<'a, C> Io for Request<'a, C>
+    impl<C> Io for Request<C>
     where
         C: Io,
     {
         type Error = C::Error;
     }
 
-    impl<'a, C> Read for Request<'a, C>
+    impl<C> Read for Request<C>
     where
-        C: Connection + 'a,
+        C: Connection,
     {
         type ReadFuture<'b>
         where
@@ -389,7 +386,7 @@ pub mod asynch {
         }
     }
 
-    impl<'a, C> Headers for Request<'a, C>
+    impl<C> Headers for Request<C>
     where
         C: Connection,
     {
@@ -399,33 +396,33 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
-    pub struct Response<'a, C>(&'a mut C);
+    pub struct Response<C>(C);
 
-    impl<'a, C> Response<'a, C>
+    impl<C> Response<C>
     where
         C: Connection,
     {
-        pub fn wrap(connection: &mut C) -> Result<Response<'_, C>, C::Error> {
+        pub fn wrap(mut connection: C) -> Result<Response<C>, C::Error> {
             connection.response()?;
 
             Ok(Response(connection))
         }
 
-        pub fn release(self) -> &'a mut C {
+        pub fn release(self) -> C {
             self.0
         }
     }
 
-    impl<'a, C> Io for Response<'a, C>
+    impl<C> Io for Response<C>
     where
         C: Io,
     {
         type Error = C::Error;
     }
 
-    impl<'a, C> Write for Response<'a, C>
+    impl<C> Write for Response<C>
     where
-        C: Connection + 'a,
+        C: Connection,
     {
         type WriteFuture<'b>
         where
@@ -535,7 +532,7 @@ pub mod asynch {
             Self: 'a,
             C: 'a;
 
-        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a>;
+        fn handle<'a>(&'a self, connection: C) -> Self::HandleFuture<'a>;
     }
 
     impl<H, C> Handler<C> for &H
@@ -549,7 +546,7 @@ pub mod asynch {
             C: 'a,
         = H::HandleFuture<'a>;
 
-        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a> {
+        fn handle<'a>(&'a self, connection: C) -> Self::HandleFuture<'a> {
             (*self).handle(connection)
         }
     }
@@ -563,7 +560,7 @@ pub mod asynch {
             Self: 'a,
             C: 'a;
 
-        fn handle<'a, H>(&'a self, connection: &'a mut C, handler: &'a H) -> Self::HandleFuture<'a>
+        fn handle<'a, H>(&'a self, connection: C, handler: &'a H) -> Self::HandleFuture<'a>
         where
             H: Handler<C>;
 
@@ -602,7 +599,7 @@ pub mod asynch {
             C: 'a,
         = impl Future<Output = HandlerResult> + Send;
 
-        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a> {
+        fn handle<'a>(&'a self, connection: C) -> Self::HandleFuture<'a> {
             self.middleware.handle(connection, &self.handler)
         }
     }

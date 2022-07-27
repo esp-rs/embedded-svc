@@ -37,7 +37,7 @@ where
     S: Session<SessionData = D>,
     D: RoleSessionData,
 {
-    fn handle<H>(&self, connection: &mut C, handler: &H) -> HandlerResult
+    fn handle<H>(&self, connection: C, handler: &H) -> HandlerResult
     where
         H: Handler<C>,
     {
@@ -47,7 +47,7 @@ where
 
         if let Some(role) = role {
             if role >= self.min_role {
-                return handler.handle(connection);
+                return handler.handle(request.release());
             }
         } else {
             let role = self
@@ -60,7 +60,7 @@ where
 
             if let Some(role) = role {
                 if role >= self.min_role {
-                    return handler.handle(connection);
+                    return handler.handle(request.release());
                 }
             }
         }
@@ -75,8 +75,8 @@ where
     }
 }
 
-pub fn relogin<'a, C: Connection>(
-    request: Request<'a, C>,
+pub fn relogin(
+    request: Request<impl Connection>,
     session: &impl Session<SessionData = impl RoleSessionData>,
     auth: impl Fn(&str, &str) -> Option<Role>,
 ) -> HandlerResult {
@@ -91,8 +91,8 @@ pub fn relogin<'a, C: Connection>(
     Ok(())
 }
 
-pub fn login<'a, C: Connection>(
-    mut request: Request<'a, C>,
+pub fn login(
+    mut request: Request<impl Connection>,
     session: &impl Session<SessionData = impl RoleSessionData>,
     auth: impl Fn(&str, &str) -> Option<Role>,
 ) -> HandlerResult {
@@ -123,7 +123,7 @@ pub fn login<'a, C: Connection>(
     }
 }
 
-pub fn logout<'a, C: Connection>(request: Request<'a, C>, session: &impl Session) -> HandlerResult {
+pub fn logout(request: Request<impl Connection>, session: &impl Session) -> HandlerResult {
     session.invalidate(get_cookie_session_id(&request));
 
     Ok(())

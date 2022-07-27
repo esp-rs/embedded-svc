@@ -6,8 +6,8 @@ use crate::mutex::*;
 use crate::ota::{self, OtaRead, OtaSlot, OtaUpdate};
 use crate::utils::json_io;
 
-pub fn get_status<'a, C: Connection>(
-    request: Request<'a, C>,
+pub fn get_status(
+    request: Request<impl Connection>,
     ota: &impl Mutex<Data = impl ota::Ota>,
 ) -> HandlerResult {
     let ota = ota.lock();
@@ -19,8 +19,8 @@ pub fn get_status<'a, C: Connection>(
     Ok(json_io::response::<512, _, _>(request, &info)?)
 }
 
-pub fn get_updates<'a, C: Connection>(
-    request: Request<'a, C>,
+pub fn get_updates(
+    request: Request<impl Connection>,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
 ) -> HandlerResult {
     let mut ota_server = ota_server.lock();
@@ -30,8 +30,8 @@ pub fn get_updates<'a, C: Connection>(
     Ok(json_io::response::<512, _, _>(request, &updates)?)
 }
 
-pub fn get_latest_update<'a, C: Connection>(
-    request: Request<'a, C>,
+pub fn get_latest_update(
+    request: Request<impl Connection>,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
 ) -> HandlerResult {
     let mut ota_server = ota_server.lock();
@@ -41,8 +41,8 @@ pub fn get_latest_update<'a, C: Connection>(
     Ok(json_io::response::<512, _, _>(request, &update)?)
 }
 
-pub fn factory_reset<'a, C: Connection>(
-    _request: Request<'a, C>,
+pub fn factory_reset(
+    _request: Request<impl Connection>,
     ota: &impl Mutex<Data = impl ota::Ota>,
 ) -> HandlerResult {
     ota.lock().factory_reset()?;
@@ -50,8 +50,8 @@ pub fn factory_reset<'a, C: Connection>(
     Ok(())
 }
 
-pub fn update<'a, C: Connection>(
-    mut request: Request<'a, C>,
+pub fn update(
+    mut request: Request<impl Connection>,
     ota: &impl Mutex<Data = impl ota::Ota>,
     ota_server: &impl Mutex<Data = impl ota::OtaServer>,
     progress: &impl Mutex<Data = Option<usize>>,
@@ -87,8 +87,8 @@ pub fn update<'a, C: Connection>(
     Ok(())
 }
 
-pub fn get_update_progress<'a, C: Connection>(
-    request: Request<'a, C>,
+pub fn get_update_progress(
+    request: Request<impl Connection>,
     progress: &impl Mutex<Data = Option<usize>>,
 ) -> HandlerResult {
     Ok(json_io::response::<512, _, _>(request, &*progress.lock())?)

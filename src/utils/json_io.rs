@@ -49,8 +49,8 @@ where
 }
 
 #[cfg(feature = "json_io")]
-pub fn response<'a, const N: usize, C, T>(
-    request: crate::http::server::Request<'a, C>,
+pub fn response<const N: usize, C, T>(
+    request: crate::http::server::Request<C>,
     value: &T,
 ) -> Result<(), SerdeError<C::Error>>
 where
