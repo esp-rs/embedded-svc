@@ -139,7 +139,7 @@ impl Default for SecondaryChannel {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointInfo {
-    pub ssid: heapless::String<30>,
+    pub ssid: heapless::String<32>,
     pub bssid: [u8; 6],
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
@@ -151,7 +151,7 @@ pub struct AccessPointInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointConfiguration {
-    pub ssid: heapless::String<30>,
+    pub ssid: heapless::String<32>,
     pub ssid_hidden: bool,
     pub channel: u8,
     pub secondary_channel: Option<u8>,
@@ -202,7 +202,7 @@ impl Default for AccessPointConfiguration {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
-    pub ssid: heapless::String<30>,
+    pub ssid: heapless::String<32>,
     pub bssid: Option<[u8; 6]>,
     //pub protocol: Protocol,
     pub auth_method: AuthMethod,
