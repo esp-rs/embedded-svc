@@ -81,7 +81,7 @@ pub mod asynch {
             Self: 'a,
         = impl Future<Output = Result<(), Self::Error>>;
 
-        fn flush<'a>(&'a mut self) -> Self::FlushFuture<'a> {
+        fn flush(&mut self) -> Self::FlushFuture<'_> {
             async move { self.api.flush() }
         }
     }
@@ -159,7 +159,7 @@ pub mod asynch {
             Self: 'a,
         = impl Future<Output = Result<(), Self::Error>>;
 
-        fn flush<'a>(&'a mut self) -> Self::FlushFuture<'a> {
+        fn flush(&mut self) -> Self::FlushFuture<'_> {
             async move { unsafe { self.api.as_mut().unwrap().flush() } }
         }
     }

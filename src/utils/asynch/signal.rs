@@ -276,11 +276,7 @@ pub mod adapt {
         = impl Future<Output = T> + Send;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
-            async move {
-                let value = futures::future::poll_fn(move |cx| self.0.poll_wait(cx)).await;
-
-                value
-            }
+            async move { futures::future::poll_fn(move |cx| self.0.poll_wait(cx)).await }
         }
     }
 }

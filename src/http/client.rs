@@ -546,9 +546,9 @@ pub mod asynch {
             Self {
                 blocker,
                 connection,
-                lended_read: unsafe { RawBlocking::new() },
-                lended_write: unsafe { RawBlocking::new() },
-                lended_raw: unsafe { RawBlocking::new() },
+                lended_read: RawBlocking::new(),
+                lended_write: RawBlocking::new(),
+                lended_raw: RawBlocking::new(),
             }
         }
     }
@@ -642,9 +642,9 @@ pub mod asynch {
         pub fn new(connection: C) -> Self {
             Self {
                 connection,
-                lended_read: unsafe { RawTrivialAsync::new() },
-                lended_write: unsafe { RawTrivialAsync::new() },
-                lended_raw: unsafe { RawTrivialAsync::new() },
+                lended_read: RawTrivialAsync::new(),
+                lended_write: RawTrivialAsync::new(),
+                lended_raw: RawTrivialAsync::new(),
             }
         }
 
