@@ -97,7 +97,7 @@ impl WakerRegistration for AtomicWaker {
     }
 
     fn register(&mut self, waker: &core::task::Waker) {
-        AtomicWaker::register(&self, waker)
+        AtomicWaker::register(self, waker)
     }
 
     fn wake(&mut self) {

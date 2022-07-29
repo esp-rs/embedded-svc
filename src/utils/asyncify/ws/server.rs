@@ -291,6 +291,7 @@ where
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub struct Processor<const N: usize, const F: usize, C, W>
 where
     C: RawCondvar + Send + Sync,
