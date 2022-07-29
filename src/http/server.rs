@@ -33,11 +33,11 @@ where
         Ok(Response(self.0))
     }
 
-    pub fn into_status_response<'b>(self, status: u16) -> Result<Response<C>, C::Error> {
+    pub fn into_status_response(self, status: u16) -> Result<Response<C>, C::Error> {
         self.into_response(status, None, &[])
     }
 
-    pub fn into_ok_response<'b>(self) -> Result<Response<C>, C::Error> {
+    pub fn into_ok_response(self) -> Result<Response<C>, C::Error> {
         self.into_response(200, Some("OK"), &[])
     }
 
@@ -121,8 +121,8 @@ pub trait Connection: Io {
     type RawConnection: Read<Error = Self::RawConnectionError>
         + Write<Error = Self::RawConnectionError>;
 
-    fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error>;
-    fn request<'a>(&'a mut self) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error>;
+    fn headers(&self) -> Result<&Self::Headers, Self::Error>;
+    fn request(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error>;
 
     fn into_response<'a>(
         &'a mut self,
@@ -131,7 +131,7 @@ pub trait Connection: Io {
         headers: &'a [(&'a str, &'a str)],
     ) -> Result<(), Self::Error>;
 
-    fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error>;
+    fn response(&mut self) -> Result<&mut Self::Write, Self::Error>;
 
     fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
 }
@@ -150,11 +150,11 @@ where
 
     type RawConnection = C::RawConnection;
 
-    fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+    fn headers(&self) -> Result<&Self::Headers, Self::Error> {
         (**self).headers()
     }
 
-    fn request<'a>(&'a mut self) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+    fn request(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
         (*self).request()
     }
 
@@ -167,7 +167,7 @@ where
         (*self).into_response(status, message, headers)
     }
 
-    fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+    fn response(&mut self) -> Result<&mut Self::Write, Self::Error> {
         (*self).response()
     }
 
@@ -317,7 +317,7 @@ where
     H: Handler<C>,
     C: Connection,
 {
-    fn handle<'a>(&'a self, connection: C) -> HandlerResult {
+    fn handle(&self, connection: C) -> HandlerResult {
         self.middleware.handle(connection, &self.handler)
     }
 }
@@ -446,7 +446,7 @@ pub mod asynch {
             Self: 'b,
         = impl Future<Output = Result<(), Self::Error>>;
 
-        fn flush<'b>(&'b mut self) -> Self::FlushFuture<'b> {
+        fn flush(&mut self) -> Self::FlushFuture<'_> {
             async move { self.0.response().unwrap().flush().await }
         }
     }
@@ -467,10 +467,8 @@ pub mod asynch {
         where
             Self: 'a;
 
-        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error>;
-        fn request<'a>(
-            &'a mut self,
-        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error>;
+        fn headers(&self) -> Result<&Self::Headers, Self::Error>;
+        fn request(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error>;
 
         fn into_response<'a>(
             &'a mut self,
@@ -479,7 +477,7 @@ pub mod asynch {
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoResponseFuture<'a>;
 
-        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error>;
+        fn response(&mut self) -> Result<&mut Self::Write, Self::Error>;
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
     }
@@ -503,13 +501,11 @@ pub mod asynch {
             Self: 'a,
         = C::IntoResponseFuture<'a>;
 
-        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+        fn headers(&self) -> Result<&Self::Headers, Self::Error> {
             (**self).headers()
         }
 
-        fn request<'a>(
-            &'a mut self,
-        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+        fn request(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
             (*self).request()
         }
 
@@ -522,7 +518,7 @@ pub mod asynch {
             (*self).into_response(status, message, headers)
         }
 
-        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+        fn response(&mut self) -> Result<&mut Self::Write, Self::Error> {
             (*self).response()
         }
 
@@ -540,7 +536,7 @@ pub mod asynch {
             Self: 'a,
             C: 'a;
 
-        fn handle<'a>(&'a self, connection: C) -> Self::HandleFuture<'a>;
+        fn handle(&self, connection: C) -> Self::HandleFuture<'_>;
     }
 
     impl<H, C> Handler<C> for &H
@@ -554,7 +550,7 @@ pub mod asynch {
             C: 'a,
         = H::HandleFuture<'a>;
 
-        fn handle<'a>(&'a self, connection: C) -> Self::HandleFuture<'a> {
+        fn handle(&self, connection: C) -> Self::HandleFuture<'_> {
             (*self).handle(connection)
         }
     }
@@ -607,7 +603,7 @@ pub mod asynch {
             C: 'a,
         = impl Future<Output = HandlerResult> + Send;
 
-        fn handle<'a>(&'a self, connection: C) -> Self::HandleFuture<'a> {
+        fn handle(&self, connection: C) -> Self::HandleFuture<'_> {
             self.middleware.handle(connection, &self.handler)
         }
     }
@@ -631,9 +627,9 @@ pub mod asynch {
             Self {
                 blocker,
                 connection,
-                lended_read: unsafe { RawBlocking::new() },
-                lended_write: unsafe { RawBlocking::new() },
-                lended_raw: unsafe { RawBlocking::new() },
+                lended_read: RawBlocking::new(),
+                lended_write: RawBlocking::new(),
+                lended_raw: RawBlocking::new(),
             }
         }
     }
@@ -660,13 +656,11 @@ pub mod asynch {
 
         type RawConnection = RawBlocking<B, C::RawConnection>;
 
-        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+        fn headers(&self) -> Result<&Self::Headers, Self::Error> {
             self.connection.headers()
         }
 
-        fn request<'a>(
-            &'a mut self,
-        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+        fn request(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
             let (headers, read) = self.connection.request()?;
 
             self.lended_read.blocker = &self.blocker;
@@ -687,7 +681,7 @@ pub mod asynch {
             Ok(())
         }
 
-        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+        fn response(&mut self) -> Result<&mut Self::Write, Self::Error> {
             let write = self.connection.response()?;
 
             self.lended_write.blocker = &self.blocker;
@@ -736,9 +730,9 @@ pub mod asynch {
         pub fn new(connection: C) -> Self {
             Self {
                 connection,
-                lended_read: unsafe { RawTrivialAsync::new() },
-                lended_write: unsafe { RawTrivialAsync::new() },
-                lended_raw: unsafe { RawTrivialAsync::new() },
+                lended_read: RawTrivialAsync::new(),
+                lended_write: RawTrivialAsync::new(),
+                lended_raw: RawTrivialAsync::new(),
             }
         }
 
@@ -777,13 +771,11 @@ pub mod asynch {
             Self: 'a,
         = impl Future<Output = Result<(), Self::Error>>;
 
-        fn headers<'a>(&'a self) -> Result<&'a Self::Headers, Self::Error> {
+        fn headers(&self) -> Result<&Self::Headers, Self::Error> {
             self.connection.headers()
         }
 
-        fn request<'a>(
-            &'a mut self,
-        ) -> Result<(&'a Self::Headers, &'a mut Self::Read), Self::Error> {
+        fn request(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
             let (headers, read) = self.connection.request()?;
 
             self.lended_read.api = read;
@@ -791,7 +783,7 @@ pub mod asynch {
             Ok((headers, &mut self.lended_read))
         }
 
-        fn response<'a>(&'a mut self) -> Result<&'a mut Self::Write, Self::Error> {
+        fn response(&mut self) -> Result<&mut Self::Write, Self::Error> {
             let write = self.connection.response()?;
             self.lended_write.api = write;
 

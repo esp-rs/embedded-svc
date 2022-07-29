@@ -49,11 +49,17 @@ pub mod asynch {
     }
 
     impl<B, T> RawBlocking<B, T> {
-        pub unsafe fn new() -> Self {
+        pub fn new() -> Self {
             Self {
                 blocker: core::ptr::null(),
                 api: core::ptr::null_mut(),
             }
+        }
+    }
+
+    impl<B, T> Default for RawBlocking<B, T> {
+        fn default() -> Self {
+            Self::new()
         }
     }
 
@@ -74,10 +80,16 @@ pub mod asynch {
     }
 
     impl<T> RawTrivialAsync<T> {
-        pub unsafe fn new() -> Self {
+        pub fn new() -> Self {
             Self {
                 api: core::ptr::null_mut(),
             }
+        }
+    }
+
+    impl<T> Default for RawTrivialAsync<T> {
+        fn default() -> Self {
+            Self::new()
         }
     }
 

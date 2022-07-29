@@ -93,6 +93,15 @@ pub mod embedded {
         }
     }
 
+    impl<R> Default for CondvarWait<R>
+    where
+        R: RawCondvar,
+    {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl<R> Wait for CondvarWait<R>
     where
         R: RawCondvar + Send + Sync,
@@ -158,6 +167,7 @@ pub mod embedded {
         _marker: PhantomData<core::cell::UnsafeCell<&'a ()>>,
     }
 
+    #[allow(clippy::missing_safety_doc)]
     impl<'a, const C: usize, N, W, S> EmbeddedExecutor<'a, C, N, W, S> {
         pub unsafe fn new_unchecked(notify_factory: N, wait: W) -> Self {
             Self {
@@ -170,6 +180,7 @@ pub mod embedded {
         }
     }
 
+    #[allow(clippy::missing_safety_doc)]
     impl<'a, const C: usize, N, W, S> EmbeddedExecutor<'a, C, N, W, S>
     where
         N: NotifyFactory,

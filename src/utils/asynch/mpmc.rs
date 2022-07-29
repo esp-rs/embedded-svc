@@ -491,6 +491,15 @@ where
     }
 }
 
+impl<M, T, const N: usize> Default for Channel<M, T, N>
+where
+    M: RawMutex,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Implements the DynamicChannel to allow creating types that are unaware of the queue size with the
 /// tradeoff cost of dynamic dispatch.
 impl<M, T, const N: usize> DynamicChannel<T> for Channel<M, T, N>
@@ -507,136 +516,5 @@ where
 
     fn try_recv_with_context(&self, cx: Option<&mut Context<'_>>) -> Result<T, TryRecvError> {
         Channel::try_recv_with_context(self, cx)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use core::time::Duration;
-
-    use futures::task::SpawnExt;
-    use futures_executor::ThreadPool;
-    use futures_timer::Delay;
-
-    use super::*;
-    use crate::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
-    use crate::util::Forever;
-
-    fn capacity<T, const N: usize>(c: &ChannelState<T, N>) -> usize {
-        c.queue.capacity() - c.queue.len()
-    }
-
-    #[test]
-    fn sending_once() {
-        let mut c = ChannelState::<u32, 3>::new();
-        assert!(c.try_send(1).is_ok());
-        assert_eq!(capacity(&c), 2);
-    }
-
-    #[test]
-    fn sending_when_full() {
-        let mut c = ChannelState::<u32, 3>::new();
-        let _ = c.try_send(1);
-        let _ = c.try_send(1);
-        let _ = c.try_send(1);
-        match c.try_send(2) {
-            Err(TrySendError::Full(2)) => assert!(true),
-            _ => assert!(false),
-        }
-        assert_eq!(capacity(&c), 0);
-    }
-
-    #[test]
-    fn receiving_once_with_one_send() {
-        let mut c = ChannelState::<u32, 3>::new();
-        assert!(c.try_send(1).is_ok());
-        assert_eq!(c.try_recv().unwrap(), 1);
-        assert_eq!(capacity(&c), 3);
-    }
-
-    #[test]
-    fn receiving_when_empty() {
-        let mut c = ChannelState::<u32, 3>::new();
-        match c.try_recv() {
-            Err(TryRecvError::Empty) => assert!(true),
-            _ => assert!(false),
-        }
-        assert_eq!(capacity(&c), 3);
-    }
-
-    #[test]
-    fn simple_send_and_receive() {
-        let c = Channel::<NoopRawMutex, u32, 3>::new();
-        assert!(c.try_send(1).is_ok());
-        assert_eq!(c.try_recv().unwrap(), 1);
-    }
-
-    #[test]
-    fn cloning() {
-        let c = Channel::<NoopRawMutex, u32, 3>::new();
-        let r1 = c.receiver();
-        let s1 = c.sender();
-
-        let _ = r1.clone();
-        let _ = s1.clone();
-    }
-
-    #[test]
-    fn dynamic_dispatch() {
-        let c = Channel::<NoopRawMutex, u32, 3>::new();
-        let s: DynamicSender<'_, u32> = c.sender().into();
-        let r: DynamicReceiver<'_, u32> = c.receiver().into();
-
-        assert!(s.try_send(1).is_ok());
-        assert_eq!(r.try_recv().unwrap(), 1);
-    }
-
-    #[futures_test::test]
-    async fn receiver_receives_given_try_send_async() {
-        let executor = ThreadPool::new().unwrap();
-
-        static CHANNEL: Forever<Channel<CriticalSectionRawMutex, u32, 3>> = Forever::new();
-        let c = &*CHANNEL.put(Channel::new());
-        let c2 = c;
-        assert!(executor
-            .spawn(async move {
-                assert!(c2.try_send(1).is_ok());
-            })
-            .is_ok());
-        assert_eq!(c.recv().await, 1);
-    }
-
-    #[futures_test::test]
-    async fn sender_send_completes_if_capacity() {
-        let c = Channel::<CriticalSectionRawMutex, u32, 1>::new();
-        c.send(1).await;
-        assert_eq!(c.recv().await, 1);
-    }
-
-    #[futures_test::test]
-    async fn senders_sends_wait_until_capacity() {
-        let executor = ThreadPool::new().unwrap();
-
-        static CHANNEL: Forever<Channel<CriticalSectionRawMutex, u32, 1>> = Forever::new();
-        let c = &*CHANNEL.put(Channel::new());
-        assert!(c.try_send(1).is_ok());
-
-        let c2 = c;
-        let send_task_1 = executor.spawn_with_handle(async move { c2.send(2).await });
-        let c2 = c;
-        let send_task_2 = executor.spawn_with_handle(async move { c2.send(3).await });
-        // Wish I could think of a means of determining that the async send is waiting instead.
-        // However, I've used the debugger to observe that the send does indeed wait.
-        Delay::new(Duration::from_millis(500)).await;
-        assert_eq!(c.recv().await, 1);
-        assert!(executor
-            .spawn(async move {
-                loop {
-                    c.recv().await;
-                }
-            })
-            .is_ok());
-        send_task_1.unwrap().await;
-        send_task_2.unwrap().await;
     }
 }

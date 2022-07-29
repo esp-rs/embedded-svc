@@ -265,7 +265,7 @@ pub mod session {
         }
     }
 
-    pub fn get_cookie_session_id<'a, H>(headers: &'a H) -> Option<&'a str>
+    pub fn get_cookie_session_id<H>(headers: &H) -> Option<&str>
     where
         H: Headers,
     {

@@ -454,14 +454,14 @@ pub mod asynch {
         response: Response<C>,
     }
 
-    impl<'a, C> Io for GitHubOtaRead<C>
+    impl<C> Io for GitHubOtaRead<C>
     where
         C: Connection,
     {
         type Error = Error<C::Error>;
     }
 
-    impl<'a, C> OtaRead for GitHubOtaRead<C>
+    impl<C> OtaRead for GitHubOtaRead<C>
     where
         C: Connection,
     {
