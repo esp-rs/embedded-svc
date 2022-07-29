@@ -47,7 +47,7 @@ where
         uri: &'a str,
         headers: &'a [(&'a str, &'a str)],
     ) -> Result<Request<&'a mut C>, C::Error> {
-        self.0.into_request(method, uri, headers)?;
+        self.0.initiate_request(method, uri, headers)?;
 
         Request::wrap(&mut self.0)
     }
@@ -78,7 +78,7 @@ where
     }
 
     pub fn submit(mut self) -> Result<Response<C>, C::Error> {
-        self.0.into_response()?;
+        self.0.initiate_response()?;
 
         Ok(Response(self.0))
     }
@@ -180,7 +180,7 @@ pub trait Connection: Io {
     type RawConnection: Read<Error = Self::RawConnectionError>
         + Write<Error = Self::RawConnectionError>;
 
-    fn into_request<'a>(
+    fn initiate_request<'a>(
         &'a mut self,
         method: Method,
         uri: &'a str,
@@ -189,7 +189,7 @@ pub trait Connection: Io {
 
     fn request(&mut self) -> Result<&mut Self::Write, Self::Error>;
 
-    fn into_response(&mut self) -> Result<(), Self::Error>;
+    fn initiate_response(&mut self) -> Result<(), Self::Error>;
 
     fn response(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error>;
     fn headers(&self) -> Result<&Self::Headers, Self::Error>;
@@ -211,21 +211,21 @@ where
 
     type RawConnection = C::RawConnection;
 
-    fn into_request<'a>(
+    fn initiate_request<'a>(
         &'a mut self,
         method: Method,
         uri: &'a str,
         headers: &'a [(&'a str, &'a str)],
     ) -> Result<(), Self::Error> {
-        (*self).into_request(method, uri, headers)
+        (*self).initiate_request(method, uri, headers)
     }
 
     fn request(&mut self) -> Result<&mut Self::Write, Self::Error> {
         (*self).request()
     }
 
-    fn into_response(&mut self) -> Result<(), Self::Error> {
-        (*self).into_response()
+    fn initiate_response(&mut self) -> Result<(), Self::Error> {
+        (*self).initiate_response()
     }
 
     fn response(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
@@ -298,7 +298,7 @@ pub mod asynch {
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
         ) -> Result<Request<&'a mut C>, C::Error> {
-            self.0.into_request(method, uri, headers).await?;
+            self.0.initiate_request(method, uri, headers).await?;
 
             Request::wrap(&mut self.0)
         }
@@ -329,7 +329,7 @@ pub mod asynch {
         }
 
         pub async fn submit(mut self) -> Result<Response<C>, C::Error> {
-            self.0.into_response().await?;
+            self.0.initiate_response().await?;
 
             Ok(Response(self.0))
         }
@@ -454,7 +454,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        fn into_request<'a>(
+        fn initiate_request<'a>(
             &'a mut self,
             method: Method,
             uri: &'a str,
@@ -463,7 +463,7 @@ pub mod asynch {
 
         fn request(&mut self) -> Result<&mut Self::Write, Self::Error>;
 
-        fn into_response(&mut self) -> Self::IntoResponseFuture<'_>;
+        fn initiate_response(&mut self) -> Self::IntoResponseFuture<'_>;
 
         fn response(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error>;
         fn headers(&self) -> Result<&Self::Headers, Self::Error>;
@@ -495,21 +495,21 @@ pub mod asynch {
             Self: 'a,
         = C::IntoResponseFuture<'a>;
 
-        fn into_request<'a>(
+        fn initiate_request<'a>(
             &'a mut self,
             method: Method,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoRequestFuture<'a> {
-            (*self).into_request(method, uri, headers)
+            (*self).initiate_request(method, uri, headers)
         }
 
         fn request(&mut self) -> Result<&mut Self::Write, Self::Error> {
             (*self).request()
         }
 
-        fn into_response(&mut self) -> Self::IntoResponseFuture<'_> {
-            (*self).into_response()
+        fn initiate_response(&mut self) -> Self::IntoResponseFuture<'_> {
+            (*self).initiate_response()
         }
 
         fn response(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
@@ -546,9 +546,9 @@ pub mod asynch {
             Self {
                 blocker,
                 connection,
-                lended_read: unsafe { RawBlocking::new() },
-                lended_write: unsafe { RawBlocking::new() },
-                lended_raw: unsafe { RawBlocking::new() },
+                lended_read: RawBlocking::new(),
+                lended_write: RawBlocking::new(),
+                lended_raw: RawBlocking::new(),
             }
         }
     }
@@ -575,14 +575,14 @@ pub mod asynch {
 
         type RawConnection = RawBlocking<B, C::RawConnection>;
 
-        fn into_request<'a>(
+        fn initiate_request<'a>(
             &'a mut self,
             method: Method,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
         ) -> Result<(), Self::Error> {
             self.blocker
-                .block_on(self.connection.into_request(method, uri, headers))?;
+                .block_on(self.connection.initiate_request(method, uri, headers))?;
 
             Ok(())
         }
@@ -596,8 +596,8 @@ pub mod asynch {
             Ok(&mut self.lended_write)
         }
 
-        fn into_response(&mut self) -> Result<(), Self::Error> {
-            self.blocker.block_on(self.connection.into_response())?;
+        fn initiate_response(&mut self) -> Result<(), Self::Error> {
+            self.blocker.block_on(self.connection.initiate_response())?;
 
             Ok(())
         }
@@ -642,9 +642,9 @@ pub mod asynch {
         pub fn new(connection: C) -> Self {
             Self {
                 connection,
-                lended_read: unsafe { RawTrivialAsync::new() },
-                lended_write: unsafe { RawTrivialAsync::new() },
-                lended_raw: unsafe { RawTrivialAsync::new() },
+                lended_read: RawTrivialAsync::new(),
+                lended_write: RawTrivialAsync::new(),
+                lended_raw: RawTrivialAsync::new(),
             }
         }
 
@@ -688,13 +688,13 @@ pub mod asynch {
             Self: 'a,
         = impl Future<Output = Result<(), Self::Error>>;
 
-        fn into_request<'a>(
+        fn initiate_request<'a>(
             &'a mut self,
             method: Method,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoRequestFuture<'a> {
-            async move { self.connection.into_request(method, uri, headers) }
+            async move { self.connection.initiate_request(method, uri, headers) }
         }
 
         fn request(&mut self) -> Result<&mut Self::Write, Self::Error> {
@@ -704,8 +704,8 @@ pub mod asynch {
             Ok(&mut self.lended_write)
         }
 
-        fn into_response(&mut self) -> Self::IntoResponseFuture<'_> {
-            async move { self.connection.into_response() }
+        fn initiate_response(&mut self) -> Self::IntoResponseFuture<'_> {
+            async move { self.connection.initiate_response() }
         }
 
         fn response(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {

@@ -132,21 +132,21 @@ where
 pub mod headers {
     pub type ContentLenParseBuf = heapless::String<20>;
 
-    pub fn content_type<'a>(ctype: &'a str) -> (&'a str, &'a str) {
+    pub fn content_type(ctype: &str) -> (&str, &str) {
         ("Content-Type", ctype)
     }
 
-    pub fn content_len<'a>(len: u64, buf: &'a mut ContentLenParseBuf) -> (&'a str, &'a str) {
+    pub fn content_len(len: u64, buf: &mut ContentLenParseBuf) -> (&str, &str) {
         *buf = ContentLenParseBuf::from(len);
 
         ("Content-Length", buf.as_str())
     }
 
-    pub fn content_encoding<'a>(encoding: &'a str) -> (&'a str, &'a str) {
+    pub fn content_encoding(encoding: &str) -> (&str, &str) {
         ("Content-Encoding", encoding)
     }
 
-    pub fn transfer_encoding<'a>(encoding: &'a str) -> (&'a str, &'a str) {
+    pub fn transfer_encoding(encoding: &str) -> (&str, &str) {
         ("Transfer-Encoding", encoding)
     }
 
@@ -154,7 +154,7 @@ pub mod headers {
         transfer_encoding("Chunked")
     }
 
-    pub fn connection<'a>(connection: &'a str) -> (&'a str, &'a str) {
+    pub fn connection(connection: &str) -> (&str, &str) {
         ("Connection", connection)
     }
 
@@ -170,7 +170,7 @@ pub mod headers {
         connection("Close")
     }
 
-    pub fn cache_control<'a>(cache: &'a str) -> (&'a str, &'a str) {
+    pub fn cache_control(cache: &str) -> (&str, &str) {
         ("Cache-Control", cache)
     }
 
@@ -178,11 +178,11 @@ pub mod headers {
         cache_control("No-Cache")
     }
 
-    pub fn location<'a>(location: &'a str) -> (&'a str, &'a str) {
+    pub fn location(location: &str) -> (&str, &str) {
         ("Location", location)
     }
 
-    pub fn upgrade<'a>(upgrade: &'a str) -> (&'a str, &'a str) {
+    pub fn upgrade(upgrade: &str) -> (&str, &str) {
         ("Upgrade", upgrade)
     }
 
