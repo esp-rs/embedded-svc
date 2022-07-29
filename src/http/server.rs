@@ -28,7 +28,7 @@ where
         message: Option<&'b str>,
         headers: &'b [(&'b str, &'b str)],
     ) -> Result<Response<C>, C::Error> {
-        self.0.into_response(status, message, headers)?;
+        self.0.ininitate_response(status, message, headers)?;
 
         Ok(Response(self.0))
     }
@@ -124,7 +124,7 @@ pub trait Connection: Io {
     fn headers(&self) -> Result<&Self::Headers, Self::Error>;
     fn request(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error>;
 
-    fn into_response<'a>(
+    fn ininitate_response<'a>(
         &'a mut self,
         status: u16,
         message: Option<&'a str>,
@@ -158,13 +158,13 @@ where
         (*self).request()
     }
 
-    fn into_response<'a>(
+    fn ininitate_response<'a>(
         &'a mut self,
         status: u16,
         message: Option<&'a str>,
         headers: &'a [(&'a str, &'a str)],
     ) -> Result<(), Self::Error> {
-        (*self).into_response(status, message, headers)
+        (*self).ininitate_response(status, message, headers)
     }
 
     fn response(&mut self) -> Result<&mut Self::Write, Self::Error> {
@@ -355,7 +355,7 @@ pub mod asynch {
             message: Option<&'b str>,
             headers: &'b [(&'b str, &'b str)],
         ) -> Result<Response<C>, C::Error> {
-            self.0.into_response(status, message, headers).await?;
+            self.0.initiate_response(status, message, headers).await?;
 
             Ok(Response(self.0))
         }
@@ -470,7 +470,7 @@ pub mod asynch {
         fn headers(&self) -> Result<&Self::Headers, Self::Error>;
         fn request(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error>;
 
-        fn into_response<'a>(
+        fn initiate_response<'a>(
             &'a mut self,
             status: u16,
             message: Option<&'a str>,
@@ -509,13 +509,13 @@ pub mod asynch {
             (*self).request()
         }
 
-        fn into_response<'a>(
+        fn initiate_response<'a>(
             &'a mut self,
             status: u16,
             message: Option<&'a str>,
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoResponseFuture<'a> {
-            (*self).into_response(status, message, headers)
+            (*self).initiate_response(status, message, headers)
         }
 
         fn response(&mut self) -> Result<&mut Self::Write, Self::Error> {
@@ -669,14 +669,14 @@ pub mod asynch {
             Ok((headers, &mut self.lended_read))
         }
 
-        fn into_response<'a>(
+        fn ininitate_response<'a>(
             &'a mut self,
             status: u16,
             message: Option<&'a str>,
             headers: &'a [(&'a str, &'a str)],
         ) -> Result<(), Self::Error> {
             self.blocker
-                .block_on(self.connection.into_response(status, message, headers))?;
+                .block_on(self.connection.initiate_response(status, message, headers))?;
 
             Ok(())
         }
@@ -790,13 +790,13 @@ pub mod asynch {
             Ok(&mut self.lended_write)
         }
 
-        fn into_response<'a>(
+        fn initiate_response<'a>(
             &'a mut self,
             status: u16,
             message: Option<&'a str>,
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoResponseFuture<'a> {
-            async move { self.connection.into_response(status, message, headers) }
+            async move { self.connection.ininitate_response(status, message, headers) }
         }
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
