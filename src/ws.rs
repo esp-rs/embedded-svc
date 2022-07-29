@@ -76,6 +76,27 @@ where
     }
 }
 
+pub mod server {
+    pub use super::*;
+
+    pub trait Acceptor: ErrorType {
+        type Connection: Sender<Error = Self::Error> + Receiver<Error = Self::Error>;
+
+        fn accept(&self) -> Result<Self::Connection, Self::Error>;
+    }
+
+    impl<A> Acceptor for &A
+    where
+        A: Acceptor,
+    {
+        type Connection = A::Connection;
+
+        fn accept(&self) -> Result<Self::Connection, Self::Error> {
+            (*self).accept()
+        }
+    }
+}
+
 pub mod callback_server {
     pub use super::*;
 
@@ -217,6 +238,36 @@ pub mod asynch {
 
         fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
             async move { self.api.recv(frame_data_buf) }
+        }
+    }
+
+    pub mod server {
+        pub use super::*;
+
+        pub trait Acceptor: ErrorType {
+            type Connection: Sender<Error = Self::Error> + Receiver<Error = Self::Error>;
+
+            type AcceptFuture<'a>: Future<Output = Result<Self::Connection, Self::Error>>
+            where
+                Self: 'a;
+
+            fn accept(&self) -> Self::AcceptFuture<'_>;
+        }
+
+        impl<A> Acceptor for &A
+        where
+            A: Acceptor,
+        {
+            type Connection = A::Connection;
+
+            type AcceptFuture<'a>
+            where
+                Self: 'a,
+            = A::AcceptFuture<'a>;
+
+            fn accept(&self) -> Self::AcceptFuture<'_> {
+                (*self).accept()
+            }
         }
     }
 }
