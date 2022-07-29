@@ -111,15 +111,21 @@ where
 }
 
 pub trait Query {
-    fn query(&self) -> &'_ str;
+    fn uri(&self) -> &'_ str;
+
+    fn method(&self) -> Method;
 }
 
 impl<Q> Query for &Q
 where
     Q: Query,
 {
-    fn query(&self) -> &'_ str {
-        (*self).query()
+    fn uri(&self) -> &'_ str {
+        (*self).uri()
+    }
+
+    fn method(&self) -> Method {
+        (*self).method()
     }
 }
 
@@ -187,14 +193,18 @@ pub mod headers {
 
 #[cfg(feature = "experimental")]
 pub mod asynch {
-    use crate::executor::asynch::Blocking;
+    use crate::executor::asynch::{Blocking, TrivialAsync};
 
     impl<B, Q> super::Query for Blocking<B, Q>
     where
         Q: super::Query,
     {
-        fn query(&self) -> &'_ str {
-            self.api.query()
+        fn uri(&self) -> &'_ str {
+            self.api.uri()
+        }
+
+        fn method(&self) -> super::Method {
+            self.api.method()
         }
     }
 
@@ -208,6 +218,41 @@ pub mod asynch {
     }
 
     impl<B, S> super::Status for Blocking<B, S>
+    where
+        S: super::Status,
+    {
+        fn status(&self) -> u16 {
+            self.api.status()
+        }
+
+        fn status_message(&self) -> Option<&'_ str> {
+            self.api.status_message()
+        }
+    }
+
+    impl<Q> super::Query for TrivialAsync<Q>
+    where
+        Q: super::Query,
+    {
+        fn uri(&self) -> &'_ str {
+            self.api.uri()
+        }
+
+        fn method(&self) -> super::Method {
+            self.api.method()
+        }
+    }
+
+    impl<H> super::Headers for TrivialAsync<H>
+    where
+        H: super::Headers,
+    {
+        fn header(&self, name: &str) -> Option<&'_ str> {
+            self.api.header(name)
+        }
+    }
+
+    impl<S> super::Status for TrivialAsync<S>
     where
         S: super::Status,
     {
