@@ -228,46 +228,54 @@ where
     }
 }
 
+pub struct FnConnectionHandler<F>(F);
+
+impl<F> FnConnectionHandler<F> {
+    pub const fn new<C>(f: F) -> Self
+    where
+        C: Connection,
+        F: Fn(&mut C) -> HandlerResult + Send,
+    {
+        Self(f)
+    }
+}
+
+impl<C, F> Handler<&mut C> for FnConnectionHandler<F>
+where
+    C: Connection,
+    F: Fn(&mut C) -> HandlerResult + Send,
+{
+    fn handle(&self, connection: &mut C) -> HandlerResult {
+        self.0(connection)
+    }
+}
+
+pub fn handler<F, C>(f: F) -> FnHandler<F>
+where
+    C: Connection,
+    F: Fn(Request<&mut C>) -> HandlerResult + Send,
+{
+    FnHandler::new(f)
+}
+
 pub struct FnHandler<F>(F);
 
 impl<F> FnHandler<F> {
     pub const fn new<C>(f: F) -> Self
     where
         C: Connection,
-        F: Fn(C) -> HandlerResult + Send,
+        F: Fn(Request<&mut C>) -> HandlerResult + Send,
     {
         Self(f)
     }
 }
 
-impl<C, F> Handler<C> for FnHandler<F>
+impl<C, F> Handler<&mut C> for FnHandler<F>
 where
     C: Connection,
-    F: Fn(C) -> HandlerResult + Send,
+    F: Fn(Request<&mut C>) -> HandlerResult + Send,
 {
-    fn handle(&self, connection: C) -> HandlerResult {
-        self.0(connection)
-    }
-}
-
-pub struct FnRequestHandler<F>(F);
-
-impl<F> FnRequestHandler<F> {
-    pub const fn new<C>(f: F) -> Self
-    where
-        C: Connection,
-        F: for<'a> Fn(Request<C>) -> HandlerResult + Send,
-    {
-        Self(f)
-    }
-}
-
-impl<C, F> Handler<C> for FnRequestHandler<F>
-where
-    C: Connection,
-    F: for<'a> Fn(Request<C>) -> HandlerResult + Send,
-{
-    fn handle<'a>(&'a self, connection: C) -> HandlerResult {
+    fn handle(&self, connection: &mut C) -> HandlerResult {
         self.0(Request::wrap(connection)?)
     }
 }
