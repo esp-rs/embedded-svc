@@ -221,7 +221,7 @@ where
     C::RawMutex: Send + Sync,
     S: Sender + Send + Clone + 'static,
 {
-    type Output = Result<Option<AsyncConnection<U, C, S>>, <S as ErrorType>::Error>;
+    type Output = Result<AsyncConnection<U, C, S>, <S as ErrorType>::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut accept = self.accept.lock();
@@ -237,17 +237,57 @@ where
 
                 self.condvar.notify_all();
 
-                Poll::Ready(Ok(Some(connection)))
+                Poll::Ready(Ok(connection))
             }
             Some(None) => {
                 accept.data = Some(None);
-                Poll::Ready(Ok(None))
+                Poll::Pending
             }
             None => {
                 accept.waker = Some(cx.waker().clone());
                 Poll::Pending
             }
         }
+    }
+}
+
+impl<U, C, S> asynch::server::Acceptor for AsyncAcceptor<U, C, S>
+where
+    U: Unblocker + Clone + Send,
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
+    C::RawMutex: Send + Sync,
+    S: Sender + SessionProvider + Send + Clone + 'static,
+    S::Error: Send + Sync + 'static,
+{
+    type Connection = AsyncConnection<U, C, S>;
+
+    type AcceptFuture<'a>
+    where
+        Self: 'a,
+    = &'a Self;
+
+    fn accept(&self) -> Self::AcceptFuture<'_> {
+        self
+    }
+}
+
+impl<C, S> asynch::server::Acceptor for AsyncAcceptor<(), C, S>
+where
+    C: RawCondvar + Send + Sync,
+    C::RawMutex: Send + Sync,
+    C::RawMutex: Send + Sync,
+    S: Sender + SessionProvider + Send + Clone + 'static,
+{
+    type Connection = AsyncConnection<(), C, S>;
+
+    type AcceptFuture<'a>
+    where
+        Self: 'a,
+    = &'a Self;
+
+    fn accept(&self) -> Self::AcceptFuture<'_> {
+        self
     }
 }
 
