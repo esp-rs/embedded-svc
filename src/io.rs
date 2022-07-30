@@ -9,7 +9,9 @@ pub mod asynch {
     pub use embedded_io::asynch::*;
     pub use embedded_io::*;
 
-    use crate::executor::asynch::{Blocker, Blocking, RawBlocking, RawTrivialAsync, TrivialAsync};
+    use crate::executor::asynch::{
+        Blocker, Blocking, RawBlocking, RawTrivialUnblocking, TrivialUnblocking,
+    };
 
     impl<B, I> Io for Blocking<B, I>
     where
@@ -42,14 +44,14 @@ pub mod asynch {
         }
     }
 
-    impl<I> Io for TrivialAsync<I>
+    impl<I> Io for TrivialUnblocking<I>
     where
         I: Io,
     {
         type Error = I::Error;
     }
 
-    impl<R> Read for TrivialAsync<R>
+    impl<R> Read for TrivialUnblocking<R>
     where
         R: super::Read,
     {
@@ -63,7 +65,7 @@ pub mod asynch {
         }
     }
 
-    impl<W> Write for TrivialAsync<W>
+    impl<W> Write for TrivialUnblocking<W>
     where
         W: super::Write,
     {
@@ -120,14 +122,14 @@ pub mod asynch {
         }
     }
 
-    impl<I> Io for RawTrivialAsync<I>
+    impl<I> Io for RawTrivialUnblocking<I>
     where
         I: Io,
     {
         type Error = I::Error;
     }
 
-    impl<R> Read for RawTrivialAsync<R>
+    impl<R> Read for RawTrivialUnblocking<R>
     where
         R: super::Read,
     {
@@ -141,7 +143,7 @@ pub mod asynch {
         }
     }
 
-    impl<W> Write for RawTrivialAsync<W>
+    impl<W> Write for RawTrivialUnblocking<W>
     where
         W: super::Write,
     {

@@ -193,7 +193,7 @@ pub mod headers {
 
 #[cfg(feature = "experimental")]
 pub mod asynch {
-    use crate::executor::asynch::{Blocking, TrivialAsync};
+    use crate::executor::asynch::{Blocking, TrivialUnblocking};
 
     impl<B, Q> super::Query for Blocking<B, Q>
     where
@@ -230,7 +230,7 @@ pub mod asynch {
         }
     }
 
-    impl<Q> super::Query for TrivialAsync<Q>
+    impl<Q> super::Query for TrivialUnblocking<Q>
     where
         Q: super::Query,
     {
@@ -243,7 +243,7 @@ pub mod asynch {
         }
     }
 
-    impl<H> super::Headers for TrivialAsync<H>
+    impl<H> super::Headers for TrivialUnblocking<H>
     where
         H: super::Headers,
     {
@@ -252,7 +252,7 @@ pub mod asynch {
         }
     }
 
-    impl<S> super::Status for TrivialAsync<S>
+    impl<S> super::Status for TrivialUnblocking<S>
     where
         S: super::Status,
     {
@@ -262,92 +262,6 @@ pub mod asynch {
 
         fn status_message(&self) -> Option<&'_ str> {
             self.api.status_message()
-        }
-    }
-}
-
-pub mod cookies {
-    use core::iter::{self, Iterator};
-    use core::str::Split;
-
-    pub struct Cookies<'a>(&'a str);
-
-    impl<'a> Cookies<'a> {
-        pub fn new(cookies_str: &'a str) -> Self {
-            Self(cookies_str)
-        }
-
-        pub fn get(&self, name: &str) -> Option<&'a str> {
-            Cookies::new(self.0)
-                .into_iter()
-                .find(|(key, _)| *key == name)
-                .map(|(_, value)| value)
-        }
-
-        pub fn set<'b, I>(
-            iter: I,
-            name: &'b str,
-            value: &'b str,
-        ) -> impl Iterator<Item = (&'b str, &'b str)>
-        where
-            I: Iterator<Item = (&'b str, &'b str)> + 'b,
-        {
-            iter.filter(move |(key, _)| *key != name)
-                .chain(core::iter::once((name, value)))
-        }
-
-        pub fn remove<'b, I>(iter: I, name: &'b str) -> impl Iterator<Item = (&'b str, &'b str)>
-        where
-            I: Iterator<Item = (&'b str, &'b str)> + 'b,
-        {
-            iter.filter(move |(key, _)| *key != name)
-        }
-
-        pub fn serialize<'b, I>(iter: I) -> impl Iterator<Item = &'b str>
-        where
-            I: Iterator<Item = (&'b str, &'b str)> + 'b,
-        {
-            iter.flat_map(|(k, v)| {
-                iter::once(";")
-                    .chain(iter::once(k))
-                    .chain(iter::once("="))
-                    .chain(iter::once(v))
-            })
-            .skip(1)
-        }
-    }
-
-    impl<'a> IntoIterator for Cookies<'a> {
-        type Item = (&'a str, &'a str);
-
-        type IntoIter = CookieIterator<'a>;
-
-        fn into_iter(self) -> Self::IntoIter {
-            CookieIterator::new(self.0)
-        }
-    }
-
-    pub struct CookieIterator<'a>(Split<'a, char>);
-
-    impl<'a> CookieIterator<'a> {
-        pub fn new(cookies: &'a str) -> Self {
-            Self(cookies.split(';'))
-        }
-    }
-
-    impl<'a> Iterator for CookieIterator<'a> {
-        type Item = (&'a str, &'a str);
-
-        fn next(&mut self) -> Option<Self::Item> {
-            self.0
-                .next()
-                .map(|cookie_pair| cookie_pair.split('='))
-                .and_then(|mut cookie_pair| {
-                    cookie_pair
-                        .next()
-                        .map(|name| cookie_pair.next().map(|value| (name, value)))
-                })
-                .flatten()
         }
     }
 }

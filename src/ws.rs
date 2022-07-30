@@ -119,7 +119,7 @@ pub mod callback_server {
 pub mod asynch {
     use core::future::Future;
 
-    use crate::executor::asynch::{Blocker, Blocking, TrivialAsync};
+    use crate::executor::asynch::{Blocker, Blocking, TrivialUnblocking};
 
     pub use super::{ErrorType, Fragmented, FrameType};
 
@@ -202,14 +202,14 @@ pub mod asynch {
         }
     }
 
-    impl<E> ErrorType for TrivialAsync<E>
+    impl<E> ErrorType for TrivialUnblocking<E>
     where
         E: ErrorType,
     {
         type Error = E::Error;
     }
 
-    impl<S> Sender for TrivialAsync<S>
+    impl<S> Sender for TrivialUnblocking<S>
     where
         S: super::Sender + Send,
     {
@@ -227,7 +227,7 @@ pub mod asynch {
         }
     }
 
-    impl<R> Receiver for TrivialAsync<R>
+    impl<R> Receiver for TrivialUnblocking<R>
     where
         R: super::Receiver + Send,
     {
