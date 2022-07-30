@@ -186,6 +186,10 @@ impl HandlerError {
     pub fn message(&self) -> &str {
         &self.0
     }
+
+    pub fn release(self) -> heapless::String<128> {
+        self.0
+    }
 }
 
 impl<E> From<E> for HandlerError
@@ -326,7 +330,7 @@ where
 pub mod asynch {
     use core::future::Future;
 
-    use crate::executor::asynch::{Blocker, RawBlocking, RawTrivialAsync};
+    use crate::executor::asynch::{Blocker, RawBlocking, RawTrivialUnblocking};
     use crate::io::{asynch::Read, asynch::Write};
 
     pub use super::{HandlerError, HandlerResult, Headers, Method, Query, Status};
@@ -718,9 +722,9 @@ pub mod asynch {
         C: super::Connection,
     {
         connection: C,
-        lended_read: RawTrivialAsync<C::Read>,
-        lended_write: RawTrivialAsync<C::Write>,
-        lended_raw: RawTrivialAsync<C::RawConnection>,
+        lended_read: RawTrivialUnblocking<C::Read>,
+        lended_write: RawTrivialUnblocking<C::Write>,
+        lended_raw: RawTrivialUnblocking<C::RawConnection>,
     }
 
     impl<C> TrivialAsyncConnection<C>
@@ -730,9 +734,9 @@ pub mod asynch {
         pub fn new(connection: C) -> Self {
             Self {
                 connection,
-                lended_read: RawTrivialAsync::new(),
-                lended_write: RawTrivialAsync::new(),
-                lended_raw: RawTrivialAsync::new(),
+                lended_read: RawTrivialUnblocking::new(),
+                lended_write: RawTrivialUnblocking::new(),
+                lended_raw: RawTrivialUnblocking::new(),
             }
         }
 
@@ -758,13 +762,13 @@ pub mod asynch {
     {
         type Headers = C::Headers;
 
-        type Read = RawTrivialAsync<C::Read>;
+        type Read = RawTrivialUnblocking<C::Read>;
 
-        type Write = RawTrivialAsync<C::Write>;
+        type Write = RawTrivialUnblocking<C::Write>;
 
         type RawConnectionError = C::RawConnectionError;
 
-        type RawConnection = RawTrivialAsync<C::RawConnection>;
+        type RawConnection = RawTrivialUnblocking<C::RawConnection>;
 
         type IntoResponseFuture<'a>
         where

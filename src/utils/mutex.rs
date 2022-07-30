@@ -227,22 +227,3 @@ impl MutexFamily for NoopMutexFamily {
 }
 
 pub type NoopMutex<T> = crate::utils::mutex::Mutex<NoopRawMutex, T>;
-
-#[cfg(feature = "experimental")]
-impl<V> crate::signal::asynch::SignalFamily for Condvar<V>
-where
-    V: RawCondvar,
-{
-    type Signal<T> = crate::utils::asynch::signal::MutexSignal<V::RawMutex, T>;
-}
-
-#[cfg(feature = "experimental")]
-impl<V> crate::signal::asynch::SendSyncSignalFamily for Condvar<V>
-where
-    V: RawCondvar,
-{
-    type Signal<T>
-    where
-        T: Send,
-    = crate::utils::asynch::signal::MutexSignal<V::RawMutex, T>;
-}
