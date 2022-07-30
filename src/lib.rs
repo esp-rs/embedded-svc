@@ -26,7 +26,6 @@ pub mod mutex;
 #[cfg(feature = "experimental")]
 pub mod ota;
 pub mod ping;
-pub mod signal;
 pub mod storage;
 pub mod sys_time;
 pub mod timer;

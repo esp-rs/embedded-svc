@@ -2,15 +2,6 @@
 pub mod asynch {
     use core::fmt::Debug;
     use core::future::Future;
-    use core::result::Result;
-    use core::task::Waker;
-
-    pub trait WakerRegistration {
-        fn new() -> Self;
-
-        fn register(&mut self, waker: &Waker);
-        fn wake(&mut self);
-    }
 
     pub trait Blocker {
         fn block_on<F>(&self, future: F) -> F::Output
@@ -64,22 +55,22 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
-    pub struct TrivialAsync<T> {
+    pub struct TrivialUnblocking<T> {
         pub api: T,
     }
 
-    impl<T> TrivialAsync<T> {
+    impl<T> TrivialUnblocking<T> {
         pub const fn new(api: T) -> Self {
             Self { api }
         }
     }
 
     #[derive(Debug)]
-    pub struct RawTrivialAsync<T> {
+    pub struct RawTrivialUnblocking<T> {
         pub api: *mut T,
     }
 
-    impl<T> RawTrivialAsync<T> {
+    impl<T> RawTrivialUnblocking<T> {
         pub fn new() -> Self {
             Self {
                 api: core::ptr::null_mut(),
@@ -87,7 +78,7 @@ pub mod asynch {
         }
     }
 
-    impl<T> Default for RawTrivialAsync<T> {
+    impl<T> Default for RawTrivialUnblocking<T> {
         fn default() -> Self {
             Self::new()
         }
@@ -122,76 +113,36 @@ pub mod asynch {
         }
     }
 
-    pub trait Spawner<'a> {
-        type Error: Debug;
-
-        type Task<T>
-        where
-            T: 'a;
-
-        fn spawn<F, T>(&mut self, fut: F) -> Result<Self::Task<T>, Self::Error>
-        where
-            F: Future<Output = T> + Send + 'a,
-            T: 'a;
+    #[derive(Clone, Debug)]
+    pub struct Unblocking<U, T> {
+        pub unblocker: U,
+        pub api: T,
     }
 
-    pub trait LocalSpawner<'a>: Spawner<'a> {
-        fn spawn_local<F, T>(&mut self, fut: F) -> Result<Self::Task<T>, Self::Error>
-        where
-            F: Future<Output = T> + 'a,
-            T: 'a;
-    }
-
-    pub trait Executor {
-        type RunContext;
-
-        fn with_context<F, T>(&mut self, run: F) -> T
-        where
-            F: FnOnce(&mut Self, &Self::RunContext) -> T;
-
-        fn tick_until<C>(&mut self, context: &Self::RunContext, until: &C) -> bool
-        where
-            C: Fn() -> bool,
-        {
-            while !until() {
-                if !self.tick(context) {
-                    return true;
-                }
-            }
-
-            false
-        }
-
-        fn tick(&mut self, context: &Self::RunContext) -> bool;
-
-        fn drop_tasks<T>(&mut self, context: &Self::RunContext, tasks: T) {
-            drop(tasks);
-
-            while self.tick(context) {}
+    impl<U, T> Unblocking<U, T> {
+        pub const fn new(unblocker: U, api: T) -> Self {
+            Self { unblocker, api }
         }
     }
 
-    pub trait WaitableExecutor: Executor {
-        fn run<C, T>(&mut self, context: &Self::RunContext, until: C, tasks: Option<T>)
-        where
-            C: Fn() -> bool,
-        {
-            self.run_until(context, until);
+    #[derive(Clone, Debug)]
+    pub struct RawUnblocking<U, T> {
+        pub unblocker: *const U,
+        pub api: *mut T,
+    }
 
-            if let Some(tasks) = tasks {
-                self.drop_tasks(context, tasks)
+    impl<U, T> RawUnblocking<U, T> {
+        pub fn new() -> Self {
+            Self {
+                unblocker: core::ptr::null(),
+                api: core::ptr::null_mut(),
             }
         }
+    }
 
-        fn run_until<C>(&mut self, context: &Self::RunContext, until: C)
-        where
-            C: Fn() -> bool,
-        {
-            while self.tick_until(context, &until) {
-                self.wait(context);
-            }
+    impl<B, T> Default for RawUnblocking<B, T> {
+        fn default() -> Self {
+            Self::new()
         }
-
-        fn wait(&mut self, context: &Self::RunContext);
     }
 }

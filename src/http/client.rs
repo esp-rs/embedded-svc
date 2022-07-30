@@ -244,7 +244,7 @@ where
 pub mod asynch {
     use core::future::Future;
 
-    use crate::executor::asynch::{Blocker, RawBlocking, RawTrivialAsync};
+    use crate::executor::asynch::{Blocker, RawBlocking, RawTrivialUnblocking};
     use crate::io::{asynch::Read, asynch::Write, Error, Io};
 
     pub use crate::http::asynch::*;
@@ -630,9 +630,9 @@ pub mod asynch {
         C: super::Connection,
     {
         connection: C,
-        lended_read: RawTrivialAsync<C::Read>,
-        lended_write: RawTrivialAsync<C::Write>,
-        lended_raw: RawTrivialAsync<C::RawConnection>,
+        lended_read: RawTrivialUnblocking<C::Read>,
+        lended_write: RawTrivialUnblocking<C::Write>,
+        lended_raw: RawTrivialUnblocking<C::RawConnection>,
     }
 
     impl<C> TrivialAsyncConnection<C>
@@ -642,9 +642,9 @@ pub mod asynch {
         pub fn new(connection: C) -> Self {
             Self {
                 connection,
-                lended_read: RawTrivialAsync::new(),
-                lended_write: RawTrivialAsync::new(),
-                lended_raw: RawTrivialAsync::new(),
+                lended_read: RawTrivialUnblocking::new(),
+                lended_write: RawTrivialUnblocking::new(),
+                lended_raw: RawTrivialUnblocking::new(),
             }
         }
 
@@ -670,13 +670,13 @@ pub mod asynch {
     {
         type Headers = C::Headers;
 
-        type Read = RawTrivialAsync<C::Read>;
+        type Read = RawTrivialUnblocking<C::Read>;
 
-        type Write = RawTrivialAsync<C::Write>;
+        type Write = RawTrivialUnblocking<C::Write>;
 
         type RawConnectionError = C::RawConnectionError;
 
-        type RawConnection = RawTrivialAsync<C::RawConnection>;
+        type RawConnection = RawTrivialUnblocking<C::RawConnection>;
 
         type IntoResponseFuture<'a>
         where
