@@ -1,12 +1,5 @@
-// Uncomment once domain 0.6.2 which has no_std support is released
-//#[cfg(feature = "experimental")]
-//pub mod captive;
-#[cfg(feature = "experimental")]
-pub mod asynch;
 #[cfg(feature = "experimental")]
 pub mod asyncify;
-#[cfg(all(feature = "experimental", target_has_atomic = "8"))]
-pub mod forever;
 #[cfg(all(
     feature = "experimental",
     any(feature = "json_io", feature = "json_io_core"),
