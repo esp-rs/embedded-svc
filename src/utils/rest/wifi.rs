@@ -1,11 +1,12 @@
 use crate::http::server::*;
-use crate::mutex::Mutex;
+use crate::mutex::RawMutex;
 use crate::utils::json_io;
+use crate::utils::mutex::Mutex;
 use crate::wifi;
 
 pub fn get_capabilities(
     request: Request<impl Connection>,
-    wifi: &impl Mutex<Data = impl wifi::Wifi>,
+    wifi: &Mutex<impl RawMutex, impl wifi::Wifi>,
 ) -> HandlerResult {
     let caps = wifi.lock().get_capabilities()?;
 
@@ -14,7 +15,7 @@ pub fn get_capabilities(
 
 pub fn get_status(
     request: Request<impl Connection>,
-    wifi: &impl Mutex<Data = impl wifi::Wifi>,
+    wifi: &Mutex<impl RawMutex, impl wifi::Wifi>,
 ) -> HandlerResult {
     let status = wifi.lock().get_status();
 
@@ -23,7 +24,7 @@ pub fn get_status(
 
 pub fn scan(
     request: Request<impl Connection>,
-    wifi: &impl Mutex<Data = impl wifi::Wifi>,
+    wifi: &Mutex<impl RawMutex, impl wifi::Wifi>,
 ) -> HandlerResult {
     let mut wifi = wifi.lock();
 
@@ -34,7 +35,7 @@ pub fn scan(
 
 pub fn get_configuration(
     request: Request<impl Connection>,
-    wifi: &impl Mutex<Data = impl wifi::Wifi>,
+    wifi: &Mutex<impl RawMutex, impl wifi::Wifi>,
 ) -> HandlerResult {
     let wifi = wifi.lock();
 
@@ -45,7 +46,7 @@ pub fn get_configuration(
 
 pub fn set_configuration(
     mut request: Request<impl Connection>,
-    wifi: &impl Mutex<Data = impl wifi::Wifi>,
+    wifi: &Mutex<impl RawMutex, impl wifi::Wifi>,
 ) -> HandlerResult {
     let conf: wifi::Configuration = json_io::read::<1024, _, _>(&mut request)?;
 

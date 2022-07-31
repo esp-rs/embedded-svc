@@ -100,7 +100,7 @@ where
     }
 }
 
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use crate::channel::asynch::{Receiver, Sender};
 

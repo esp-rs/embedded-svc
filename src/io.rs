@@ -2,7 +2,7 @@ pub use embedded_io::adapters;
 pub use embedded_io::blocking::*;
 pub use embedded_io::*;
 
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::future::Future;
 
@@ -56,9 +56,7 @@ pub mod asynch {
         R: super::Read,
     {
         type ReadFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<usize, Self::Error>>;
+        = impl Future<Output = Result<usize, Self::Error>> where Self: 'a;
 
         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
             async move { self.api.read(buf) }
@@ -70,18 +68,14 @@ pub mod asynch {
         W: super::Write,
     {
         type WriteFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<usize, Self::Error>>;
+        = impl Future<Output = Result<usize, Self::Error>> where Self: 'a;
 
         fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
             async move { self.api.write(buf) }
         }
 
         type FlushFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>>;
+        = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
 
         fn flush(&mut self) -> Self::FlushFuture<'_> {
             async move { self.api.flush() }
@@ -101,8 +95,9 @@ pub mod asynch {
         R: Read,
     {
         fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-            unsafe { self.blocker.as_ref().unwrap() }
-                .block_on(unsafe { self.api.as_mut().unwrap().read(buf) })
+            unsafe { self.blocker.as_ref() }
+                .unwrap()
+                .block_on(unsafe { self.api.as_mut() }.unwrap().read(buf))
         }
     }
 
@@ -112,13 +107,15 @@ pub mod asynch {
         W: Write,
     {
         fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-            unsafe { self.blocker.as_ref().unwrap() }
-                .block_on(unsafe { self.api.as_mut().unwrap().write(buf) })
+            unsafe { self.blocker.as_ref() }
+                .unwrap()
+                .block_on(unsafe { self.api.as_mut() }.unwrap().write(buf))
         }
 
         fn flush(&mut self) -> Result<(), Self::Error> {
-            unsafe { self.blocker.as_ref().unwrap() }
-                .block_on(unsafe { self.api.as_mut().unwrap().flush() })
+            unsafe { self.blocker.as_ref() }
+                .unwrap()
+                .block_on(unsafe { self.api.as_mut() }.unwrap().flush())
         }
     }
 
@@ -134,12 +131,10 @@ pub mod asynch {
         R: super::Read,
     {
         type ReadFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<usize, Self::Error>>;
+        = impl Future<Output = Result<usize, Self::Error>> where Self: 'a;
 
         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
-            async move { unsafe { self.api.as_mut().unwrap().read(buf) } }
+            async move { unsafe { self.api.as_mut() }.unwrap().read(buf) }
         }
     }
 
@@ -148,21 +143,17 @@ pub mod asynch {
         W: super::Write,
     {
         type WriteFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<usize, Self::Error>>;
+        = impl Future<Output = Result<usize, Self::Error>> where Self: 'a;
 
         fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
-            async move { unsafe { self.api.as_mut().unwrap().write(buf) } }
+            async move { unsafe { self.api.as_mut() }.unwrap().write(buf) }
         }
 
         type FlushFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>>;
+        = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
 
         fn flush(&mut self) -> Self::FlushFuture<'_> {
-            async move { unsafe { self.api.as_mut().unwrap().flush() } }
+            async move { unsafe { self.api.as_mut() }.unwrap().flush() }
         }
     }
 }

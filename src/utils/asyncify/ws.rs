@@ -14,11 +14,14 @@ pub mod server {
 
     use log::info;
 
-    use crate::executor::asynch::Unblocker;
     use crate::mutex::RawCondvar;
     use crate::utils::mutex::{Condvar, Mutex};
     use crate::ws::{callback_server::*, *};
 
+    #[cfg(all(feature = "nightly", feature = "experimental"))]
+    pub use async_traits_impl::*;
+
+    #[allow(dead_code)]
     pub struct AsyncConnection<U, C, S>
     where
         C: RawCondvar,
@@ -29,27 +32,16 @@ pub mod server {
         condvar: Arc<Condvar<C>>,
     }
 
-    impl<U, C, S> ErrorType for AsyncConnection<U, C, S>
+    impl<C, S> AsyncConnection<(), C, S>
     where
-        C: RawCondvar,
-        S: ErrorType,
-    {
-        type Error = S::Error;
-    }
-
-    impl<U, C, S> asynch::Sender for AsyncConnection<U, C, S>
-    where
-        U: Unblocker,
         C: RawCondvar,
         S: Sender + SessionProvider + Send + Clone + 'static,
-        S::Error: Send + Sync + 'static,
     {
-        type SendFuture<'a>
-        where
-            Self: 'a,
-        = U::UnblockFuture<Result<(), S::Error>>;
-
-        fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Self::SendFuture<'_> {
+        pub async fn send(
+            &mut self,
+            frame_type: FrameType,
+            frame_data: &[u8],
+        ) -> Result<(), S::Error> {
             info!(
                 "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
                 frame_type,
@@ -60,49 +52,21 @@ pub mod server {
             let mut sender = self.sender.clone();
             let frame_data: Vec<u8> = frame_data.to_owned();
 
-            self.unblocker
-                .unblock(move || sender.send(frame_type, &frame_data))
+            async move { sender.send(frame_type, &frame_data) }.await
         }
     }
 
-    impl<C, S> asynch::Sender for AsyncConnection<(), C, S>
-    where
-        C: RawCondvar,
-        S: Sender + SessionProvider + Send + Clone + 'static,
-    {
-        type SendFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>>;
-
-        fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Self::SendFuture<'_> {
-            info!(
-                "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
-                frame_type,
-                frame_data.len(),
-                self.sender.session()
-            );
-
-            let mut sender = self.sender.clone();
-            let frame_data: Vec<u8> = frame_data.to_owned();
-
-            async move { sender.send(frame_type, &frame_data) }
-        }
-    }
-
-    impl<U, C, S> asynch::Receiver for AsyncConnection<U, C, S>
+    impl<U, C, S> AsyncConnection<U, C, S>
     where
         U: Send,
         C: RawCondvar + Send + Sync,
         C::RawMutex: Send + Sync,
         S: ErrorType + Send,
     {
-        type ReceiveFuture<'a>
-        where
-            Self: 'a,
-        = AsyncReceiverFuture<'a, U, C, S>;
-
-        fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
+        pub fn recv<'a>(
+            &'a mut self,
+            frame_data_buf: &'a mut [u8],
+        ) -> AsyncReceiverFuture<'a, U, C, S> {
             AsyncReceiverFuture {
                 receiver: self,
                 frame_data_buf,
@@ -207,15 +171,6 @@ pub mod server {
         }
     }
 
-    impl<U, C, S> ErrorType for AsyncAcceptor<U, C, S>
-    where
-        C: RawCondvar + Send + Sync,
-        C::RawMutex: Send + Sync,
-        S: Send + ErrorType,
-    {
-        type Error = <S as ErrorType>::Error;
-    }
-
     impl<'a, U, C, S> Future for &'a AsyncAcceptor<U, C, S>
     where
         U: Clone,
@@ -250,46 +205,6 @@ pub mod server {
                     Poll::Pending
                 }
             }
-        }
-    }
-
-    impl<U, C, S> asynch::server::Acceptor for AsyncAcceptor<U, C, S>
-    where
-        U: Unblocker + Clone + Send,
-        C: RawCondvar + Send + Sync,
-        C::RawMutex: Send + Sync,
-        C::RawMutex: Send + Sync,
-        S: Sender + SessionProvider + Send + Clone + 'static,
-        S::Error: Send + Sync + 'static,
-    {
-        type Connection = AsyncConnection<U, C, S>;
-
-        type AcceptFuture<'a>
-        where
-            Self: 'a,
-        = &'a Self;
-
-        fn accept(&self) -> Self::AcceptFuture<'_> {
-            self
-        }
-    }
-
-    impl<C, S> asynch::server::Acceptor for AsyncAcceptor<(), C, S>
-    where
-        C: RawCondvar + Send + Sync,
-        C::RawMutex: Send + Sync,
-        C::RawMutex: Send + Sync,
-        S: Sender + SessionProvider + Send + Clone + 'static,
-    {
-        type Connection = AsyncConnection<(), C, S>;
-
-        type AcceptFuture<'a>
-        where
-            Self: 'a,
-        = &'a Self;
-
-        fn accept(&self) -> Self::AcceptFuture<'_> {
-            self
         }
     }
 
@@ -480,6 +395,137 @@ pub mod server {
     {
         fn drop(&mut self) {
             self.process_accept_close();
+        }
+    }
+
+    #[cfg(all(feature = "nightly", feature = "experimental"))]
+    mod async_traits_impl {
+        use core::future::Future;
+
+        extern crate alloc;
+        use alloc::borrow::ToOwned;
+        use alloc::vec::Vec;
+
+        use log::info;
+
+        use crate::executor::asynch::Unblocker;
+        use crate::mutex::RawCondvar;
+        use crate::ws::{callback_server::*, *};
+
+        use super::{AsyncAcceptor, AsyncConnection, AsyncReceiverFuture};
+
+        impl<U, C, S> ErrorType for AsyncConnection<U, C, S>
+        where
+            C: RawCondvar,
+            S: ErrorType,
+        {
+            type Error = S::Error;
+        }
+
+        impl<U, C, S> asynch::Sender for AsyncConnection<U, C, S>
+        where
+            U: Unblocker,
+            C: RawCondvar,
+            S: Sender + SessionProvider + Send + Clone + 'static,
+            S::Error: Send + Sync + 'static,
+        {
+            type SendFuture<'a>
+            = U::UnblockFuture<Result<(), S::Error>> where Self: 'a;
+
+            fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Self::SendFuture<'_> {
+                info!(
+                    "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
+                    frame_type,
+                    frame_data.len(),
+                    self.sender.session()
+                );
+
+                let mut sender = self.sender.clone();
+                let frame_data: Vec<u8> = frame_data.to_owned();
+
+                self.unblocker
+                    .unblock(move || sender.send(frame_type, &frame_data))
+            }
+        }
+
+        impl<C, S> asynch::Sender for AsyncConnection<(), C, S>
+        where
+            C: RawCondvar,
+            S: Sender + SessionProvider + Send + Clone + 'static,
+        {
+            type SendFuture<'a>
+            = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
+
+            fn send<'a>(
+                &'a mut self,
+                frame_type: FrameType,
+                frame_data: &'a [u8],
+            ) -> Self::SendFuture<'a> {
+                async move { AsyncConnection::send(self, frame_type, frame_data).await }
+            }
+        }
+
+        impl<U, C, S> asynch::Receiver for AsyncConnection<U, C, S>
+        where
+            U: Send,
+            C: RawCondvar + Send + Sync,
+            C::RawMutex: Send + Sync,
+            S: ErrorType + Send,
+        {
+            type ReceiveFuture<'a>
+            = AsyncReceiverFuture<'a, U, C, S> where Self: 'a;
+
+            fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
+                AsyncReceiverFuture {
+                    receiver: self,
+                    frame_data_buf,
+                }
+            }
+        }
+
+        impl<U, C, S> ErrorType for AsyncAcceptor<U, C, S>
+        where
+            C: RawCondvar + Send + Sync,
+            C::RawMutex: Send + Sync,
+            S: Send + ErrorType,
+        {
+            type Error = <S as ErrorType>::Error;
+        }
+
+        impl<U, C, S> asynch::server::Acceptor for AsyncAcceptor<U, C, S>
+        where
+            U: Unblocker + Clone + Send,
+            C: RawCondvar + Send + Sync,
+            C::RawMutex: Send + Sync,
+            C::RawMutex: Send + Sync,
+            S: Sender + SessionProvider + Send + Clone + 'static,
+            S::Error: Send + Sync + 'static,
+        {
+            type Connection = AsyncConnection<U, C, S>;
+
+            type AcceptFuture<'a>
+            = &'a Self where Self: 'a;
+
+            fn accept(&self) -> Self::AcceptFuture<'_> {
+                self
+            }
+        }
+
+        impl<C, S> asynch::server::Acceptor for AsyncAcceptor<(), C, S>
+        where
+            C: RawCondvar + Send + Sync,
+            C::RawMutex: Send + Sync,
+            C::RawMutex: Send + Sync,
+            S: Sender + SessionProvider + Send + Clone + 'static,
+        {
+            type Connection = AsyncConnection<(), C, S>;
+
+            type AcceptFuture<'a>
+            = &'a Self where Self: 'a;
+
+            fn accept(&self) -> Self::AcceptFuture<'_> {
+                self
+            }
         }
     }
 }

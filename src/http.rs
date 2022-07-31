@@ -191,7 +191,7 @@ pub mod headers {
     }
 }
 
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use crate::executor::asynch::{Blocking, TrivialUnblocking};
 

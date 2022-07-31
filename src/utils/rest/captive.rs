@@ -4,22 +4,26 @@ use embedded_io::blocking::Write;
 
 use crate::http::server::{Connection, Handler, HandlerResult, Middleware, Request};
 use crate::http::{headers, Headers};
-use crate::mutex::*;
+use crate::mutex::RawMutex;
+use crate::utils::mutex::Mutex;
 
-pub struct WithCaptivePortalMiddleware<M, F> {
-    captive: M,
+pub struct WithCaptivePortalMiddleware<M, F>
+where
+    M: RawMutex,
+{
+    captive: Mutex<M, bool>,
     portal_uri: &'static str,
     allowed_hosts: F,
 }
 
 impl<M, F> WithCaptivePortalMiddleware<M, F>
 where
-    M: Mutex<Data = bool>,
+    M: RawMutex,
     F: Fn(&str) -> bool,
 {
     pub fn new(captive: bool, portal_uri: &'static str, allowed_hosts: F) -> Self {
         Self {
-            captive: M::new(captive),
+            captive: Mutex::new(captive),
             portal_uri,
             allowed_hosts,
         }
@@ -29,7 +33,7 @@ where
 impl<C, M, F> Middleware<C> for WithCaptivePortalMiddleware<M, F>
 where
     C: Connection,
-    M: Mutex<Data = bool> + Send,
+    M: RawMutex + Send,
     F: Fn(&str) -> bool + Send,
 {
     fn handle<H>(&self, connection: C, handler: &H) -> HandlerResult
@@ -59,11 +63,11 @@ where
 pub fn get_status<C, M, const N: usize>(
     request: Request<C>,
     portal_uri: &str,
-    captive: &M,
+    captive: &Mutex<M, bool>,
 ) -> HandlerResult
 where
     C: Connection,
-    M: Mutex<Data = bool>,
+    M: RawMutex,
 {
     let mut data = heapless::String::<N>::new();
 
