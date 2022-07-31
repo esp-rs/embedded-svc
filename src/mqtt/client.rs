@@ -417,7 +417,7 @@ pub mod utils {
     }
 }
 
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::future::Future;
 
@@ -444,14 +444,10 @@ pub mod asynch {
         C: Client,
     {
         type SubscribeFuture<'a>
-        where
-            Self: 'a,
-        = C::SubscribeFuture<'a>;
+        = C::SubscribeFuture<'a> where Self: 'a;
 
         type UnsubscribeFuture<'a>
-        where
-            Self: 'a,
-        = C::UnsubscribeFuture<'a>;
+        = C::UnsubscribeFuture<'a> where Self: 'a;
 
         fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a> {
             (*self).subscribe(topic, qos)
@@ -481,9 +477,7 @@ pub mod asynch {
         P: Publish,
     {
         type PublishFuture<'a>
-        where
-            Self: 'a,
-        = P::PublishFuture<'a>;
+        = P::PublishFuture<'a> where Self: 'a;
 
         fn publish<'a>(
             &'a mut self,
@@ -516,9 +510,7 @@ pub mod asynch {
         type Message = C::Message;
 
         type NextFuture<'a>
-        where
-            Self: 'a,
-        = C::NextFuture<'a>;
+        = C::NextFuture<'a> where Self: 'a;
 
         fn next(&mut self) -> Self::NextFuture<'_> {
             (*self).next()

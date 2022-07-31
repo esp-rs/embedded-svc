@@ -2,26 +2,25 @@ use core::cmp::min;
 
 use crate::errors::wrap::WrapError;
 use crate::http::server::*;
-use crate::mutex::*;
-use crate::ota::{self, OtaRead, OtaSlot, OtaUpdate};
+use crate::mutex::RawMutex;
+use crate::ota::{self, OtaRead, OtaUpdate};
 use crate::utils::json_io;
+use crate::utils::mutex::Mutex;
 
 pub fn get_status(
     request: Request<impl Connection>,
-    ota: &impl Mutex<Data = impl ota::Ota>,
+    ota: &Mutex<impl RawMutex, impl ota::Ota>,
 ) -> HandlerResult {
     let ota = ota.lock();
 
     let slot = ota.get_running_slot()?;
 
-    let info = slot.get_firmware_info()?;
-
-    Ok(json_io::response::<512, _, _>(request, &info)?)
+    Ok(json_io::response::<512, _, _>(request, &slot.firmware)?)
 }
 
 pub fn get_updates(
     request: Request<impl Connection>,
-    ota_server: &impl Mutex<Data = impl ota::OtaServer>,
+    ota_server: &Mutex<impl RawMutex, impl ota::OtaServer>,
 ) -> HandlerResult {
     let mut ota_server = ota_server.lock();
 
@@ -32,7 +31,7 @@ pub fn get_updates(
 
 pub fn get_latest_update(
     request: Request<impl Connection>,
-    ota_server: &impl Mutex<Data = impl ota::OtaServer>,
+    ota_server: &Mutex<impl RawMutex, impl ota::OtaServer>,
 ) -> HandlerResult {
     let mut ota_server = ota_server.lock();
 
@@ -43,7 +42,7 @@ pub fn get_latest_update(
 
 pub fn factory_reset(
     _request: Request<impl Connection>,
-    ota: &impl Mutex<Data = impl ota::Ota>,
+    ota: &Mutex<impl RawMutex, impl ota::Ota>,
 ) -> HandlerResult {
     ota.lock().factory_reset()?;
 
@@ -52,9 +51,9 @@ pub fn factory_reset(
 
 pub fn update(
     mut request: Request<impl Connection>,
-    ota: &impl Mutex<Data = impl ota::Ota>,
-    ota_server: &impl Mutex<Data = impl ota::OtaServer>,
-    progress: &impl Mutex<Data = Option<usize>>,
+    ota: &Mutex<impl RawMutex, impl ota::Ota>,
+    ota_server: &Mutex<impl RawMutex, impl ota::OtaServer>,
+    progress: &Mutex<impl RawMutex, Option<usize>>,
 ) -> HandlerResult {
     let download_id: Option<heapless::String<128>> = json_io::read::<1024, _, _>(&mut request)?;
 
@@ -89,7 +88,7 @@ pub fn update(
 
 pub fn get_update_progress(
     request: Request<impl Connection>,
-    progress: &impl Mutex<Data = Option<usize>>,
+    progress: &Mutex<impl RawMutex, Option<usize>>,
 ) -> HandlerResult {
     Ok(json_io::response::<512, _, _>(request, &*progress.lock())?)
 }

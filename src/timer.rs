@@ -90,7 +90,7 @@ where
     }
 }
 
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::future::Future;
     use core::time::Duration;
@@ -113,9 +113,7 @@ pub mod asynch {
         O: OnceTimer,
     {
         type AfterFuture<'a>
-        where
-            Self: 'a,
-        = O::AfterFuture<'a>;
+        = O::AfterFuture<'a> where Self: 'a;
 
         fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error> {
             (*self).after(duration)
@@ -135,9 +133,7 @@ pub mod asynch {
         P: PeriodicTimer,
     {
         type Clock<'a>
-        where
-            Self: 'a,
-        = P::Clock<'a>;
+        = P::Clock<'a> where Self: 'a;
 
         fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error> {
             (*self).every(duration)

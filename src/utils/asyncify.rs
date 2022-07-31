@@ -7,48 +7,54 @@ pub mod timer;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod ws;
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
+pub use async_wrapper::*;
+
+#[cfg(all(feature = "alloc", feature = "nightly", feature = "experimental"))]
 pub use blocking_unblocker::*;
 
-pub trait AsyncWrapper<S> {
-    fn new(sync: S) -> Self;
-}
-
-pub trait Asyncify {
-    type AsyncWrapper<S>: AsyncWrapper<S>;
-
-    fn into_async(self) -> Self::AsyncWrapper<Self>
-    where
-        Self: Sized,
-    {
-        Self::AsyncWrapper::new(self)
+#[cfg(all(feature = "nightly", feature = "experimental"))]
+mod async_wrapper {
+    pub trait AsyncWrapper<S> {
+        fn new(sync: S) -> Self;
     }
 
-    fn as_async(&mut self) -> Self::AsyncWrapper<&mut Self> {
-        Self::AsyncWrapper::new(self)
+    pub trait Asyncify {
+        type AsyncWrapper<S>: AsyncWrapper<S>;
+
+        fn into_async(self) -> Self::AsyncWrapper<Self>
+        where
+            Self: Sized,
+        {
+            Self::AsyncWrapper::new(self)
+        }
+
+        fn as_async(&mut self) -> Self::AsyncWrapper<&mut Self> {
+            Self::AsyncWrapper::new(self)
+        }
+    }
+
+    pub trait UnblockingAsyncWrapper<U, S> {
+        fn new(unblocker: U, sync: S) -> Self;
+    }
+
+    pub trait UnblockingAsyncify {
+        type AsyncWrapper<U, S>: UnblockingAsyncWrapper<U, S>;
+
+        fn unblock_into_async<U>(self, unblocker: U) -> Self::AsyncWrapper<U, Self>
+        where
+            Self: Sized,
+        {
+            Self::AsyncWrapper::new(unblocker, self)
+        }
+
+        fn unblock_as_async<U>(&mut self, unblocker: U) -> Self::AsyncWrapper<U, &mut Self> {
+            Self::AsyncWrapper::new(unblocker, self)
+        }
     }
 }
 
-pub trait UnblockingAsyncWrapper<U, S> {
-    fn new(unblocker: U, sync: S) -> Self;
-}
-
-pub trait UnblockingAsyncify {
-    type AsyncWrapper<U, S>: UnblockingAsyncWrapper<U, S>;
-
-    fn unblock_into_async<U>(self, unblocker: U) -> Self::AsyncWrapper<U, Self>
-    where
-        Self: Sized,
-    {
-        Self::AsyncWrapper::new(unblocker, self)
-    }
-
-    fn unblock_as_async<U>(&mut self, unblocker: U) -> Self::AsyncWrapper<U, &mut Self> {
-        Self::AsyncWrapper::new(unblocker, self)
-    }
-}
-
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", feature = "nightly", feature = "experimental"))]
 mod blocking_unblocker {
     use core::future::Future;
     use core::marker::PhantomData;
@@ -66,9 +72,7 @@ mod blocking_unblocker {
 
     impl Unblocker for BlockingUnblocker {
         type UnblockFuture<T>
-        where
-            T: Send,
-        = BlockingFuture<T>;
+        = BlockingFuture<T> where T: Send;
 
         fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
         where
