@@ -2,7 +2,7 @@ use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
-use crate::mutex::{MutexFamily, NoopRawMutex, RawCondvar, RawMutex};
+use crate::mutex::{NoopRawMutex, RawCondvar, RawMutex};
 
 pub struct Mutex<R, T>(R, UnsafeCell<T>);
 
@@ -39,6 +39,7 @@ where
 {
 }
 
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 impl<R, T> crate::mutex::Mutex for Mutex<R, T>
 where
     R: RawMutex,
@@ -46,10 +47,7 @@ where
     type Data = T;
 
     type Guard<'a>
-    where
-        T: 'a,
-        R: 'a,
-    = MutexGuard<'a, R, T>;
+    = MutexGuard<'a, R, T> where T: 'a, R: 'a;
 
     #[inline(always)]
     fn new(data: Self::Data) -> Self {
@@ -177,6 +175,7 @@ where
     }
 }
 
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 impl<V> crate::mutex::MutexFamily for Condvar<V>
 where
     V: RawCondvar,
@@ -184,6 +183,7 @@ where
     type Mutex<T> = Mutex<V::RawMutex, T>;
 }
 
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 impl<V> crate::mutex::Condvar for Condvar<V>
 where
     V: RawCondvar,
@@ -220,9 +220,11 @@ where
     }
 }
 
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub struct NoopMutexFamily;
 
-impl MutexFamily for NoopMutexFamily {
+#[cfg(all(feature = "nightly", feature = "experimental"))]
+impl crate::mutex::MutexFamily for NoopMutexFamily {
     type Mutex<T> = NoopMutex<T>;
 }
 

@@ -359,9 +359,10 @@ pub mod server {
         use core::time::Duration;
 
         use crate::http::server::*;
-        use crate::mutex::*;
+        use crate::mutex::RawMutex;
 
         use crate::utils::http::cookies::*;
+        use crate::utils::mutex::Mutex;
 
         #[derive(Debug)]
         pub enum SessionError {
@@ -407,18 +408,18 @@ pub mod server {
 
         pub struct SessionImpl<M, S, T, const N: usize = 16>
         where
-            M: Mutex<Data = [SessionData<S>; N]>,
-            S: Default,
+            M: RawMutex,
+            S: Default + Send,
         {
             current_time: T,
-            data: M,
+            data: Mutex<M, [SessionData<S>; N]>,
             default_session_timeout: Duration,
         }
 
         impl<M, S, T, const N: usize> SessionImpl<M, S, T, N>
         where
-            M: Mutex<Data = [SessionData<S>; N]>,
-            S: Default,
+            M: RawMutex,
+            S: Default + Send,
         {
             fn cleanup(&self, current_time: Duration) {
                 let mut data = self.data.lock();
@@ -433,8 +434,8 @@ pub mod server {
 
         impl<M, S, T, const N: usize> Session for SessionImpl<M, S, T, N>
         where
-            M: Mutex<Data = [SessionData<S>; N]> + Send,
-            S: Default,
+            M: RawMutex,
+            S: Default + Send,
             T: Fn() -> Duration + Send,
         {
             type SessionData = S;

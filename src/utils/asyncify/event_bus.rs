@@ -7,11 +7,11 @@ use core::task::{Context, Poll, Waker};
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::channel::asynch::{Receiver, Sender};
-use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider};
-use crate::executor::asynch::Unblocker;
 use crate::mutex::RawCondvar;
 use crate::utils::mutex::{Condvar, Mutex};
+
+#[cfg(all(feature = "nightly", feature = "experimental"))]
+pub use async_traits_impl::*;
 
 pub struct AsyncPostbox<U, P, PB> {
     unblocker: U,
@@ -20,12 +20,23 @@ pub struct AsyncPostbox<U, P, PB> {
 }
 
 impl<U, P, PB> AsyncPostbox<U, P, PB> {
-    pub fn new(unblocker: U, blocking_postbox: PB) -> Self {
+    pub const fn new(unblocker: U, blocking_postbox: PB) -> Self {
         Self {
             unblocker,
             blocking_postbox,
             _payload_type: PhantomData,
         }
+    }
+
+    pub async fn send(&mut self, value: P)
+    where
+        P: Clone + Send + 'static,
+        PB: crate::event_bus::Postbox<P> + Clone + Send + 'static,
+    {
+        self.blocking_postbox
+            .post(&value, None)
+            .map(|_| ())
+            .unwrap()
     }
 }
 
@@ -40,62 +51,6 @@ where
             blocking_postbox: self.blocking_postbox.clone(),
             _payload_type: PhantomData,
         }
-    }
-}
-
-impl<U, P, PB> Sender for AsyncPostbox<U, P, PB>
-where
-    U: Unblocker,
-    P: Clone + Send + 'static,
-    PB: crate::event_bus::Postbox<P> + Clone + Send + 'static,
-{
-    type Data = P;
-
-    type SendFuture<'a>
-    where
-        Self: 'a,
-    = U::UnblockFuture<()>;
-
-    fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
-        let value = value;
-        let mut blocking_postbox = self.blocking_postbox.clone();
-
-        self.unblocker
-            .unblock(move || blocking_postbox.post(&value, None).map(|_| ()).unwrap())
-    }
-}
-
-impl<P, PB> Sender for AsyncPostbox<(), P, PB>
-where
-    P: Clone + Send + 'static,
-    PB: crate::event_bus::Postbox<P> + Clone + Send + 'static,
-{
-    type Data = P;
-
-    type SendFuture<'a>
-    where
-        Self: 'a,
-    = impl Future<Output = ()>;
-
-    fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
-        async move {
-            self.blocking_postbox
-                .post(&value, None)
-                .map(|_| ())
-                .unwrap()
-        }
-    }
-}
-
-impl<P, PB> super::AsyncWrapper<PB> for AsyncPostbox<(), P, PB> {
-    fn new(sync: PB) -> Self {
-        AsyncPostbox::new((), sync)
-    }
-}
-
-impl<U, P, PB> super::UnblockingAsyncWrapper<U, PB> for AsyncPostbox<U, P, PB> {
-    fn new(unblocker: U, sync: PB) -> Self {
-        AsyncPostbox::new(unblocker, sync)
     }
 }
 
@@ -114,22 +69,15 @@ where
     P: Send,
     S: Send;
 
-impl<CV, P, S> Receiver for AsyncSubscription<CV, P, S>
+impl<CV, P, S> AsyncSubscription<CV, P, S>
 where
     CV: RawCondvar + Send + Sync,
     CV::RawMutex: Send + Sync,
     S: Send,
     P: Clone + Send,
 {
-    type Data = P;
-
-    type RecvFuture<'a>
-    where
-        Self: 'a,
-    = NextFuture<'a, CV, P, S>;
-
-    fn recv(&mut self) -> Self::RecvFuture<'_> {
-        NextFuture(self)
+    pub async fn recv(&mut self) -> P {
+        NextFuture(self).await
     }
 }
 
@@ -188,7 +136,7 @@ pub struct AsyncEventBus<U, CV, E> {
 }
 
 impl<U, CV, E> AsyncEventBus<U, CV, E> {
-    pub fn new(unblocker: U, event_bus: E) -> Self {
+    pub const fn new(unblocker: U, event_bus: E) -> Self {
         Self {
             unblocker,
             event_bus,
@@ -197,50 +145,17 @@ impl<U, CV, E> AsyncEventBus<U, CV, E> {
     }
 }
 
-impl<U, CV, E> Clone for AsyncEventBus<U, CV, E>
-where
-    U: Clone,
-    E: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            unblocker: self.unblocker.clone(),
-            event_bus: self.event_bus.clone(),
-            _condvar_type: PhantomData,
-        }
-    }
-}
-
-impl<U, CV, E> super::UnblockingAsyncWrapper<U, E> for AsyncEventBus<U, CV, E> {
-    fn new(unblocker: U, sync: E) -> Self {
-        AsyncEventBus::new(unblocker, sync)
-    }
-}
-
-impl<CV, E> super::AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
-    fn new(sync: E) -> Self {
-        AsyncEventBus::new((), sync)
-    }
-}
-
-impl<U, CV, E> ErrorType for AsyncEventBus<U, CV, E>
-where
-    E: ErrorType,
-{
-    type Error = E::Error;
-}
-
-impl<U, CV, P, E> EventBus<P> for AsyncEventBus<U, CV, E>
+impl<U, CV, E> AsyncEventBus<U, CV, E>
 where
     CV: RawCondvar + Send + Sync + 'static,
     CV::RawMutex: Send + Sync + 'static,
-    P: Clone + Send + 'static,
-    E: crate::event_bus::EventBus<P>,
-    E::Subscription: Send + 'static,
 {
-    type Subscription = AsyncSubscription<CV, P, E::Subscription>;
-
-    fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error> {
+    pub fn subscribe<P>(&mut self) -> Result<AsyncSubscription<CV, P, E::Subscription>, E::Error>
+    where
+        P: Clone + Send + 'static,
+        E: crate::event_bus::EventBus<P>,
+        E::Subscription: Send + 'static,
+    {
         let state = Arc::new((
             Mutex::new(SubscriptionState {
                 subscription: None,
@@ -280,37 +195,177 @@ where
     }
 }
 
-impl<U, CV, P, E> PostboxProvider<P> for AsyncEventBus<U, CV, E>
-where
-    U: Unblocker + Clone,
-    CV: RawCondvar + Send + Sync + 'static,
-    P: Clone + Send + 'static,
-    E::Postbox: Clone + Send + 'static,
-    E: crate::event_bus::PostboxProvider<P>,
-    Self::Error: Send + Sync + 'static,
-{
-    type Postbox = AsyncPostbox<U, P, E::Postbox>;
-
-    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
-        self.event_bus
-            .postbox()
-            .map(|blocking_postbox| AsyncPostbox::new(self.unblocker.clone(), blocking_postbox))
-    }
-}
-
-impl<CV, P, E> PostboxProvider<P> for AsyncEventBus<(), CV, E>
+impl<CV, E> AsyncEventBus<(), CV, E>
 where
     CV: RawCondvar + Send + Sync + 'static,
-    P: Clone + Send + 'static,
-    E::Postbox: Clone + Send + 'static,
-    E: crate::event_bus::PostboxProvider<P>,
-    Self::Error: Send + Sync + 'static,
 {
-    type Postbox = AsyncPostbox<(), P, E::Postbox>;
-
-    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
+    pub fn postbox<P>(&mut self) -> Result<AsyncPostbox<(), P, E::Postbox>, E::Error>
+    where
+        P: Clone + Send + 'static,
+        E::Postbox: Clone + Send + 'static,
+        E: crate::event_bus::PostboxProvider<P>,
+        E::Error: Send + Sync + 'static,
+    {
         self.event_bus
             .postbox()
             .map(|blocking_postbox| AsyncPostbox::new((), blocking_postbox))
+    }
+}
+
+impl<U, CV, E> Clone for AsyncEventBus<U, CV, E>
+where
+    U: Clone,
+    E: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            unblocker: self.unblocker.clone(),
+            event_bus: self.event_bus.clone(),
+            _condvar_type: PhantomData,
+        }
+    }
+}
+
+#[cfg(all(feature = "nightly", feature = "experimental"))]
+mod async_traits_impl {
+    use core::future::Future;
+
+    use crate::channel::asynch::{Receiver, Sender};
+    use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider};
+    use crate::executor::asynch::Unblocker;
+    use crate::mutex::RawCondvar;
+    use crate::utils::asyncify::{AsyncWrapper, UnblockingAsyncWrapper};
+
+    use super::{AsyncEventBus, AsyncPostbox, AsyncSubscription, NextFuture};
+
+    impl<U, P, PB> Sender for AsyncPostbox<U, P, PB>
+    where
+        U: Unblocker,
+        P: Clone + Send + 'static,
+        PB: crate::event_bus::Postbox<P> + Clone + Send + 'static,
+    {
+        type Data = P;
+
+        type SendFuture<'a>
+        = U::UnblockFuture<()> where Self: 'a;
+
+        fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
+            let value = value;
+            let mut blocking_postbox = self.blocking_postbox.clone();
+
+            self.unblocker
+                .unblock(move || blocking_postbox.post(&value, None).map(|_| ()).unwrap())
+        }
+    }
+
+    impl<P, PB> Sender for AsyncPostbox<(), P, PB>
+    where
+        P: Clone + Send + 'static,
+        PB: crate::event_bus::Postbox<P> + Clone + Send + 'static,
+    {
+        type Data = P;
+
+        type SendFuture<'a>
+        = impl Future<Output = ()> where Self: 'a;
+
+        fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
+            async move { AsyncPostbox::send(self, value).await }
+        }
+    }
+
+    impl<P, PB> AsyncWrapper<PB> for AsyncPostbox<(), P, PB> {
+        fn new(sync: PB) -> Self {
+            AsyncPostbox::new((), sync)
+        }
+    }
+
+    impl<U, P, PB> UnblockingAsyncWrapper<U, PB> for AsyncPostbox<U, P, PB> {
+        fn new(unblocker: U, sync: PB) -> Self {
+            AsyncPostbox::new(unblocker, sync)
+        }
+    }
+
+    impl<CV, P, S> Receiver for AsyncSubscription<CV, P, S>
+    where
+        CV: RawCondvar + Send + Sync,
+        CV::RawMutex: Send + Sync,
+        S: Send,
+        P: Clone + Send,
+    {
+        type Data = P;
+
+        type RecvFuture<'a>
+        = NextFuture<'a, CV, P, S> where Self: 'a;
+
+        fn recv(&mut self) -> Self::RecvFuture<'_> {
+            NextFuture(self)
+        }
+    }
+
+    impl<U, CV, E> UnblockingAsyncWrapper<U, E> for AsyncEventBus<U, CV, E> {
+        fn new(unblocker: U, sync: E) -> Self {
+            AsyncEventBus::new(unblocker, sync)
+        }
+    }
+
+    impl<CV, E> AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
+        fn new(sync: E) -> Self {
+            AsyncEventBus::new((), sync)
+        }
+    }
+
+    impl<U, CV, E> ErrorType for AsyncEventBus<U, CV, E>
+    where
+        E: ErrorType,
+    {
+        type Error = E::Error;
+    }
+
+    impl<U, CV, P, E> EventBus<P> for AsyncEventBus<U, CV, E>
+    where
+        CV: RawCondvar + Send + Sync + 'static,
+        CV::RawMutex: Send + Sync + 'static,
+        P: Clone + Send + 'static,
+        E: crate::event_bus::EventBus<P>,
+        E::Subscription: Send + 'static,
+    {
+        type Subscription = AsyncSubscription<CV, P, E::Subscription>;
+
+        fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error> {
+            AsyncEventBus::subscribe(self)
+        }
+    }
+
+    impl<U, CV, P, E> PostboxProvider<P> for AsyncEventBus<U, CV, E>
+    where
+        U: Unblocker + Clone,
+        CV: RawCondvar + Send + Sync + 'static,
+        P: Clone + Send + 'static,
+        E::Postbox: Clone + Send + 'static,
+        E: crate::event_bus::PostboxProvider<P>,
+        Self::Error: Send + Sync + 'static,
+    {
+        type Postbox = AsyncPostbox<U, P, E::Postbox>;
+
+        fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
+            self.event_bus
+                .postbox()
+                .map(|blocking_postbox| AsyncPostbox::new(self.unblocker.clone(), blocking_postbox))
+        }
+    }
+
+    impl<CV, P, E> PostboxProvider<P> for AsyncEventBus<(), CV, E>
+    where
+        CV: RawCondvar + Send + Sync + 'static,
+        P: Clone + Send + 'static,
+        E::Postbox: Clone + Send + 'static,
+        E: crate::event_bus::PostboxProvider<P>,
+        Self::Error: Send + Sync + 'static,
+    {
+        type Postbox = AsyncPostbox<(), P, E::Postbox>;
+
+        fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
+            AsyncEventBus::postbox(self)
+        }
     }
 }

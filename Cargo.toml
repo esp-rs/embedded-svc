@@ -10,20 +10,20 @@ description = "A set of traits for services higher level than embedded-hal and t
 repository = "https://github.com/esp-rs/embedded-svc"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+rust-version = "1.61"
 
 [features]
 default = ["std", "use_serde", "use_strum", "use_numenum", "json_io"]
 
-experimental = ["futures", "embedded-io/async", "embedded-async-executor"]
-
 std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std", "serde_json?/std"]
 alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "serde_json?/alloc"]
+nightly = ["futures", "embedded-io/async"]
+experimental = ["futures"]
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
 json_io = ["serde_json"]
 json_io_core = ["serde-json-core"]
-embedded-async-executor = ["alloc", "experimental", "async-task", "waker-fn"]
 
 [dependencies]
 heapless = { version = "0.7" }
@@ -32,13 +32,11 @@ embedded-io = { version = "0.3", default-features = false }
 log = { version = "0.4", default-features = false }
 no-std-net = { version = "0.5", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"] }
+futures = { version = "0.3", default-features = false, optional = true }
 enumset = { version = "1", default-features = false }
 strum = { version = "0.23", default-features = false, optional = true, features = ["derive"] }
 strum_macros = { version = "0.23", optional = true }
 num_enum = { version = "0.5", default-features = false, optional = true }
-futures = { version = "0.3", default-features = false, optional = true }
 serde_json = { version = "1", default-features = true, optional = true }
 serde-json-core = { version = "0.4", optional = true }
-async-task = { version = "4", default-features = false, optional = true }
-waker-fn = { version = "1.1", default-features = false, optional = true }
 anyhow = { version = "1", default-features = false, optional = true } # Only used by the deprecated httpd module

@@ -1,8 +1,16 @@
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::io::{self, Error, Io, Read, Write};
+use crate::io::{self, Io, Read, Write};
 use crate::utils::io::*;
+
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub struct Slot {
+    pub label: heapless::String<32>,
+    pub state: SlotState,
+    pub firmware: Option<FirmwareInfo>,
+}
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -23,6 +31,7 @@ pub struct UpdateProgress {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Hash))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum LoadResult {
     ReloadMore,
     LoadMore,
@@ -31,6 +40,7 @@ pub enum LoadResult {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Hash))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum SlotState {
     Valid,
     Invalid,
@@ -63,55 +73,20 @@ where
     }
 }
 
-pub trait OtaSlot {
-    type Error: Error;
-
-    fn get_label(&self) -> Result<&str, Self::Error>;
-
-    fn get_state(&self) -> Result<SlotState, Self::Error>;
-
-    fn get_firmware_info(&self) -> Result<Option<FirmwareInfo>, Self::Error>;
-}
-
-impl<O> OtaSlot for &O
-where
-    O: OtaSlot,
-{
-    type Error = O::Error;
-
-    fn get_label(&self) -> Result<&str, Self::Error> {
-        (*self).get_label()
-    }
-
-    fn get_state(&self) -> Result<SlotState, Self::Error> {
-        (*self).get_state()
-    }
-
-    fn get_firmware_info(&self) -> Result<Option<FirmwareInfo>, Self::Error> {
-        (*self).get_firmware_info()
-    }
-}
-
 pub trait Ota: Io {
-    type Slot<'a>: OtaSlot<Error = Self::Error>
-    where
-        Self: 'a;
+    type Update: OtaUpdate<Error = Self::Error>;
 
-    type Update<'a>: OtaUpdate<Error = Self::Error>
-    where
-        Self: 'a;
+    fn get_boot_slot(&self) -> Result<Slot, Self::Error>;
 
-    fn get_boot_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
+    fn get_running_slot(&self) -> Result<Slot, Self::Error>;
 
-    fn get_running_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
-
-    fn get_update_slot(&self) -> Result<Self::Slot<'_>, Self::Error>;
+    fn get_update_slot(&self) -> Result<Slot, Self::Error>;
 
     fn is_factory_reset_supported(&self) -> Result<bool, Self::Error>;
 
     fn factory_reset(&mut self) -> Result<(), Self::Error>;
 
-    fn initiate_update(&mut self) -> Result<Self::Update<'_>, Self::Error>;
+    fn initiate_update(&mut self) -> Result<&mut Self::Update, Self::Error>;
 
     fn mark_running_slot_valid(&mut self) -> Result<(), Self::Error>;
 
@@ -122,25 +97,17 @@ impl<O> Ota for &mut O
 where
     O: Ota,
 {
-    type Slot<'a>
-    where
-        Self: 'a,
-    = O::Slot<'a>;
+    type Update = O::Update;
 
-    type Update<'a>
-    where
-        Self: 'a,
-    = O::Update<'a>;
-
-    fn get_boot_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
+    fn get_boot_slot(&self) -> Result<Slot, Self::Error> {
         (**self).get_boot_slot()
     }
 
-    fn get_running_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
+    fn get_running_slot(&self) -> Result<Slot, Self::Error> {
         (**self).get_running_slot()
     }
 
-    fn get_update_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
+    fn get_update_slot(&self) -> Result<Slot, Self::Error> {
         (**self).get_update_slot()
     }
 
@@ -152,7 +119,7 @@ where
         (*self).factory_reset()
     }
 
-    fn initiate_update(&mut self) -> Result<Self::Update<'_>, Self::Error> {
+    fn initiate_update(&mut self) -> Result<&mut Self::Update, Self::Error> {
         (*self).initiate_update()
     }
 
@@ -166,12 +133,12 @@ where
 }
 
 pub trait OtaUpdate: Write {
-    fn complete(self) -> Result<(), Self::Error>;
+    fn complete(&mut self) -> Result<(), Self::Error>;
 
-    fn abort(self) -> Result<(), Self::Error>;
+    fn abort(&mut self) -> Result<(), Self::Error>;
 
     fn update<R>(
-        mut self,
+        &mut self,
         read: R,
         progress: impl Fn(u64, u64),
     ) -> Result<(), CopyError<R::Error, Self::Error>>
@@ -181,7 +148,7 @@ pub trait OtaUpdate: Write {
     {
         let mut buf = [0_u8; 64];
 
-        match copy_len_with_progress(read, &mut self, &mut buf, u64::MAX, progress) {
+        match copy_len_with_progress(read, &mut *self, &mut buf, u64::MAX, progress) {
             Ok(_) => self.complete().map_err(CopyError::Write),
             Err(e) => {
                 self.abort().map_err(CopyError::Write)?;
@@ -206,9 +173,7 @@ where
 }
 
 pub trait OtaServer: Io {
-    type OtaRead<'a>: OtaRead<Error = Self::Error>
-    where
-        Self: 'a;
+    type OtaRead: OtaRead<Error = Self::Error>;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error>;
 
@@ -219,17 +184,14 @@ pub trait OtaServer: Io {
         &mut self,
     ) -> Result<heapless::Vec<FirmwareInfo, N>, Self::Error>;
 
-    fn open<'a>(&'a mut self, download_id: &'a str) -> Result<Self::OtaRead<'a>, Self::Error>;
+    fn open<'a>(&'a mut self, download_id: &'a str) -> Result<&'a mut Self::OtaRead, Self::Error>;
 }
 
 impl<O> OtaServer for &mut O
 where
     O: OtaServer,
 {
-    type OtaRead<'a>
-    where
-        Self: 'a,
-    = O::OtaRead<'a>;
+    type OtaRead = O::OtaRead;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
         (*self).get_latest_release()
@@ -245,39 +207,33 @@ where
         (*self).get_releases_n()
     }
 
-    fn open<'a>(&'a mut self, download_id: &'a str) -> Result<Self::OtaRead<'a>, Self::Error> {
+    fn open<'a>(&'a mut self, download_id: &'a str) -> Result<&'a mut Self::OtaRead, Self::Error> {
         (*self).open(download_id)
     }
 }
 
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::future::Future;
 
-    use crate::executor::asynch::{Blocker, Blocking};
+    use crate::executor::asynch::{Blocker, RawBlocking};
     use crate::io::asynch::{Io, Read, Write};
     use crate::utils::io::asynch::*;
 
-    pub use super::{FirmwareInfo, FirmwareInfoLoader, LoadResult, OtaSlot, SlotState};
+    pub use super::{FirmwareInfo, FirmwareInfoLoader, LoadResult, Slot, SlotState};
 
     pub trait Ota: Io {
-        type Slot<'a>: OtaSlot<Error = Self::Error>
+        type Update: OtaUpdate<Error = Self::Error>;
+
+        type GetBootSlotFuture<'a>: Future<Output = Result<Slot, Self::Error>>
         where
             Self: 'a;
 
-        type Update<'a>: OtaUpdate<Error = Self::Error>
+        type GetRunningSlotFuture<'a>: Future<Output = Result<Slot, Self::Error>>
         where
             Self: 'a;
 
-        type GetBootSlotFuture<'a>: Future<Output = Result<Self::Slot<'a>, Self::Error>>
-        where
-            Self: 'a;
-
-        type GetRunningSlotFuture<'a>: Future<Output = Result<Self::Slot<'a>, Self::Error>>
-        where
-            Self: 'a;
-
-        type GetUpdateSlotFuture<'a>: Future<Output = Result<Self::Slot<'a>, Self::Error>>
+        type GetUpdateSlotFuture<'a>: Future<Output = Result<Slot, Self::Error>>
         where
             Self: 'a;
 
@@ -285,7 +241,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        type InitiateUpdateFuture<'a>: Future<Output = Result<Self::Update<'a>, Self::Error>>
+        type InitiateUpdateFuture<'a>: Future<Output = Result<&'a mut Self::Update, Self::Error>>
         where
             Self: 'a;
 
@@ -314,45 +270,19 @@ pub mod asynch {
     where
         O: Ota,
     {
-        type Slot<'a>
-        where
-            Self: 'a,
-        = O::Slot<'a>;
+        type Update = O::Update;
 
-        type Update<'a>
-        where
-            Self: 'a,
-        = O::Update<'a>;
+        type GetBootSlotFuture<'a> = O::GetBootSlotFuture<'a> where Self: 'a;
 
-        type GetBootSlotFuture<'a>
-        where
-            Self: 'a,
-        = O::GetBootSlotFuture<'a>;
+        type GetRunningSlotFuture<'a> = O::GetRunningSlotFuture<'a> where Self: 'a;
 
-        type GetRunningSlotFuture<'a>
-        where
-            Self: 'a,
-        = O::GetRunningSlotFuture<'a>;
+        type GetUpdateSlotFuture<'a> = O::GetUpdateSlotFuture<'a> where Self: 'a;
 
-        type GetUpdateSlotFuture<'a>
-        where
-            Self: 'a,
-        = O::GetUpdateSlotFuture<'a>;
+        type FactoryResetFuture<'a> = O::FactoryResetFuture<'a> where Self: 'a;
 
-        type FactoryResetFuture<'a>
-        where
-            Self: 'a,
-        = O::FactoryResetFuture<'a>;
+        type InitiateUpdateFuture<'a> = O::InitiateUpdateFuture<'a> where Self: 'a;
 
-        type InitiateUpdateFuture<'a>
-        where
-            Self: 'a,
-        = O::InitiateUpdateFuture<'a>;
-
-        type MarkRunningSlotValidFuture<'a>
-        where
-            Self: 'a,
-        = O::MarkRunningSlotValidFuture<'a>;
+        type MarkRunningSlotValidFuture<'a> = O::MarkRunningSlotValidFuture<'a> where Self: 'a;
 
         fn get_boot_slot(&self) -> Self::GetBootSlotFuture<'_> {
             (**self).get_boot_slot()
@@ -396,11 +326,11 @@ pub mod asynch {
         where
             R: Read;
 
-        fn complete(self) -> Self::CompleteFuture;
+        fn complete(&mut self) -> Self::CompleteFuture;
 
-        fn abort(self) -> Self::AbortFuture;
+        fn abort(&mut self) -> Self::AbortFuture;
 
-        fn update<R>(self, read: R, progress: impl Fn(u64, u64)) -> Self::UpdateFuture<R>
+        fn update<R>(&mut self, read: R, progress: impl Fn(u64, u64)) -> Self::UpdateFuture<R>
         where
             R: Read,
             Self: Sized;
@@ -420,9 +350,7 @@ pub mod asynch {
     }
 
     pub trait OtaServer: Io {
-        type OtaRead<'a>: OtaRead<Error = Self::Error>
-        where
-            Self: 'a;
+        type OtaRead: OtaRead<Error = Self::Error>;
 
         type GetLatestReleaseFuture<'a>: Future<Output = Result<Option<FirmwareInfo>, Self::Error>>
         where
@@ -441,7 +369,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        type OpenFuture<'a>: Future<Output = Result<Self::OtaRead<'a>, Self::Error>>
+        type OpenFuture<'a>: Future<Output = Result<&'a mut Self::OtaRead, Self::Error>>
         where
             Self: 'a;
 
@@ -459,30 +387,15 @@ pub mod asynch {
     where
         O: OtaServer,
     {
-        type OtaRead<'a>
-        where
-            Self: 'a,
-        = O::OtaRead<'a>;
+        type OtaRead = O::OtaRead;
 
-        type GetLatestReleaseFuture<'a>
-        where
-            Self: 'a,
-        = O::GetLatestReleaseFuture<'a>;
+        type GetLatestReleaseFuture<'a> = O::GetLatestReleaseFuture<'a> where Self: 'a;
 
-        type GetReleasesFuture<'a>
-        where
-            Self: 'a,
-        = O::GetReleasesFuture<'a>;
+        type GetReleasesFuture<'a> = O::GetReleasesFuture<'a> where Self: 'a;
 
-        type GetReleasesNFuture<'a, const N: usize>
-        where
-            Self: 'a,
-        = O::GetReleasesNFuture<'a, N>;
+        type GetReleasesNFuture<'a, const N: usize> = O::GetReleasesNFuture<'a, N> where Self: 'a;
 
-        type OpenFuture<'a>
-        where
-            Self: 'a,
-        = O::OpenFuture<'a>;
+        type OpenFuture<'a> = O::OpenFuture<'a> where Self: 'a;
 
         fn get_latest_release(&mut self) -> Self::GetLatestReleaseFuture<'_> {
             (*self).get_latest_release()
@@ -501,67 +414,95 @@ pub mod asynch {
         }
     }
 
-    impl<B, O> super::Ota for Blocking<B, O>
+    #[derive(Debug)]
+    pub struct BlockingOta<B, O>
+    where
+        O: Ota,
+    {
+        blocker: B,
+        ota: O,
+        lended_update: RawBlocking<B, O::Update>,
+    }
+
+    impl<B, O> BlockingOta<B, O>
     where
         B: Blocker,
         O: Ota,
     {
-        type Slot<'a>
-        where
-            Self: 'a,
-        = O::Slot<'a>;
-
-        type Update<'a>
-        where
-            Self: 'a,
-        = Blocking<&'a B, O::Update<'a>>;
-
-        fn get_boot_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
-            self.blocker.block_on(self.api.get_boot_slot())
-        }
-
-        fn get_running_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
-            self.blocker.block_on(self.api.get_running_slot())
-        }
-
-        fn get_update_slot(&self) -> Result<Self::Slot<'_>, Self::Error> {
-            self.blocker.block_on(self.api.get_update_slot())
-        }
-
-        fn is_factory_reset_supported(&self) -> Result<bool, Self::Error> {
-            self.api.is_factory_reset_supported()
-        }
-
-        fn factory_reset(&mut self) -> Result<(), Self::Error> {
-            self.blocker.block_on(self.api.factory_reset())
-        }
-
-        fn initiate_update(&mut self) -> Result<Self::Update<'_>, Self::Error> {
-            let update = self.blocker.block_on(self.api.initiate_update())?;
-
-            Ok(Blocking::new(&self.blocker, update))
-        }
-
-        fn mark_running_slot_valid(&mut self) -> Result<(), Self::Error> {
-            self.blocker.block_on(self.api.mark_running_slot_valid())
-        }
-
-        fn mark_running_slot_invalid_and_reboot(&mut self) -> Self::Error {
-            self.api.mark_running_slot_invalid_and_reboot()
+        pub const fn new(blocker: B, ota: O) -> Self {
+            Self {
+                blocker,
+                ota,
+                lended_update: RawBlocking::new(),
+            }
         }
     }
 
-    impl<B, U> super::OtaUpdate for Blocking<B, U>
+    impl<B, O> Io for BlockingOta<B, O>
+    where
+        O: Ota,
+    {
+        type Error = O::Error;
+    }
+
+    impl<B, O> super::Ota for BlockingOta<B, O>
+    where
+        B: Blocker,
+        O: Ota,
+    {
+        type Update = RawBlocking<B, O::Update>;
+
+        fn get_boot_slot(&self) -> Result<Slot, Self::Error> {
+            self.blocker.block_on(self.ota.get_boot_slot())
+        }
+
+        fn get_running_slot(&self) -> Result<Slot, Self::Error> {
+            self.blocker.block_on(self.ota.get_running_slot())
+        }
+
+        fn get_update_slot(&self) -> Result<Slot, Self::Error> {
+            self.blocker.block_on(self.ota.get_update_slot())
+        }
+
+        fn is_factory_reset_supported(&self) -> Result<bool, Self::Error> {
+            self.ota.is_factory_reset_supported()
+        }
+
+        fn factory_reset(&mut self) -> Result<(), Self::Error> {
+            self.blocker.block_on(self.ota.factory_reset())
+        }
+
+        fn initiate_update(&mut self) -> Result<&mut Self::Update, Self::Error> {
+            let update = self.blocker.block_on(self.ota.initiate_update())?;
+
+            self.lended_update.blocker = &self.blocker;
+            self.lended_update.api = update;
+
+            Ok(&mut self.lended_update)
+        }
+
+        fn mark_running_slot_valid(&mut self) -> Result<(), Self::Error> {
+            self.blocker.block_on(self.ota.mark_running_slot_valid())
+        }
+
+        fn mark_running_slot_invalid_and_reboot(&mut self) -> Self::Error {
+            self.ota.mark_running_slot_invalid_and_reboot()
+        }
+    }
+
+    impl<B, U> super::OtaUpdate for RawBlocking<B, U>
     where
         B: Blocker,
         U: OtaUpdate,
     {
-        fn complete(self) -> Result<(), Self::Error> {
-            self.blocker.block_on(self.api.complete())
+        fn complete(&mut self) -> Result<(), Self::Error> {
+            unsafe { self.blocker.as_ref().unwrap() }
+                .block_on(unsafe { self.api.as_mut() }.unwrap().complete())
         }
 
-        fn abort(self) -> Result<(), Self::Error> {
-            self.blocker.block_on(self.api.abort())
+        fn abort(&mut self) -> Result<(), Self::Error> {
+            unsafe { self.blocker.as_ref().unwrap() }
+                .block_on(unsafe { self.api.as_mut() }.unwrap().abort())
         }
     }
 }
