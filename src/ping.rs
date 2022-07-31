@@ -85,7 +85,7 @@ where
         (*self).ping_details(ip, conf, reply_callback)
     }
 }
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::fmt::Debug;
     use core::future::Future;
@@ -119,9 +119,7 @@ pub mod asynch {
         type Error = P::Error;
 
         type PingFuture<'a>
-        where
-            Self: 'a,
-        = P::PingFuture<'a>;
+        = P::PingFuture<'a> where Self: 'a;
 
         fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Self::PingFuture<'_> {
             (*self).ping(ip, conf)

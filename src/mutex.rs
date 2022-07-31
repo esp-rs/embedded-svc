@@ -1,4 +1,3 @@
-use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
 /// A raw Mutex trait for no_std environments.
@@ -126,11 +125,12 @@ impl RawCondvar for StdRawCondvar {
 /// This makes it compatible with core::sync::Arc, i.e. it can be passed around to threads freely.
 ///
 /// Note that it uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub trait Mutex {
     /// Data protected by the mutex.
     type Data;
 
-    type Guard<'a>: Deref<Target = Self::Data> + DerefMut<Target = Self::Data>
+    type Guard<'a>: core::ops::Deref<Target = Self::Data> + core::ops::DerefMut<Target = Self::Data>
     where
         Self::Data: 'a,
         Self: 'a;
@@ -142,12 +142,14 @@ pub trait Mutex {
 
 /// A HKT trait for specifying mutex types.
 /// Note that it uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub trait MutexFamily {
     type Mutex<T>: Mutex<Data = T>;
 }
 
 /// A "std-like" Condvar trait for no_std environments.
 /// Note that it uses Rust GATs, which requires nightly, but the hope is that GATs will be stabilized soon.
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub trait Condvar: MutexFamily {
     fn new() -> Self;
 
@@ -167,15 +169,12 @@ pub trait Condvar: MutexFamily {
     fn notify_all(&self);
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly", feature = "experimental"))]
 impl<T> Mutex for std::sync::Mutex<T> {
     type Data = T;
 
     type Guard<'a>
-    where
-        T: 'a,
-        Self: 'a,
-    = std::sync::MutexGuard<'a, T>;
+    = std::sync::MutexGuard<'a, T> where T: 'a, Self: 'a;
 
     #[inline(always)]
     fn new(data: Self::Data) -> Self {
@@ -188,12 +187,12 @@ impl<T> Mutex for std::sync::Mutex<T> {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly", feature = "experimental"))]
 impl MutexFamily for std::sync::Condvar {
     type Mutex<T> = std::sync::Mutex<T>;
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly", feature = "experimental"))]
 impl Condvar for std::sync::Condvar {
     #[inline(always)]
     fn new() -> Self {

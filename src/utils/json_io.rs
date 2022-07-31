@@ -68,6 +68,7 @@ where
     Ok(())
 }
 
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
 

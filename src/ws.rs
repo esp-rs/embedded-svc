@@ -116,6 +116,7 @@ pub mod callback_server {
     }
 }
 
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::future::Future;
 
@@ -136,9 +137,7 @@ pub mod asynch {
         R: Receiver,
     {
         type ReceiveFuture<'a>
-        where
-            Self: 'a,
-        = R::ReceiveFuture<'a>;
+        = R::ReceiveFuture<'a> where Self: 'a;
 
         fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
             (*self).recv(frame_data_buf)
@@ -162,9 +161,7 @@ pub mod asynch {
         S: Sender,
     {
         type SendFuture<'a>
-        where
-            Self: 'a,
-        = S::SendFuture<'a>;
+        = S::SendFuture<'a> where Self: 'a;
 
         fn send<'a>(
             &'a mut self,
@@ -214,9 +211,7 @@ pub mod asynch {
         S: super::Sender + Send,
     {
         type SendFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<(), Self::Error>>;
+        = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
 
         fn send<'a>(
             &'a mut self,
@@ -232,9 +227,7 @@ pub mod asynch {
         R: super::Receiver + Send,
     {
         type ReceiveFuture<'a>
-        where
-            Self: 'a,
-        = impl Future<Output = Result<(FrameType, usize), Self::Error>>;
+        = impl Future<Output = Result<(FrameType, usize), Self::Error>> where Self: 'a;
 
         fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
             async move { self.api.recv(frame_data_buf) }
@@ -261,9 +254,7 @@ pub mod asynch {
             type Connection = A::Connection;
 
             type AcceptFuture<'a>
-            where
-                Self: 'a,
-            = A::AcceptFuture<'a>;
+            = A::AcceptFuture<'a> where Self: 'a;
 
             fn accept(&self) -> Self::AcceptFuture<'_> {
                 (*self).accept()

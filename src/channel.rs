@@ -1,4 +1,4 @@
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::future::Future;
 
@@ -19,9 +19,7 @@ pub mod asynch {
         type Data = S::Data;
 
         type SendFuture<'a>
-        where
-            Self: 'a,
-        = S::SendFuture<'a>;
+        = S::SendFuture<'a> where Self: 'a;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
             (*self).send(value)
@@ -45,9 +43,7 @@ pub mod asynch {
         type Data = R::Data;
 
         type RecvFuture<'a>
-        where
-            Self: 'a,
-        = R::RecvFuture<'a>;
+        = R::RecvFuture<'a> where Self: 'a;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             (*self).recv()
@@ -100,9 +96,7 @@ pub mod asynch {
             type Data = T;
 
             type SendFuture<'a>
-            where
-                Self: 'a,
-            = impl Future<Output = ()> + Send;
+            = impl Future<Output = ()> + Send where Self: 'a;
 
             fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
                 let inner = &mut self.inner;
@@ -121,9 +115,7 @@ pub mod asynch {
             type Data = T;
 
             type RecvFuture<'a>
-            where
-                Self: 'a,
-            = impl Future<Output = Self::Data> + Send;
+            = impl Future<Output = Self::Data> + Send where Self: 'a;
 
             fn recv(&mut self) -> Self::RecvFuture<'_> {
                 let inner = &mut self.inner;
@@ -157,9 +149,7 @@ pub mod asynch {
             type Data = A::Data;
 
             type SendFuture<'a>
-            where
-                Self: 'a,
-            = impl Future<Output = ()> + Send;
+            = impl Future<Output = ()> + Send where Self: 'a;
 
             fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
                 async move { send_both(&mut self.first, &mut self.second, value).await }
@@ -174,9 +164,7 @@ pub mod asynch {
             type Data = A::Data;
 
             type RecvFuture<'a>
-            where
-                Self: 'a,
-            = impl Future<Output = Self::Data> + Send;
+            = impl Future<Output = Self::Data> + Send where Self: 'a;
 
             fn recv(&mut self) -> Self::RecvFuture<'_> {
                 async move { recv_both(&mut self.first, &mut self.second).await }
@@ -204,9 +192,7 @@ pub mod asynch {
             type Data = T;
 
             type SendFuture<'a>
-            where
-                Self: 'a,
-            = Ready<()>;
+            = Ready<()> where Self: 'a;
 
             fn send(&mut self, _value: Self::Data) -> Self::SendFuture<'_> {
                 ready(())
@@ -220,9 +206,7 @@ pub mod asynch {
             type Data = T;
 
             type RecvFuture<'a>
-            where
-                Self: 'a,
-            = Pending<Self::Data>;
+            = Pending<Self::Data> where Self: 'a;
 
             fn recv(&mut self) -> Self::RecvFuture<'_> {
                 pending()

@@ -93,6 +93,7 @@ where
     label: &'a str,
     client: Client<C>,
     buf: [u8; B],
+    size: Option<usize>,
 }
 
 impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
@@ -105,6 +106,7 @@ where
             label,
             client: Client::wrap(connection),
             buf: [0_u8; B],
+            size: None,
         })
     }
 
@@ -180,22 +182,14 @@ where
     }
 }
 
-pub struct GitHubOtaRead<C>
-where
-    C: Connection,
-{
-    size: Option<usize>,
-    response: Response<C>,
-}
-
-impl<C> Io for GitHubOtaRead<C>
+impl<'a, C, const B: usize, const U: usize> Io for GitHubOtaService<'a, C, B, U>
 where
     C: Connection,
 {
     type Error = Error<C::Error>;
 }
 
-impl<C> OtaRead for GitHubOtaRead<C>
+impl<'a, C, const B: usize, const U: usize> OtaRead for GitHubOtaService<'a, C, B, U>
 where
     C: Connection,
 {
@@ -204,30 +198,20 @@ where
     }
 }
 
-impl<C> Read for GitHubOtaRead<C>
+impl<'a, C, const B: usize, const U: usize> Read for GitHubOtaService<'a, C, B, U>
 where
     C: Connection,
 {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.response.read(buf).map_err(Error::Http)
+        self.client.connection().read(buf).map_err(Error::Http)
     }
 }
 
-impl<'a, C> Io for GitHubOtaService<'a, C>
+impl<'a, C, const B: usize, const U: usize> OtaServer for GitHubOtaService<'a, C, B, U>
 where
     C: Connection,
 {
-    type Error = Error<C::Error>;
-}
-
-impl<'a, C> OtaServer for GitHubOtaService<'a, C>
-where
-    C: Connection,
-{
-    type OtaRead<'b>
-    where
-        Self: 'b,
-    = GitHubOtaRead<&'b mut C>;
+    type OtaRead = Self;
 
     fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
         let label = self.label;
@@ -278,7 +262,7 @@ where
             .collect::<Result<heapless::Vec<_, N>, _>>()
     }
 
-    fn open<'b>(&'b mut self, download_id: &'b str) -> Result<Self::OtaRead<'b>, Self::Error> {
+    fn open<'b>(&'b mut self, download_id: &'b str) -> Result<&'b mut Self, Self::Error> {
         let response = self
             .client
             .get(download_id)
@@ -286,10 +270,9 @@ where
             .submit()
             .map_err(Error::Http)?;
 
-        Ok(GitHubOtaRead {
-            size: None, // TODO
-            response,
-        })
+        self.size = response.content_len().map(|n| n as usize);
+
+        Ok(self)
     }
 }
 
@@ -323,7 +306,7 @@ where
     Ok(uri)
 }
 
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::convert::TryInto;
     use core::future::Future;
@@ -345,6 +328,7 @@ pub mod asynch {
         label: &'a str,
         client: Client<C>,
         buf: [u8; B],
+        size: Option<usize>,
     }
 
     impl<'a, C, const B: usize, const U: usize> GitHubOtaService<'a, C, B, U>
@@ -357,6 +341,7 @@ pub mod asynch {
                 label,
                 client: Client::wrap(connection),
                 buf: [0_u8; B],
+                size: None,
             })
         }
 
@@ -446,22 +431,32 @@ pub mod asynch {
         }
     }
 
-    pub struct GitHubOtaRead<C>
-    where
-        C: Connection,
-    {
-        size: Option<usize>,
-        response: Response<C>,
-    }
-
-    impl<C> Io for GitHubOtaRead<C>
+    impl<'a, C, const B: usize, const U: usize> Io for GitHubOtaService<'a, C, B, U>
     where
         C: Connection,
     {
         type Error = Error<C::Error>;
     }
 
-    impl<C> OtaRead for GitHubOtaRead<C>
+    impl<'a, C, const B: usize, const U: usize> Read for GitHubOtaService<'a, C, B, U>
+    where
+        C: Connection,
+    {
+        type ReadFuture<'b> = impl Future<Output = Result<usize, Self::Error>>
+        where Self: 'b;
+
+        fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Self::ReadFuture<'b> {
+            async move {
+                self.client
+                    .connection()
+                    .read(buf)
+                    .await
+                    .map_err(Error::Http)
+            }
+        }
+    }
+
+    impl<'a, C, const B: usize, const U: usize> OtaRead for GitHubOtaService<'a, C, B, U>
     where
         C: Connection,
     {
@@ -470,56 +465,28 @@ pub mod asynch {
         }
     }
 
-    impl<C> Read for GitHubOtaRead<C>
+    impl<'a, C, const B: usize, const U: usize> OtaServer for GitHubOtaService<'a, C, B, U>
     where
         C: Connection,
     {
-        type ReadFuture<'b>
-        where
-            Self: 'b,
-        = impl Future<Output = Result<usize, Self::Error>>;
-
-        fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Self::ReadFuture<'b> {
-            async move { self.response.read(buf).await.map_err(Error::Http) }
-        }
-    }
-
-    impl<'a, C> Io for GitHubOtaService<'a, C>
-    where
-        C: Connection,
-    {
-        type Error = Error<C::Error>;
-    }
-
-    impl<'a, C> OtaServer for GitHubOtaService<'a, C>
-    where
-        C: Connection,
-    {
-        type OtaRead<'b>
-        where
-            Self: 'b,
-        = GitHubOtaRead<&'b mut C>;
+        type OtaRead = Self;
 
         type GetLatestReleaseFuture<'b>
-        where
-            Self: 'b,
-        = impl Future<Output = Result<Option<FirmwareInfo>, Self::Error>>;
+        = impl Future<Output = Result<Option<FirmwareInfo>, Self::Error>>
+        where Self: 'b;
 
         #[cfg(feature = "alloc")]
         type GetReleasesFuture<'b>
-        where
-            Self: 'b,
-        = impl Future<Output = Result<alloc::vec::Vec<FirmwareInfo>, Self::Error>>;
+        = impl Future<Output = Result<alloc::vec::Vec<FirmwareInfo>, Self::Error>>
+        where Self: 'b;
 
         type GetReleasesNFuture<'b, const N: usize>
-        where
-            Self: 'b,
-        = impl Future<Output = Result<heapless::Vec<FirmwareInfo, N>, Self::Error>>;
+        = impl Future<Output = Result<heapless::Vec<FirmwareInfo, N>, Self::Error>>
+        where Self: 'b;
 
         type OpenFuture<'b>
-        where
-            Self: 'b,
-        = impl Future<Output = Result<Self::OtaRead<'b>, Self::Error>>;
+        = impl Future<Output = Result<&'b mut Self::OtaRead, Self::Error>>
+        where Self: 'b;
 
         fn get_latest_release(&mut self) -> Self::GetLatestReleaseFuture<'_> {
             async move {
@@ -589,10 +556,9 @@ pub mod asynch {
                     .await
                     .map_err(Error::Http)?;
 
-                Ok(GitHubOtaRead {
-                    size: None, // TODO
-                    response,
-                })
+                self.size = response.content_len().map(|n| n as usize);
+
+                Ok(self)
             }
         }
     }

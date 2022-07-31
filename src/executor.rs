@@ -1,4 +1,4 @@
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::fmt::Debug;
     use core::future::Future;
@@ -40,7 +40,7 @@ pub mod asynch {
     }
 
     impl<B, T> RawBlocking<B, T> {
-        pub fn new() -> Self {
+        pub const fn new() -> Self {
             Self {
                 blocker: core::ptr::null(),
                 api: core::ptr::null_mut(),
@@ -71,7 +71,7 @@ pub mod asynch {
     }
 
     impl<T> RawTrivialUnblocking<T> {
-        pub fn new() -> Self {
+        pub const fn new() -> Self {
             Self {
                 api: core::ptr::null_mut(),
             }
@@ -100,9 +100,7 @@ pub mod asynch {
         U: Unblocker,
     {
         type UnblockFuture<T>
-        where
-            T: Send,
-        = U::UnblockFuture<T>;
+        = U::UnblockFuture<T> where T: Send;
 
         fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
         where

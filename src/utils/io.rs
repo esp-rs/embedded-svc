@@ -93,7 +93,7 @@ where
     Ok(copied)
 }
 
-#[cfg(feature = "experimental")]
+#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use crate::io::asynch::{Read, Write};
 
