@@ -3,7 +3,7 @@ use core::str;
 use uncased::UncasedStr;
 
 #[derive(Debug)]
-pub struct Headers<'b, const N: usize>([(&'b str, &'b str); N]);
+pub struct Headers<'b, const N: usize = 64>([(&'b str, &'b str); N]);
 
 impl<'b, const N: usize> Headers<'b, N> {
     pub const fn new() -> Self {
@@ -27,15 +27,19 @@ impl<'b, const N: usize> Headers<'b, N> {
         self.get("Transfer-Encoding")
     }
 
+    pub fn host(&self) -> Option<&str> {
+        self.get("Host")
+    }
+
     pub fn connection(&self) -> Option<&str> {
         self.get("Connection")
     }
 
-    pub fn cache_control(&self) -> Option<&'_ str> {
+    pub fn cache_control(&self) -> Option<&str> {
         self.get("Cache-Control")
     }
 
-    pub fn upgrade(&self) -> Option<&'_ str> {
+    pub fn upgrade(&self) -> Option<&str> {
         self.get("Upgrade")
     }
 
@@ -107,6 +111,10 @@ impl<'b, const N: usize> Headers<'b, N> {
 
     pub fn set_transfer_encoding_chunked(&mut self) -> &mut Self {
         self.set_transfer_encoding("Chunked")
+    }
+
+    pub fn set_host(&mut self, host: &'b str) -> &mut Self {
+        self.set("Host", host)
     }
 
     pub fn set_connection(&mut self, connection: &'b str) -> &mut Self {
