@@ -3,7 +3,7 @@ use core::str;
 use uncased::UncasedStr;
 
 #[derive(Debug)]
-pub struct Headers<'b, const N: usize>([(&'b str, &'b str); N]);
+pub struct Headers<'b, const N: usize = 64>([(&'b str, &'b str); N]);
 
 impl<'b, const N: usize> Headers<'b, N> {
     pub const fn new() -> Self {
