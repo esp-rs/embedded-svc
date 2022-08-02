@@ -69,6 +69,10 @@ pub trait Headers {
         self.header("Transfer-Encoding")
     }
 
+    fn host(&self) -> Option<&'_ str> {
+        self.header("Host")
+    }
+
     fn connection(&self) -> Option<&'_ str> {
         self.header("Connection")
     }
@@ -152,6 +156,10 @@ pub mod headers {
 
     pub fn transfer_encoding_chunked<'a>() -> (&'a str, &'a str) {
         transfer_encoding("Chunked")
+    }
+
+    pub fn host(host: &str) -> (&str, &str) {
+        ("Host", host)
     }
 
     pub fn connection(connection: &str) -> (&str, &str) {
