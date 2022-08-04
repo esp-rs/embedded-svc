@@ -5,6 +5,7 @@ on:
 
 env:
   rust_toolchain: nightly-2022-04-07
+  crate_name: embedded-svc
 
 jobs:
   publish:
@@ -25,3 +26,13 @@ jobs:
         run: cargo login ${{ secrets.crates_io_token }}
       - name: Build | Publish
         run: cargo publish --target riscv32imc-esp-espidf -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
+      - name: Get the crate version from cargo
+        run: |
+          version=$(cargo metadata --format-version=1 --no-deps | jq -r ".packages[] | select(.name == \"${{env.crate_name}}\") | .version")
+          echo "crate_version=$version" >> $GITHUB_ENV
+          echo "${{env.crate_name}} version: $version"
+      - name: Tag the new release
+        uses: rickstaa/action-create-tag@v1
+        with:
+          tag: v${{env.crate_version}}
+          message: "Release v${{env.crate_version}}"
