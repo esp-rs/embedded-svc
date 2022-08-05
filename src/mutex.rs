@@ -66,7 +66,7 @@ impl RawMutex for StdRawMutex {
     const INIT: Self = Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None));
 
     fn new() -> Self {
-        Self::INIT
+        Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None))
     }
 
     unsafe fn lock(&self) {
