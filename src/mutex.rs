@@ -51,7 +51,7 @@ impl RawMutex for NoopRawMutex {
     const INIT: Self = NoopRawMutex::new();
 
     fn new() -> Self {
-        Self
+        Self(())
     }
 
     unsafe fn lock(&self) {}
