@@ -1,7 +1,5 @@
 use core::str;
 
-use uncased::UncasedStr;
-
 #[derive(Debug)]
 pub struct Headers<'b, const N: usize = 64>([(&'b str, &'b str); N]);
 
@@ -52,13 +50,13 @@ impl<'b, const N: usize> Headers<'b, N> {
 
     pub fn get(&self, name: &str) -> Option<&str> {
         self.iter()
-            .find(|(hname, _)| UncasedStr::new(name) == UncasedStr::new(hname))
+            .find(|(hname, _)| name.eq_ignore_ascii_case(hname))
             .map(|(_, value)| value)
     }
 
     pub fn set(&mut self, name: &'b str, value: &'b str) -> &mut Self {
         for header in &mut self.0 {
-            if header.0.is_empty() || UncasedStr::new(header.0) == UncasedStr::new(name) {
+            if header.0.is_empty() || header.0.eq_ignore_ascii_case(name) {
                 *header = (name, value);
                 return self;
             }
@@ -72,7 +70,7 @@ impl<'b, const N: usize> Headers<'b, N> {
             .0
             .iter()
             .enumerate()
-            .find(|(_, header)| UncasedStr::new(header.0) == UncasedStr::new(name));
+            .find(|(_, header)| header.0.eq_ignore_ascii_case(name));
 
         if let Some((mut index, _)) = index {
             while index < self.0.len() - 1 {
