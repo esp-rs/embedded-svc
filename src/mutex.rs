@@ -3,6 +3,8 @@ use core::time::Duration;
 /// A raw Mutex trait for no_std environments.
 /// An alternative to the Mutex trait that avoids usage of GATs and does not need a MutexFamily (which in turn uses non-lifetime GATs).
 pub trait RawMutex {
+    const INIT: Self; // A workaround for not having const fns in traits yet.
+
     fn new() -> Self;
 
     /// # Safety
@@ -19,6 +21,8 @@ pub trait RawMutex {
 /// An alternative to the Condvar trait that avoids usage of GATs.
 pub trait RawCondvar {
     type RawMutex: RawMutex;
+
+    const INIT: Self; // A workaround for not having const fns in traits yet.
 
     fn new() -> Self;
 
@@ -38,6 +42,8 @@ pub trait RawCondvar {
 pub struct NoopRawMutex;
 
 impl RawMutex for NoopRawMutex {
+    const INIT: Self = NoopRawMutex;
+
     fn new() -> Self {
         Self
     }
@@ -47,16 +53,19 @@ impl RawMutex for NoopRawMutex {
     unsafe fn unlock(&self) {}
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 pub struct StdRawMutex(
     std::sync::Mutex<()>,
     core::cell::RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
 );
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 impl RawMutex for StdRawMutex {
+    #[allow(clippy::declare_interior_mutable_const)]
+    const INIT: Self = Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None));
+
     fn new() -> Self {
-        Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None))
+        Self::INIT
     }
 
     unsafe fn lock(&self) {
@@ -70,7 +79,7 @@ impl RawMutex for StdRawMutex {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 impl Drop for StdRawMutex {
     fn drop(&mut self) {
         unsafe {
@@ -79,15 +88,18 @@ impl Drop for StdRawMutex {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 pub struct StdRawCondvar(std::sync::Condvar);
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 impl RawCondvar for StdRawCondvar {
     type RawMutex = StdRawMutex;
 
+    #[allow(clippy::declare_interior_mutable_const)]
+    const INIT: Self = Self(std::sync::Condvar::new());
+
     fn new() -> Self {
-        Self(std::sync::Condvar::new())
+        Self::INIT
     }
 
     unsafe fn wait(&self, mutex: &Self::RawMutex) {
