@@ -10,9 +10,16 @@ impl<R, T> Mutex<R, T>
 where
     R: RawMutex,
 {
+    #[cfg(feature = "nightly")]
     #[inline(always)]
     pub const fn new(data: T) -> Self {
         Self::wrap(R::INIT, data)
+    }
+
+    #[cfg(not(feature = "nightly"))]
+    #[inline(always)]
+    pub fn new(data: T) -> Self {
+        Self::wrap(R::new(), data)
     }
 
     #[inline(always)]
@@ -125,8 +132,8 @@ impl<V> Condvar<V>
 where
     V: RawCondvar,
 {
-    pub const fn new() -> Self {
-        Self::wrap(V::INIT)
+    pub fn new() -> Self {
+        Self::wrap(V::new())
     }
 
     pub const fn wrap(raw_condvar: V) -> Self {
