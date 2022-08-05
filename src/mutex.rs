@@ -38,11 +38,17 @@ pub trait RawCondvar {
     fn notify_all(&self);
 }
 
-pub struct NoopRawMutex;
+pub struct NoopRawMutex(());
+
+impl NoopRawMutex {
+    pub const fn new() -> Self {
+        Self(())
+    }
+}
 
 impl RawMutex for NoopRawMutex {
     #[cfg(feature = "nightly")] // Remove "nightly" condition once 1.64 is out
-    const INIT: Self = NoopRawMutex;
+    const INIT: Self = NoopRawMutex::new();
 
     fn new() -> Self {
         Self
