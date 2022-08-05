@@ -53,7 +53,7 @@ impl RawMutex for NoopRawMutex {
     unsafe fn unlock(&self) {}
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 pub struct StdRawMutex(
     std::sync::Mutex<()>,
     core::cell::RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
@@ -79,7 +79,7 @@ impl RawMutex for StdRawMutex {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 impl Drop for StdRawMutex {
     fn drop(&mut self) {
         unsafe {
@@ -88,7 +88,7 @@ impl Drop for StdRawMutex {
     }
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 pub struct StdRawCondvar(std::sync::Condvar);
 
 #[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
