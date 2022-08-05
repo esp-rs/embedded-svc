@@ -11,8 +11,8 @@ where
     R: RawMutex,
 {
     #[inline(always)]
-    pub fn new(data: T) -> Self {
-        Self::wrap(R::new(), data)
+    pub const fn new(data: T) -> Self {
+        Self::wrap(R::INIT, data)
     }
 
     #[inline(always)]
@@ -125,8 +125,8 @@ impl<V> Condvar<V>
 where
     V: RawCondvar,
 {
-    pub fn new() -> Self {
-        Self::wrap(V::new())
+    pub const fn new() -> Self {
+        Self::wrap(V::INIT)
     }
 
     pub const fn wrap(raw_condvar: V) -> Self {
