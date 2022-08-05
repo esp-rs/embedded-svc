@@ -59,7 +59,7 @@ pub struct StdRawMutex(
     core::cell::RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
 );
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 impl RawMutex for StdRawMutex {
     #[allow(clippy::declare_interior_mutable_const)]
     const INIT: Self = Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None));
@@ -91,7 +91,7 @@ impl Drop for StdRawMutex {
 #[cfg(feature = "std")]
 pub struct StdRawCondvar(std::sync::Condvar);
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", feature = "nightly"))] // Remove "nightly" condition once 1.64 is out
 impl RawCondvar for StdRawCondvar {
     type RawMutex = StdRawMutex;
 
