@@ -11,7 +11,7 @@ pub fn read_max<R: Read>(mut read: R, buf: &mut [u8]) -> Result<(&[u8], usize), 
     loop {
         let r = read.read(&mut buf[offset..])?;
 
-        if size == 0 {
+        if r == 0 {
             break;
         }
 
@@ -96,7 +96,7 @@ pub mod asynch {
         loop {
             let r = read.read(&mut buf[offset..]).await?;
 
-            if size == 0 {
+            if r == 0 {
                 break;
             }
 
