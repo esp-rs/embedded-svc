@@ -575,6 +575,7 @@ where
         (*self).scan_n()
     }
 
+    #[cfg(feature = "alloc")]
     fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error> {
         (*self).scan()
     }
