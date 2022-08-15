@@ -7,7 +7,6 @@
 #[macro_use]
 extern crate alloc;
 
-pub mod channel;
 pub mod errors;
 pub mod eth;
 pub mod event_bus;

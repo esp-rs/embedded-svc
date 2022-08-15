@@ -230,8 +230,7 @@ where
 mod async_traits_impl {
     use core::future::Future;
 
-    use crate::channel::asynch::{Receiver, Sender};
-    use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider};
+    use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider, Receiver, Sender};
     use crate::executor::asynch::Unblocker;
     use crate::mutex::RawCondvar;
     use crate::utils::asyncify::{AsyncWrapper, UnblockingAsyncWrapper};
