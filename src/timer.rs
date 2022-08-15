@@ -95,8 +95,6 @@ pub mod asynch {
     use core::future::Future;
     use core::time::Duration;
 
-    use crate::channel::asynch::Receiver;
-
     pub use super::ErrorType;
 
     #[must_use]
@@ -119,9 +117,30 @@ pub mod asynch {
             (*self).after(duration)
         }
     }
+
+    pub trait Clock {
+        type TickFuture<'a>: Future<Output = ()> + Send
+        where
+            Self: 'a;
+
+        fn tick(&mut self) -> Self::TickFuture<'_>;
+    }
+
+    impl<R> Clock for &mut R
+    where
+        R: Clock,
+    {
+        type TickFuture<'a>
+        = R::TickFuture<'a> where Self: 'a;
+
+        fn tick(&mut self) -> Self::TickFuture<'_> {
+            (*self).tick()
+        }
+    }
+
     #[must_use]
     pub trait PeriodicTimer: ErrorType {
-        type Clock<'a>: Receiver<Data = ()> + Send
+        type Clock<'a>: Clock + Send
         where
             Self: 'a;
 

@@ -78,7 +78,7 @@ where
         Ok(self)
     }
 
-    pub fn recv(&mut self) -> TimerFuture<'_, T> {
+    pub fn tick(&mut self) -> TimerFuture<'_, T> {
         self.signal.reset();
 
         TimerFuture(self, self.duration)
@@ -167,8 +167,7 @@ mod async_traits_impl {
 
     extern crate alloc;
 
-    use crate::channel::asynch::Receiver;
-    use crate::timer::asynch::{ErrorType, OnceTimer, PeriodicTimer, TimerService};
+    use crate::timer::asynch::{Clock, ErrorType, OnceTimer, PeriodicTimer, TimerService};
     use crate::utils::asyncify::AsyncWrapper;
 
     use super::{AsyncTimer, AsyncTimerService, TimerFuture};
@@ -202,17 +201,15 @@ mod async_traits_impl {
         }
     }
 
-    impl<'a, T> Receiver for &'a mut AsyncTimer<T>
+    impl<'a, T> Clock for &'a mut AsyncTimer<T>
     where
         T: crate::timer::OnceTimer + Send + 'static,
     {
-        type Data = ();
-
-        type RecvFuture<'b>
+        type TickFuture<'b>
         = TimerFuture<'b, T> where 'a: 'b;
 
-        fn recv(&mut self) -> Self::RecvFuture<'_> {
-            AsyncTimer::recv(self)
+        fn tick(&mut self) -> Self::TickFuture<'_> {
+            AsyncTimer::tick(self)
         }
     }
 
