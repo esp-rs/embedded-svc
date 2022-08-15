@@ -1,7 +1,6 @@
 use crate::http::server::*;
-use crate::mutex::RawMutex;
 use crate::utils::json_io;
-use crate::utils::mutex::Mutex;
+use crate::utils::mutex::{Mutex, RawMutex};
 use crate::wifi;
 
 pub fn get_capabilities(

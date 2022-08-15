@@ -7,8 +7,7 @@ use core::task::{Context, Poll, Waker};
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::mutex::RawCondvar;
-use crate::utils::mutex::{Condvar, Mutex};
+use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
 
 #[cfg(all(feature = "nightly", feature = "experimental"))]
 pub use async_traits_impl::*;
@@ -232,8 +231,8 @@ mod async_traits_impl {
 
     use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider, Receiver, Sender};
     use crate::executor::asynch::Unblocker;
-    use crate::mutex::RawCondvar;
     use crate::utils::asyncify::{AsyncWrapper, UnblockingAsyncWrapper};
+    use crate::utils::mutex::RawCondvar;
 
     use super::{AsyncEventBus, AsyncPostbox, AsyncSubscription, NextFuture};
 

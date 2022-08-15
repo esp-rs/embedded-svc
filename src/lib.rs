@@ -18,7 +18,6 @@ pub mod httpd; // TODO: Retire
 pub mod io;
 pub mod ipv4;
 pub mod mqtt;
-pub mod mutex;
 #[cfg(feature = "experimental")]
 pub mod ota;
 pub mod ping;
