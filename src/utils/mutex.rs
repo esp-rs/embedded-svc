@@ -2,7 +2,43 @@ use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
 use core::time::Duration;
 
-use crate::mutex::{NoopRawMutex, RawCondvar, RawMutex};
+/// A raw Mutex trait for no_std environments. Prevents the introduction of dependency on STD for the `utils` module and its sub-modules.
+/// NOTE: Users are strongly advised to just depend on STD and use the STD Mutex in their code.
+pub trait RawMutex {
+    #[cfg(feature = "nightly")] // Remove "nightly" condition once 1.64 is out
+    const INIT: Self; // A workaround for not having const fns in traits yet.
+
+    fn new() -> Self;
+
+    /// # Safety
+    /// - This method should NOT be called while the mutex is being waited on in a condvar
+    unsafe fn lock(&self);
+
+    /// # Safety
+    /// - This method should NOT be called while the mutex is being waited on in a condvar
+    /// - This method should only be called by the entity currently holding the mutex (i.e. the entity which successfully called `lock` earlier)
+    unsafe fn unlock(&self);
+}
+
+/// A raw Condvar trait for no_std environments. Prevents the introduction of dependency on STD for the `utils` module and its sub-modules.
+/// NOTE: Users are strongly advised to just depend on STD and use the STD Condvar in their code.
+pub trait RawCondvar {
+    type RawMutex: RawMutex;
+
+    fn new() -> Self;
+
+    /// # Safety
+    /// - This method should be called only when the mutex is already locked, and by the entity which locked the mutex
+    unsafe fn wait(&self, mutex: &Self::RawMutex);
+
+    /// # Safety
+    /// - This method should be called only when the mutex is already locked, and by the entity which locked the mutex
+    unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool;
+
+    fn notify_one(&self);
+
+    fn notify_all(&self);
+}
 
 pub struct Mutex<R, T>(R, UnsafeCell<T>);
 
@@ -35,36 +71,15 @@ where
 
 unsafe impl<R, T> Sync for Mutex<R, T>
 where
-    R: RawMutex,
+    R: RawMutex + Send + Sync,
     T: Send,
 {
 }
 unsafe impl<R, T> Send for Mutex<R, T>
 where
-    R: RawMutex,
+    R: RawMutex + Send + Sync,
     T: Send,
 {
-}
-
-#[cfg(all(feature = "nightly", feature = "experimental"))]
-impl<R, T> crate::mutex::Mutex for Mutex<R, T>
-where
-    R: RawMutex,
-{
-    type Data = T;
-
-    type Guard<'a>
-    = MutexGuard<'a, R, T> where T: 'a, R: 'a;
-
-    #[inline(always)]
-    fn new(data: Self::Data) -> Self {
-        Mutex::new(data)
-    }
-
-    #[inline(always)]
-    fn lock(&self) -> Self::Guard<'_> {
-        Mutex::lock(self)
-    }
 }
 
 pub struct MutexGuard<'a, R, T>(&'a Mutex<R, T>)
@@ -85,12 +100,12 @@ where
     }
 }
 
-unsafe impl<R, T> Sync for MutexGuard<'_, R, T>
-where
-    R: RawMutex,
-    T: Sync,
-{
-}
+// unsafe impl<R, T> Sync for MutexGuard<'_, R, T>
+// where
+//     R: RawMutex + Send + Sync,
+//     T: Sync,
+// {
+// }
 
 impl<'a, R, T> Drop for MutexGuard<'a, R, T>
 where
@@ -170,8 +185,8 @@ where
     }
 }
 
-unsafe impl<V> Sync for Condvar<V> where V: RawCondvar {}
-unsafe impl<V> Send for Condvar<V> where V: RawCondvar {}
+unsafe impl<V> Sync for Condvar<V> where V: RawCondvar + Send + Sync {}
+unsafe impl<V> Send for Condvar<V> where V: RawCondvar + Send + Sync {}
 
 impl<V> Default for Condvar<V>
 where
@@ -182,57 +197,79 @@ where
     }
 }
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
-impl<V> crate::mutex::MutexFamily for Condvar<V>
-where
-    V: RawCondvar,
-{
-    type Mutex<T> = Mutex<V::RawMutex, T>;
+#[cfg(feature = "std")]
+pub struct StdRawMutex(
+    std::sync::Mutex<()>,
+    core::cell::RefCell<Option<std::sync::MutexGuard<'static, ()>>>,
+);
+
+#[cfg(feature = "std")]
+impl RawMutex for StdRawMutex {
+    #[cfg(feature = "nightly")] // Remove "nightly" condition once 1.64 is out
+    #[allow(clippy::declare_interior_mutable_const)]
+    const INIT: Self = Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None));
+
+    fn new() -> Self {
+        Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None))
+    }
+
+    unsafe fn lock(&self) {
+        let guard = core::mem::transmute(self.0.lock().unwrap());
+
+        *self.1.borrow_mut() = Some(guard);
+    }
+
+    unsafe fn unlock(&self) {
+        *self.1.borrow_mut() = None;
+    }
 }
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
-impl<V> crate::mutex::Condvar for Condvar<V>
-where
-    V: RawCondvar,
-{
-    #[inline(always)]
+unsafe impl Send for StdRawMutex {}
+unsafe impl Sync for StdRawMutex {}
+
+#[cfg(feature = "std")]
+impl Drop for StdRawMutex {
+    fn drop(&mut self) {
+        unsafe {
+            self.unlock();
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+pub struct StdRawCondvar(std::sync::Condvar);
+
+#[cfg(feature = "std")]
+impl RawCondvar for StdRawCondvar {
+    type RawMutex = StdRawMutex;
+
     fn new() -> Self {
-        Condvar::new()
+        Self(std::sync::Condvar::new())
     }
 
-    fn wait<'a, T>(
-        &self,
-        guard: <<Self as crate::mutex::MutexFamily>::Mutex<T> as crate::mutex::Mutex>::Guard<'a>,
-    ) -> <<Self as crate::mutex::MutexFamily>::Mutex<T> as crate::mutex::Mutex>::Guard<'a> {
-        Condvar::wait(self, guard)
+    unsafe fn wait(&self, mutex: &Self::RawMutex) {
+        let guard = core::mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+
+        let guard = self.0.wait(guard).unwrap();
+
+        *mutex.1.borrow_mut() = Some(guard);
     }
 
-    fn wait_timeout<'a, T>(
-        &self,
-        guard: <<Self as crate::mutex::MutexFamily>::Mutex<T> as crate::mutex::Mutex>::Guard<'a>,
-        duration: Duration,
-    ) -> (
-        <<Self as crate::mutex::MutexFamily>::Mutex<T> as crate::mutex::Mutex>::Guard<'a>,
-        bool,
-    ) {
-        Condvar::wait_timeout(self, guard, duration)
+    unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool {
+        let guard = core::mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+
+        let (guard, wtr) = self.0.wait_timeout(guard, duration).unwrap();
+
+        *mutex.1.borrow_mut() = Some(guard);
+
+        wtr.timed_out()
     }
 
     fn notify_one(&self) {
-        Condvar::notify_one(self)
+        self.0.notify_one();
     }
 
     fn notify_all(&self) {
-        Condvar::notify_all(self)
+        self.0.notify_all();
     }
 }
-
-#[cfg(all(feature = "nightly", feature = "experimental"))]
-pub struct NoopMutexFamily;
-
-#[cfg(all(feature = "nightly", feature = "experimental"))]
-impl crate::mutex::MutexFamily for NoopMutexFamily {
-    type Mutex<T> = NoopMutex<T>;
-}
-
-pub type NoopMutex<T> = crate::utils::mutex::Mutex<NoopRawMutex, T>;

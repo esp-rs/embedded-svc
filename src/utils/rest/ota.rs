@@ -2,10 +2,9 @@ use core::cmp::min;
 
 use crate::errors::wrap::WrapError;
 use crate::http::server::*;
-use crate::mutex::RawMutex;
 use crate::ota::{self, OtaRead, OtaUpdate};
 use crate::utils::json_io;
-use crate::utils::mutex::Mutex;
+use crate::utils::mutex::{Mutex, RawMutex};
 
 pub fn get_status(
     request: Request<impl Connection>,

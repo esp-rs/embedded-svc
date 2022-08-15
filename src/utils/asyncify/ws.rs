@@ -14,8 +14,7 @@ pub mod server {
 
     use log::info;
 
-    use crate::mutex::RawCondvar;
-    use crate::utils::mutex::{Condvar, Mutex};
+    use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
     use crate::ws::{callback_server::*, *};
 
     #[cfg(all(feature = "nightly", feature = "experimental"))]
@@ -409,7 +408,7 @@ pub mod server {
         use log::info;
 
         use crate::executor::asynch::Unblocker;
-        use crate::mutex::RawCondvar;
+        use crate::utils::mutex::RawCondvar;
         use crate::ws::{callback_server::*, *};
 
         use super::{AsyncAcceptor, AsyncConnection, AsyncReceiverFuture};

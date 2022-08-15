@@ -8,9 +8,9 @@ pub mod client {
     extern crate alloc;
     use alloc::sync::Arc;
 
-    use crate::mqtt::client::utils::ConnStateGuard;
     use crate::mqtt::client::{Event, MessageId, QoS};
-    use crate::mutex::RawCondvar;
+    use crate::utils::mqtt::client::ConnStateGuard;
+    use crate::utils::mutex::RawCondvar;
 
     #[cfg(all(feature = "nightly", feature = "experimental"))]
     pub use async_traits_impl::*;
@@ -289,8 +289,7 @@ pub mod client {
         use crate::executor::asynch::Unblocker;
         use crate::mqtt::client::asynch::{Client, Connection, MessageId, Publish, QoS};
         use crate::mqtt::client::ErrorType;
-        use crate::mutex::{RawCondvar, RawMutex};
-        use crate::utils::mutex::Mutex;
+        use crate::utils::mutex::{Mutex, RawCondvar, RawMutex};
 
         use super::{
             client_subscribe, client_unsubscribe, enqueue_publish, publish_publish, AsyncClient,
@@ -456,7 +455,7 @@ pub mod client {
         impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
         where
             CV: RawCondvar + Send + Sync + 'static,
-            CV::RawMutex: Sync + 'static,
+            CV::RawMutex: Send + Sync + 'static,
             M: Send,
             E: Debug + Send + 'static,
         {

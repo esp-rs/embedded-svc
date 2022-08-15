@@ -4,8 +4,7 @@ use embedded_io::blocking::Write;
 
 use crate::http::server::{Connection, Handler, HandlerResult, Middleware, Request};
 use crate::http::{headers, Headers};
-use crate::mutex::RawMutex;
-use crate::utils::mutex::Mutex;
+use crate::utils::mutex::{Mutex, RawMutex};
 
 pub struct WithCaptivePortalMiddleware<M, F>
 where
@@ -33,7 +32,7 @@ where
 impl<C, M, F> Middleware<C> for WithCaptivePortalMiddleware<M, F>
 where
     C: Connection,
-    M: RawMutex + Send,
+    M: RawMutex + Send + Sync,
     F: Fn(&str) -> bool + Send,
 {
     fn handle<H>(&self, connection: C, handler: &H) -> HandlerResult
