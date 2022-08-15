@@ -14,6 +14,7 @@ pub mod io;
     any(feature = "json_io", feature = "json_io_core")
 ))]
 pub mod json_io;
+pub mod mqtt;
 pub mod mutex;
 #[cfg(all(
     feature = "experimental",

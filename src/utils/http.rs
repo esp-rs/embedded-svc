@@ -365,10 +365,9 @@ pub mod server {
         use core::time::Duration;
 
         use crate::http::server::*;
-        use crate::mutex::RawMutex;
 
         use crate::utils::http::cookies::*;
-        use crate::utils::mutex::Mutex;
+        use crate::utils::mutex::{Mutex, RawMutex};
 
         #[derive(Debug)]
         pub enum SessionError {
@@ -440,7 +439,7 @@ pub mod server {
 
         impl<M, S, T, const N: usize> Session for SessionImpl<M, S, T, N>
         where
-            M: RawMutex,
+            M: RawMutex + Send + Sync,
             S: Default + Send,
             T: Fn() -> Duration + Send,
         {
