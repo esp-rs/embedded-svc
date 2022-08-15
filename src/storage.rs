@@ -1,10 +1,8 @@
 use core::any::Any;
-use core::fmt::Debug;
+use core::fmt::{self, Debug};
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-
-use crate::errors::wrap::EitherError;
 
 pub trait StorageBase {
     type Error: Debug;
@@ -153,19 +151,50 @@ impl<const N: usize, R, S> StorageImpl<N, R, S> {
     }
 }
 
+#[derive(Debug)]
+pub enum StorageError<S, R> {
+    SerdeError(S),
+    RawStorageError(R),
+}
+
+impl<S, R> fmt::Display for StorageError<S, R>
+where
+    S: fmt::Display,
+    R: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SerdeError(e) => write!(f, "SerDe error: {}", e),
+            Self::RawStorageError(e) => write!(f, "Storage error: {}", e),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<S, R> std::error::Error for StorageError<S, R>
+where
+    S: std::error::Error,
+    R: std::error::Error,
+{
+}
+
 impl<const N: usize, R, S> StorageBase for StorageImpl<N, R, S>
 where
     R: RawStorage,
     S: SerDe,
 {
-    type Error = EitherError<R::Error, S::Error>;
+    type Error = StorageError<S::Error, R::Error>;
 
     fn contains(&self, name: &str) -> Result<bool, Self::Error> {
-        self.raw_storage.contains(name).map_err(EitherError::E1)
+        self.raw_storage
+            .contains(name)
+            .map_err(StorageError::RawStorageError)
     }
 
     fn remove(&mut self, name: &str) -> Result<bool, Self::Error> {
-        self.raw_storage.remove(name).map_err(EitherError::E1)
+        self.raw_storage
+            .remove(name)
+            .map_err(StorageError::RawStorageError)
     }
 }
 
@@ -183,9 +212,13 @@ where
         if let Some((buf, _)) = self
             .raw_storage
             .get_raw(name, &mut buf)
-            .map_err(EitherError::E1)?
+            .map_err(StorageError::RawStorageError)?
         {
-            Ok(Some(self.serde.deserialize(buf).map_err(EitherError::E2)?))
+            Ok(Some(
+                self.serde
+                    .deserialize(buf)
+                    .map_err(StorageError::SerdeError)?,
+            ))
         } else {
             Ok(None)
         }
@@ -200,9 +233,11 @@ where
         let buf = self
             .serde
             .serialize(&mut buf, value)
-            .map_err(EitherError::E2)?;
+            .map_err(StorageError::SerdeError)?;
 
-        self.raw_storage.put_raw(name, buf).map_err(EitherError::E1)
+        self.raw_storage
+            .put_raw(name, buf)
+            .map_err(StorageError::RawStorageError)
     }
 }
 

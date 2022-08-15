@@ -378,7 +378,7 @@ pub mod server {
         impl fmt::Display for SessionError {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self {
-                    SessionError::MaxSessionsReachedError => {
+                    Self::MaxSessionsReachedError => {
                         write!(f, "Max number of sessions reached")
                     }
                 }
