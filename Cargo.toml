@@ -13,17 +13,15 @@ readme = "README.md"
 rust-version = "1.61"
 
 [features]
-default = ["std", "use_serde", "use_strum", "use_numenum", "json_io"]
+default = ["std", "use_serde", "use_strum", "use_numenum"]
 
-std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std", "serde_json?/std"]
-alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "serde_json?/alloc"]
+std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std"]
+alloc = ["anyhow", "embedded-io/alloc", "serde/alloc"]
 nightly = ["futures", "embedded-io/async"]
 experimental = ["futures"]
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
-json_io = ["serde_json"]
-json_io_core = ["serde-json-core"]
 
 [dependencies]
 heapless = { version = "0.7" }
@@ -36,6 +34,4 @@ enumset = { version = "1", default-features = false }
 strum = { version = "0.23", default-features = false, optional = true, features = ["derive"] }
 strum_macros = { version = "0.23", optional = true }
 num_enum = { version = "0.5", default-features = false, optional = true }
-serde_json = { version = "1", default-features = true, optional = true }
-serde-json-core = { version = "0.4", optional = true }
 anyhow = { version = "1", default-features = false, optional = true } # Only used by the deprecated httpd module
