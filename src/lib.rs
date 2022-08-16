@@ -7,13 +7,13 @@
 #[macro_use]
 extern crate alloc;
 
-pub mod errors;
 pub mod eth;
 pub mod event_bus;
 pub mod executor;
 #[cfg(feature = "experimental")]
 pub mod http;
 #[cfg(feature = "std")]
+#[deprecated(since = "0.22.0", note = "Use module http::server")]
 pub mod httpd; // TODO: Retire
 pub mod io;
 pub mod ipv4;
