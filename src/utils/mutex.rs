@@ -224,7 +224,10 @@ impl RawMutex for StdRawMutex {
     }
 }
 
+#[cfg(feature = "std")]
 unsafe impl Send for StdRawMutex {}
+
+#[cfg(feature = "std")]
 unsafe impl Sync for StdRawMutex {}
 
 #[cfg(feature = "std")]
