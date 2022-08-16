@@ -1,7 +1,7 @@
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::io::{self, Io, Read, Write};
+use crate::io::{Io, Read, Write};
 use crate::utils::io::*;
 
 #[derive(Clone, Debug)]
@@ -159,59 +159,6 @@ pub trait OtaUpdate: Write {
     }
 }
 
-pub trait OtaRead: io::Read {
-    fn size(&self) -> Option<usize>;
-}
-
-impl<R> OtaRead for &mut R
-where
-    R: OtaRead,
-{
-    fn size(&self) -> Option<usize> {
-        (**self).size()
-    }
-}
-
-pub trait OtaServer: Io {
-    type OtaRead: OtaRead<Error = Self::Error>;
-
-    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error>;
-
-    #[cfg(feature = "alloc")]
-    fn get_releases(&mut self) -> Result<alloc::vec::Vec<FirmwareInfo>, Self::Error>;
-
-    fn get_releases_n<const N: usize>(
-        &mut self,
-    ) -> Result<heapless::Vec<FirmwareInfo, N>, Self::Error>;
-
-    fn open<'a>(&'a mut self, download_id: &'a str) -> Result<&'a mut Self::OtaRead, Self::Error>;
-}
-
-impl<O> OtaServer for &mut O
-where
-    O: OtaServer,
-{
-    type OtaRead = O::OtaRead;
-
-    fn get_latest_release(&mut self) -> Result<Option<FirmwareInfo>, Self::Error> {
-        (*self).get_latest_release()
-    }
-
-    fn get_releases(&mut self) -> Result<alloc::vec::Vec<FirmwareInfo>, Self::Error> {
-        (*self).get_releases()
-    }
-
-    fn get_releases_n<const N: usize>(
-        &mut self,
-    ) -> Result<heapless::Vec<FirmwareInfo, N>, Self::Error> {
-        (*self).get_releases_n()
-    }
-
-    fn open<'a>(&'a mut self, download_id: &'a str) -> Result<&'a mut Self::OtaRead, Self::Error> {
-        (*self).open(download_id)
-    }
-}
-
 #[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::future::Future;
@@ -334,84 +281,6 @@ pub mod asynch {
         where
             R: Read,
             Self: Sized;
-    }
-
-    pub trait OtaRead: Read {
-        fn size(&self) -> Option<usize>;
-    }
-
-    impl<R> OtaRead for &mut R
-    where
-        R: OtaRead,
-    {
-        fn size(&self) -> Option<usize> {
-            (**self).size()
-        }
-    }
-
-    pub trait OtaServer: Io {
-        type OtaRead: OtaRead<Error = Self::Error>;
-
-        type GetLatestReleaseFuture<'a>: Future<Output = Result<Option<FirmwareInfo>, Self::Error>>
-        where
-            Self: 'a;
-
-        #[cfg(feature = "alloc")]
-        type GetReleasesFuture<'a>: Future<
-            Output = Result<alloc::vec::Vec<FirmwareInfo>, Self::Error>,
-        >
-        where
-            Self: 'a;
-
-        type GetReleasesNFuture<'a, const N: usize>: Future<
-            Output = Result<heapless::Vec<FirmwareInfo, N>, Self::Error>,
-        >
-        where
-            Self: 'a;
-
-        type OpenFuture<'a>: Future<Output = Result<&'a mut Self::OtaRead, Self::Error>>
-        where
-            Self: 'a;
-
-        fn get_latest_release(&mut self) -> Self::GetLatestReleaseFuture<'_>;
-
-        #[cfg(feature = "alloc")]
-        fn get_releases(&mut self) -> Self::GetReleasesFuture<'_>;
-
-        fn get_releases_n<const N: usize>(&mut self) -> Self::GetReleasesNFuture<'_, N>;
-
-        fn open<'a>(&'a mut self, download_id: &'a str) -> Self::OpenFuture<'a>;
-    }
-
-    impl<O> OtaServer for &mut O
-    where
-        O: OtaServer,
-    {
-        type OtaRead = O::OtaRead;
-
-        type GetLatestReleaseFuture<'a> = O::GetLatestReleaseFuture<'a> where Self: 'a;
-
-        type GetReleasesFuture<'a> = O::GetReleasesFuture<'a> where Self: 'a;
-
-        type GetReleasesNFuture<'a, const N: usize> = O::GetReleasesNFuture<'a, N> where Self: 'a;
-
-        type OpenFuture<'a> = O::OpenFuture<'a> where Self: 'a;
-
-        fn get_latest_release(&mut self) -> Self::GetLatestReleaseFuture<'_> {
-            (*self).get_latest_release()
-        }
-
-        fn get_releases(&mut self) -> Self::GetReleasesFuture<'_> {
-            (*self).get_releases()
-        }
-
-        fn get_releases_n<const N: usize>(&mut self) -> Self::GetReleasesNFuture<'_, N> {
-            (*self).get_releases_n()
-        }
-
-        fn open<'a>(&'a mut self, download_id: &'a str) -> Self::OpenFuture<'a> {
-            (*self).open(download_id)
-        }
     }
 
     #[derive(Debug)]
