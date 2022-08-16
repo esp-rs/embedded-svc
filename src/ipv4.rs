@@ -3,10 +3,12 @@ use core::fmt::Display;
 use core::str::FromStr;
 
 #[cfg(feature = "std")]
-pub use std::net::Ipv4Addr;
+pub use std::net::{
+    IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs,
+};
 
 #[cfg(not(feature = "std"))]
-pub use no_std_net::Ipv4Addr;
+pub use no_std_net::*;
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
