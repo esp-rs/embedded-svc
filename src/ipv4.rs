@@ -169,7 +169,7 @@ impl Default for ClientConfiguration {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct RouterConfiguration {
     pub subnet: Subnet,
@@ -190,4 +190,37 @@ impl Default for RouterConfiguration {
             secondary_dns: Some(Ipv4Addr::new(8, 8, 4, 4)),
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub enum Configuration {
+    Client(ClientConfiguration),
+    Router(RouterConfiguration),
+}
+
+impl Default for Configuration {
+    fn default() -> Self {
+        Self::Client(Default::default())
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub struct IpInfo {
+    pub ip: Ipv4Addr,
+    pub subnet: Subnet,
+    pub dns: Option<Ipv4Addr>,
+    pub secondary_dns: Option<Ipv4Addr>,
+}
+
+pub trait Interface {
+    type Error;
+
+    fn get_iface_configuration(&self) -> Result<Configuration, Self::Error>;
+    fn set_iface_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
+
+    fn is_iface_up(&self) -> bool;
+
+    fn get_ip_info(&self) -> Result<IpInfo, Self::Error>;
 }

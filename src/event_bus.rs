@@ -25,14 +25,23 @@ pub trait Spin: ErrorType {
 }
 
 pub trait Postbox<P>: ErrorType {
-    fn post(&mut self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error>;
+    fn post(&self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error>;
 }
 
 impl<'a, P, PB> Postbox<P> for &'a mut PB
 where
     PB: Postbox<P> + ErrorType,
 {
-    fn post(&mut self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error> {
+    fn post(&self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error> {
+        (**self).post(payload, wait)
+    }
+}
+
+impl<'a, P, PB> Postbox<P> for &'a PB
+where
+    PB: Postbox<P> + ErrorType,
+{
+    fn post(&self, payload: &P, wait: Option<Duration>) -> Result<bool, Self::Error> {
         (*self).post(payload, wait)
     }
 }
@@ -41,7 +50,7 @@ pub trait EventBus<P>: ErrorType {
     type Subscription;
 
     fn subscribe(
-        &mut self,
+        &self,
         callback: impl for<'a> FnMut(&'a P) + Send + 'static,
     ) -> Result<Self::Subscription, Self::Error>;
 }
@@ -53,7 +62,21 @@ where
     type Subscription = E::Subscription;
 
     fn subscribe(
-        &mut self,
+        &self,
+        callback: impl for<'b> FnMut(&'b P) + Send + 'static,
+    ) -> Result<Self::Subscription, Self::Error> {
+        (**self).subscribe(callback)
+    }
+}
+
+impl<'a, P, E> EventBus<P> for &'a E
+where
+    E: EventBus<P>,
+{
+    type Subscription = E::Subscription;
+
+    fn subscribe(
+        &self,
         callback: impl for<'b> FnMut(&'b P) + Send + 'static,
     ) -> Result<Self::Subscription, Self::Error> {
         (*self).subscribe(callback)
@@ -63,7 +86,7 @@ where
 pub trait PostboxProvider<P>: ErrorType {
     type Postbox: Postbox<P, Error = Self::Error>;
 
-    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
+    fn postbox(&self) -> Result<Self::Postbox, Self::Error>;
 }
 
 impl<'a, P, PP> PostboxProvider<P> for &'a mut PP
@@ -72,31 +95,19 @@ where
 {
     type Postbox = PP::Postbox;
 
-    fn postbox(&mut self) -> Result<Self::Postbox, Self::Error> {
-        (*self).postbox()
+    fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
+        (**self).postbox()
     }
 }
 
-pub trait PinnedEventBus<P>: ErrorType {
-    type Subscription;
-
-    fn subscribe(
-        &mut self,
-        callback: impl for<'a> FnMut(&'a P) + 'static,
-    ) -> Result<Self::Subscription, Self::Error>;
-}
-
-impl<'a, P, E> PinnedEventBus<P> for &'a mut E
+impl<'a, P, PP> PostboxProvider<P> for &'a PP
 where
-    E: PinnedEventBus<P>,
+    PP: PostboxProvider<P>,
 {
-    type Subscription = E::Subscription;
+    type Postbox = PP::Postbox;
 
-    fn subscribe(
-        &mut self,
-        callback: impl for<'b> FnMut(&'b P) + 'static,
-    ) -> Result<Self::Subscription, Self::Error> {
-        (*self).subscribe(callback)
+    fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
+        (*self).postbox()
     }
 }
 
@@ -113,7 +124,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_>;
+        fn send(&self, value: Self::Data) -> Self::SendFuture<'_>;
     }
 
     impl<S> Sender for &mut S
@@ -125,7 +136,21 @@ pub mod asynch {
         type SendFuture<'a>
         = S::SendFuture<'a> where Self: 'a;
 
-        fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
+        fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
+            (**self).send(value)
+        }
+    }
+
+    impl<S> Sender for &S
+    where
+        S: Sender,
+    {
+        type Data = S::Data;
+
+        type SendFuture<'a>
+        = S::SendFuture<'a> where Self: 'a;
+
+        fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
             (*self).send(value)
         }
     }
@@ -137,7 +162,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        fn recv(&mut self) -> Self::RecvFuture<'_>;
+        fn recv(&self) -> Self::RecvFuture<'_>;
     }
 
     impl<R> Receiver for &mut R
@@ -149,7 +174,21 @@ pub mod asynch {
         type RecvFuture<'a>
         = R::RecvFuture<'a> where Self: 'a;
 
-        fn recv(&mut self) -> Self::RecvFuture<'_> {
+        fn recv(&self) -> Self::RecvFuture<'_> {
+            (**self).recv()
+        }
+    }
+
+    impl<R> Receiver for &R
+    where
+        R: Receiver,
+    {
+        type Data = R::Data;
+
+        type RecvFuture<'a>
+        = R::RecvFuture<'a> where Self: 'a;
+
+        fn recv(&self) -> Self::RecvFuture<'_> {
             (*self).recv()
         }
     }
@@ -157,12 +196,56 @@ pub mod asynch {
     pub trait EventBus<P>: ErrorType {
         type Subscription: Receiver<Data = P>;
 
-        fn subscribe(&mut self) -> Result<Self::Subscription, Self::Error>;
+        fn subscribe(&self) -> Result<Self::Subscription, Self::Error>;
+    }
+
+    impl<E, P> EventBus<P> for &mut E
+    where
+        E: EventBus<P>,
+    {
+        type Subscription = E::Subscription;
+
+        fn subscribe(&self) -> Result<Self::Subscription, Self::Error> {
+            (**self).subscribe()
+        }
+    }
+
+    impl<E, P> EventBus<P> for &E
+    where
+        E: EventBus<P>,
+    {
+        type Subscription = E::Subscription;
+
+        fn subscribe(&self) -> Result<Self::Subscription, Self::Error> {
+            (**self).subscribe()
+        }
     }
 
     pub trait PostboxProvider<P>: ErrorType {
         type Postbox: Sender<Data = P>;
 
-        fn postbox(&mut self) -> Result<Self::Postbox, Self::Error>;
+        fn postbox(&self) -> Result<Self::Postbox, Self::Error>;
+    }
+
+    impl<PB, P> PostboxProvider<P> for &mut PB
+    where
+        PB: PostboxProvider<P>,
+    {
+        type Postbox = PB::Postbox;
+
+        fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
+            (**self).postbox()
+        }
+    }
+
+    impl<PB, P> PostboxProvider<P> for &PB
+    where
+        PB: PostboxProvider<P>,
+    {
+        type Postbox = PB::Postbox;
+
+        fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
+            (**self).postbox()
+        }
     }
 }
