@@ -234,7 +234,7 @@ pub mod asynch {
         type Postbox = PB::Postbox;
 
         fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
-            (*self).postbox()
+            (**self).postbox()
         }
     }
 
