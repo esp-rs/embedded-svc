@@ -15,8 +15,6 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
-use crate::ipv4;
-
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
@@ -159,28 +157,6 @@ pub struct AccessPointConfiguration {
     pub auth_method: AuthMethod,
     pub password: heapless::String<64>,
     pub max_connections: u16,
-    pub ip_conf: Option<ipv4::RouterConfiguration>,
-}
-
-impl AccessPointConfiguration {
-    pub fn as_ip_conf_ref(&self) -> Option<&ipv4::RouterConfiguration> {
-        self.ip_conf.as_ref()
-    }
-
-    pub fn as_ip_conf_mut(&mut self) -> &mut ipv4::RouterConfiguration {
-        Self::to_ip_conf(&mut self.ip_conf)
-    }
-
-    fn to_ip_conf(
-        ip_conf: &mut Option<ipv4::RouterConfiguration>,
-    ) -> &mut ipv4::RouterConfiguration {
-        if let Some(ip_conf) = ip_conf {
-            return ip_conf;
-        }
-
-        *ip_conf = Some(Default::default());
-        Self::to_ip_conf(ip_conf)
-    }
 }
 
 impl Default for AccessPointConfiguration {
@@ -194,7 +170,6 @@ impl Default for AccessPointConfiguration {
             auth_method: AuthMethod::None,
             password: "".into(),
             max_connections: 255,
-            ip_conf: Some(Default::default()),
         }
     }
 }
@@ -208,28 +183,6 @@ pub struct ClientConfiguration {
     pub auth_method: AuthMethod,
     pub password: heapless::String<64>,
     pub channel: Option<u8>,
-    pub ip_conf: Option<ipv4::ClientConfiguration>,
-}
-
-impl ClientConfiguration {
-    pub fn as_ip_conf_ref(&self) -> Option<&ipv4::ClientConfiguration> {
-        self.ip_conf.as_ref()
-    }
-
-    pub fn as_ip_conf_mut(&mut self) -> &mut ipv4::ClientConfiguration {
-        Self::to_ip_conf(&mut self.ip_conf)
-    }
-
-    fn to_ip_conf(
-        ip_conf: &mut Option<ipv4::ClientConfiguration>,
-    ) -> &mut ipv4::ClientConfiguration {
-        if let Some(ip_conf) = ip_conf {
-            return ip_conf;
-        }
-
-        *ip_conf = Some(ipv4::ClientConfiguration::DHCP(Default::default()));
-        Self::to_ip_conf(ip_conf)
-    }
 }
 
 impl Default for ClientConfiguration {
@@ -240,7 +193,6 @@ impl Default for ClientConfiguration {
             auth_method: Default::default(),
             password: "".into(),
             channel: None,
-            ip_conf: Some(Default::default()),
         }
     }
 }
@@ -371,177 +323,20 @@ impl Default for Configuration {
     }
 }
 
-pub trait TransitionalState<T> {
-    fn is_transitional(&self) -> bool;
-    fn is_operating(&self) -> bool;
-    fn get_operating(&self) -> Option<&T>;
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ClientIpStatus {
-    Disabled,
-    Waiting,
-    Done(ipv4::ClientSettings),
-}
-
-impl TransitionalState<ipv4::ClientSettings> for ClientIpStatus {
-    fn is_transitional(&self) -> bool {
-        *self == ClientIpStatus::Waiting
-    }
-
-    fn is_operating(&self) -> bool {
-        *self != ClientIpStatus::Disabled
-    }
-
-    fn get_operating(&self) -> Option<&ipv4::ClientSettings> {
-        if let ClientIpStatus::Done(ref settings) = *self {
-            Some(settings)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ClientConnectionStatus {
-    Disconnected,
-    Connecting,
-    Connected(ClientIpStatus),
-}
-
-impl TransitionalState<ClientIpStatus> for ClientConnectionStatus {
-    fn is_transitional(&self) -> bool {
-        *self == ClientConnectionStatus::Connecting
-            || (if let ClientConnectionStatus::Connected(ips) = self {
-                ips.is_transitional()
-            } else {
-                false
-            })
-    }
-
-    fn is_operating(&self) -> bool {
-        *self != ClientConnectionStatus::Disconnected
-    }
-
-    fn get_operating(&self) -> Option<&ClientIpStatus> {
-        if let ClientConnectionStatus::Connected(ref settings) = *self {
-            Some(settings)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ClientStatus {
-    Stopped,
-    Starting,
-    Started(ClientConnectionStatus),
-}
-
-impl TransitionalState<ClientConnectionStatus> for ClientStatus {
-    fn is_transitional(&self) -> bool {
-        *self == ClientStatus::Starting
-            || (if let ClientStatus::Started(ccs) = self {
-                ccs.is_transitional()
-            } else {
-                false
-            })
-    }
-
-    fn is_operating(&self) -> bool {
-        *self != ClientStatus::Stopped
-    }
-
-    fn get_operating(&self) -> Option<&ClientConnectionStatus> {
-        if let ClientStatus::Started(ref settings) = *self {
-            Some(settings)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ApIpStatus {
-    Disabled,
-    Waiting,
-    Done,
-}
-
-impl TransitionalState<()> for ApIpStatus {
-    fn is_transitional(&self) -> bool {
-        *self == ApIpStatus::Waiting
-    }
-
-    fn is_operating(&self) -> bool {
-        *self != ApIpStatus::Disabled
-    }
-
-    fn get_operating(&self) -> Option<&()> {
-        if let ApIpStatus::Done = *self {
-            Some(&())
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum ApStatus {
-    Stopped,
-    Starting,
-    Started(ApIpStatus),
-}
-
-impl TransitionalState<ApIpStatus> for ApStatus {
-    fn is_transitional(&self) -> bool {
-        *self == ApStatus::Starting
-            || (if let ApStatus::Started(ips) = self {
-                ips.is_transitional()
-            } else {
-                false
-            })
-    }
-
-    fn is_operating(&self) -> bool {
-        *self != ApStatus::Stopped
-    }
-
-    fn get_operating(&self) -> Option<&ApIpStatus> {
-        if let ApStatus::Started(ref settings) = *self {
-            Some(settings)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub struct Status(pub ClientStatus, pub ApStatus);
-
-impl Status {
-    pub fn is_transitional(&self) -> bool {
-        self.0.is_transitional() || self.1.is_transitional()
-    }
-
-    pub fn is_operating(&self) -> bool {
-        self.0.is_operating() || self.1.is_operating()
-    }
-}
-
 pub trait Wifi {
     type Error: Debug;
 
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
 
-    fn get_status(&self) -> Status;
+    fn get_configuration(&self) -> Result<Configuration, Self::Error>;
+
+    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
+
+    fn start(&mut self) -> Result<(), Self::Error>;
+
+    fn stop(&mut self) -> Result<(), Self::Error>;
+
+    fn is_up(&self) -> Result<bool, Self::Error>;
 
     fn scan_n<const N: usize>(
         &mut self,
@@ -549,10 +344,6 @@ pub trait Wifi {
 
     #[cfg(feature = "alloc")]
     fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
-
-    fn get_configuration(&self) -> Result<Configuration, Self::Error>;
-
-    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 }
 
 impl<W> Wifi for &mut W
@@ -565,8 +356,24 @@ where
         (**self).get_capabilities()
     }
 
-    fn get_status(&self) -> Status {
-        (**self).get_status()
+    fn get_configuration(&self) -> Result<Configuration, Self::Error> {
+        (**self).get_configuration()
+    }
+
+    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error> {
+        (*self).set_configuration(conf)
+    }
+
+    fn start(&mut self) -> Result<(), Self::Error> {
+        (*self).start()
+    }
+
+    fn stop(&mut self) -> Result<(), Self::Error> {
+        (*self).stop()
+    }
+
+    fn is_up(&self) -> Result<bool, Self::Error> {
+        (**self).is_up()
     }
 
     fn scan_n<const N: usize>(
@@ -578,13 +385,5 @@ where
     #[cfg(feature = "alloc")]
     fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error> {
         (*self).scan()
-    }
-
-    fn get_configuration(&self) -> Result<Configuration, Self::Error> {
-        (**self).get_configuration()
-    }
-
-    fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error> {
-        (*self).set_configuration(conf)
     }
 }
