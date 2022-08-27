@@ -6,6 +6,7 @@ pub trait Eth {
     fn start(&mut self) -> Result<(), Self::Error>;
     fn stop(&mut self) -> Result<(), Self::Error>;
 
+    fn is_started(&self) -> Result<bool, Self::Error>;
     fn is_up(&self) -> Result<bool, Self::Error>;
 }
 
@@ -21,6 +22,10 @@ where
 
     fn stop(&mut self) -> Result<(), Self::Error> {
         (*self).stop()
+    }
+
+    fn is_started(&self) -> Result<bool, Self::Error> {
+        (**self).is_started()
     }
 
     fn is_up(&self) -> Result<bool, Self::Error> {
