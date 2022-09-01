@@ -1,5 +1,8 @@
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "experimental")]
 pub mod asynch {
+    #[cfg(feature = "nightly")]
+    pub use unblocker::*;
+
     use core::fmt::Debug;
     use core::future::Future;
 
@@ -84,30 +87,35 @@ pub mod asynch {
         }
     }
 
-    pub trait Unblocker {
-        type UnblockFuture<T>: Future<Output = T> + Send
-        where
-            T: Send;
+    #[cfg(feature = "nightly")]
+    mod unblocker {
+        use core::future::Future;
 
-        fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
-        where
-            F: FnOnce() -> T + Send + 'static,
-            T: Send + 'static;
-    }
+        pub trait Unblocker {
+            type UnblockFuture<T>: Future<Output = T> + Send
+            where
+                T: Send;
 
-    impl<U> Unblocker for &U
-    where
-        U: Unblocker,
-    {
-        type UnblockFuture<T>
-        = U::UnblockFuture<T> where T: Send;
+            fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
+            where
+                F: FnOnce() -> T + Send + 'static,
+                T: Send + 'static;
+        }
 
-        fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
+        impl<U> Unblocker for &U
         where
-            F: FnOnce() -> T + Send + 'static,
-            T: Send + 'static,
+            U: Unblocker,
         {
-            (*self).unblock(f)
+            type UnblockFuture<T>
+            = U::UnblockFuture<T> where T: Send;
+
+            fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
+            where
+                F: FnOnce() -> T + Send + 'static,
+                T: Send + 'static,
+            {
+                (*self).unblock(f)
+            }
         }
     }
 
