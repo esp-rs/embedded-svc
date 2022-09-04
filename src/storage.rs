@@ -77,11 +77,7 @@ where
 pub trait RawStorage: StorageBase {
     fn len(&self, name: &str) -> Result<Option<usize>, Self::Error>;
 
-    fn get_raw<'a>(
-        &self,
-        name: &str,
-        buf: &'a mut [u8],
-    ) -> Result<Option<(&'a [u8], usize)>, Self::Error>;
+    fn get_raw<'a>(&self, name: &str, buf: &'a mut [u8]) -> Result<Option<&'a [u8]>, Self::Error>;
 
     fn put_raw(&mut self, name: &str, buf: &[u8]) -> Result<bool, Self::Error>;
 }
@@ -94,11 +90,7 @@ where
         (**self).len(name)
     }
 
-    fn get_raw<'a>(
-        &self,
-        name: &str,
-        buf: &'a mut [u8],
-    ) -> Result<Option<(&'a [u8], usize)>, Self::Error> {
+    fn get_raw<'a>(&self, name: &str, buf: &'a mut [u8]) -> Result<Option<&'a [u8]>, Self::Error> {
         (**self).get_raw(name, buf)
     }
 
@@ -209,7 +201,7 @@ where
     {
         let mut buf = [0_u8; N];
 
-        if let Some((buf, _)) = self
+        if let Some(buf) = self
             .raw_storage
             .get_raw(name, &mut buf)
             .map_err(StorageError::RawStorageError)?
