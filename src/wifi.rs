@@ -143,7 +143,7 @@ pub struct AccessPointInfo {
     pub bssid: [u8; 6],
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
-    pub signal_strength: u8,
+    pub signal_strength: i8,
     pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
 }
