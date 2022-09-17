@@ -180,7 +180,7 @@ where
     }
 }
 
-pub struct HandlerError(heapless::String<128>);
+pub struct HandlerError(heapless::String<64>);
 
 impl HandlerError {
     pub fn new(message: &str) -> Self {
@@ -191,7 +191,7 @@ impl HandlerError {
         &self.0
     }
 
-    pub fn release(self) -> heapless::String<128> {
+    pub fn release(self) -> heapless::String<64> {
         self.0
     }
 }
@@ -201,10 +201,10 @@ where
     E: Debug,
 {
     fn from(e: E) -> Self {
-        let mut string: heapless::String<128> = "".into();
+        let mut string: heapless::String<64> = "".into();
 
         if write!(&mut string, "{:?}", e).is_err() {
-            string = "(Error string too big to serve)".into();
+            string = "(Error string too big)".into();
         }
 
         Self(string)
