@@ -12,14 +12,16 @@ impl<C> Request<C>
 where
     C: Connection,
 {
-    pub fn wrap(connection: C) -> Result<Request<C>, C::Error> {
-        connection.headers()?;
+    pub fn wrap(connection: C) -> Request<C> {
+        if connection.is_response_initiated() {
+            panic!("connection is not in request phase");
+        }
 
-        Ok(Request(connection))
+        Request(connection)
     }
 
     pub fn split(&mut self) -> (&C::Headers, &mut C::Read) {
-        self.0.split().unwrap()
+        self.0.split()
     }
 
     pub fn into_response<'b>(
@@ -71,7 +73,20 @@ where
     C: Connection,
 {
     fn header(&self, name: &str) -> Option<&'_ str> {
-        self.0.headers().unwrap().header(name)
+        self.0.header(name)
+    }
+}
+
+impl<C> Query for Request<C>
+where
+    C: Connection,
+{
+    fn uri(&self) -> &'_ str {
+        self.0.uri()
+    }
+
+    fn method(&self) -> Method {
+        self.0.method()
     }
 }
 
@@ -82,10 +97,12 @@ impl<C> Response<C>
 where
     C: Connection,
 {
-    pub fn wrap(mut connection: C) -> Result<Response<C>, C::Error> {
-        connection.assert_response()?;
+    pub fn wrap(connection: C) -> Response<C> {
+        if !connection.is_response_initiated() {
+            panic!("connection is not in response phase");
+        }
 
-        Ok(Response(connection))
+        Response(connection)
     }
 
     pub fn connection(&mut self) -> &mut C {
@@ -117,7 +134,7 @@ where
     }
 }
 
-pub trait Connection: Read + Write {
+pub trait Connection: Query + Headers + Read + Write {
     type Headers: Query + Headers;
 
     type Read: Read<Error = Self::Error>;
@@ -127,8 +144,7 @@ pub trait Connection: Read + Write {
     type RawConnection: Read<Error = Self::RawConnectionError>
         + Write<Error = Self::RawConnectionError>;
 
-    fn headers(&self) -> Result<&Self::Headers, Self::Error>;
-    fn split(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error>;
+    fn split(&mut self) -> (&Self::Headers, &mut Self::Read);
 
     fn initiate_response<'a>(
         &'a mut self,
@@ -137,7 +153,7 @@ pub trait Connection: Read + Write {
         headers: &'a [(&'a str, &'a str)],
     ) -> Result<(), Self::Error>;
 
-    fn assert_response(&mut self) -> Result<(), Self::Error>;
+    fn is_response_initiated(&self) -> bool;
 
     fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
 }
@@ -154,11 +170,7 @@ where
 
     type RawConnection = C::RawConnection;
 
-    fn headers(&self) -> Result<&Self::Headers, Self::Error> {
-        (**self).headers()
-    }
-
-    fn split(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
+    fn split(&mut self) -> (&Self::Headers, &mut Self::Read) {
         (*self).split()
     }
 
@@ -171,8 +183,8 @@ where
         (*self).initiate_response(status, message, headers)
     }
 
-    fn assert_response(&mut self) -> Result<(), Self::Error> {
-        (*self).assert_response()
+    fn is_response_initiated(&self) -> bool {
+        (**self).is_response_initiated()
     }
 
     fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
@@ -284,7 +296,7 @@ where
     F: Fn(Request<&mut C>) -> HandlerResult + Send,
 {
     fn handle(&self, connection: &mut C) -> HandlerResult {
-        self.0(Request::wrap(connection)?)
+        self.0(Request::wrap(connection))
     }
 }
 
@@ -347,14 +359,16 @@ pub mod asynch {
     where
         C: Connection,
     {
-        pub fn wrap(connection: C) -> Result<Request<C>, C::Error> {
-            connection.headers()?;
+        pub fn wrap(connection: C) -> Request<C> {
+            if connection.is_response_initiated() {
+                panic!("connection is not in request phase");
+            }
 
-            Ok(Request(connection))
+            Request(connection)
         }
 
         pub fn split(&mut self) -> (&C::Headers, &mut C::Read) {
-            self.0.split().unwrap()
+            self.0.split()
         }
 
         pub async fn into_response<'b>(
@@ -404,12 +418,25 @@ pub mod asynch {
         }
     }
 
+    impl<C> Query for Request<C>
+    where
+        C: Connection,
+    {
+        fn uri(&self) -> &'_ str {
+            self.0.uri()
+        }
+
+        fn method(&self) -> Method {
+            self.0.method()
+        }
+    }
+
     impl<C> Headers for Request<C>
     where
         C: Connection,
     {
         fn header(&self, name: &str) -> Option<&'_ str> {
-            self.0.headers().unwrap().header(name)
+            self.0.header(name)
         }
     }
 
@@ -420,10 +447,12 @@ pub mod asynch {
     where
         C: Connection,
     {
-        pub fn wrap(mut connection: C) -> Result<Response<C>, C::Error> {
-            connection.assert_response()?;
+        pub fn wrap(connection: C) -> Response<C> {
+            if !connection.is_response_initiated() {
+                panic!("connection is not in response phase");
+            }
 
-            Ok(Response(connection))
+            Response(connection)
         }
 
         pub fn connection(&mut self) -> &mut C {
@@ -461,7 +490,7 @@ pub mod asynch {
         }
     }
 
-    pub trait Connection: Read + Write {
+    pub trait Connection: Query + Headers + Read + Write {
         type Headers: Query + Headers;
 
         type Read: Read<Error = Self::Error>;
@@ -475,8 +504,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        fn headers(&self) -> Result<&Self::Headers, Self::Error>;
-        fn split(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error>;
+        fn split(&mut self) -> (&Self::Headers, &mut Self::Read);
 
         fn initiate_response<'a>(
             &'a mut self,
@@ -485,7 +513,7 @@ pub mod asynch {
             headers: &'a [(&'a str, &'a str)],
         ) -> Self::IntoResponseFuture<'a>;
 
-        fn assert_response(&mut self) -> Result<(), Self::Error>;
+        fn is_response_initiated(&self) -> bool;
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error>;
     }
@@ -505,11 +533,7 @@ pub mod asynch {
         type IntoResponseFuture<'a>
         = C::IntoResponseFuture<'a> where Self: 'a;
 
-        fn headers(&self) -> Result<&Self::Headers, Self::Error> {
-            (**self).headers()
-        }
-
-        fn split(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
+        fn split(&mut self) -> (&Self::Headers, &mut Self::Read) {
             (*self).split()
         }
 
@@ -522,8 +546,8 @@ pub mod asynch {
             (*self).initiate_response(status, message, headers)
         }
 
-        fn assert_response(&mut self) -> Result<(), Self::Error> {
-            (*self).assert_response()
+        fn is_response_initiated(&self) -> bool {
+            (**self).is_response_initiated()
         }
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
@@ -630,6 +654,28 @@ pub mod asynch {
         }
     }
 
+    impl<B, C> Query for BlockingConnection<B, C>
+    where
+        C: Connection,
+    {
+        fn uri(&self) -> &'_ str {
+            self.connection.uri()
+        }
+
+        fn method(&self) -> Method {
+            self.connection.method()
+        }
+    }
+
+    impl<B, C> Headers for BlockingConnection<B, C>
+    where
+        C: Connection,
+    {
+        fn header(&self, name: &str) -> Option<&'_ str> {
+            self.connection.header(name)
+        }
+    }
+
     impl<B, C> Io for BlockingConnection<B, C>
     where
         C: Connection,
@@ -674,17 +720,13 @@ pub mod asynch {
 
         type RawConnection = RawBlocking<B, C::RawConnection>;
 
-        fn headers(&self) -> Result<&Self::Headers, Self::Error> {
-            self.connection.headers()
-        }
-
-        fn split(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
-            let (headers, read) = self.connection.split()?;
+        fn split(&mut self) -> (&Self::Headers, &mut Self::Read) {
+            let (headers, read) = self.connection.split();
 
             self.lended_read.blocker = &self.blocker;
             self.lended_read.api = read;
 
-            Ok((headers, &mut self.lended_read))
+            (headers, &mut self.lended_read)
         }
 
         fn initiate_response<'a>(
@@ -699,8 +741,8 @@ pub mod asynch {
             Ok(())
         }
 
-        fn assert_response(&mut self) -> Result<(), Self::Error> {
-            self.connection.assert_response()
+        fn is_response_initiated(&self) -> bool {
+            self.connection.is_response_initiated()
         }
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {
@@ -745,6 +787,28 @@ pub mod asynch {
                 lended_read: RawTrivialUnblocking::new(),
                 lended_raw: RawTrivialUnblocking::new(),
             }
+        }
+    }
+
+    impl<C> Query for TrivialUnblockingConnection<C>
+    where
+        C: super::Connection,
+    {
+        fn uri(&self) -> &'_ str {
+            self.connection.uri()
+        }
+
+        fn method(&self) -> Method {
+            self.connection.method()
+        }
+    }
+
+    impl<C> Headers for TrivialUnblockingConnection<C>
+    where
+        C: super::Connection,
+    {
+        fn header(&self, name: &str) -> Option<&'_ str> {
+            self.connection.header(name)
         }
     }
 
@@ -801,20 +865,16 @@ pub mod asynch {
         type IntoResponseFuture<'a>
         = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
 
-        fn headers(&self) -> Result<&Self::Headers, Self::Error> {
-            self.connection.headers()
-        }
-
-        fn split(&mut self) -> Result<(&Self::Headers, &mut Self::Read), Self::Error> {
-            let (headers, read) = self.connection.split()?;
+        fn split(&mut self) -> (&Self::Headers, &mut Self::Read) {
+            let (headers, read) = self.connection.split();
 
             self.lended_read.api = read;
 
-            Ok((headers, &mut self.lended_read))
+            (headers, &mut self.lended_read)
         }
 
-        fn assert_response(&mut self) -> Result<(), Self::Error> {
-            self.connection.assert_response()
+        fn is_response_initiated(&self) -> bool {
+            self.connection.is_response_initiated()
         }
 
         fn initiate_response<'a>(

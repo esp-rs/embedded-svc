@@ -95,6 +95,15 @@ where
     }
 }
 
+impl<H> Headers for &mut H
+where
+    H: Headers,
+{
+    fn header(&self, name: &str) -> Option<&'_ str> {
+        (**self).header(name)
+    }
+}
+
 pub trait Status {
     fn status(&self) -> u16;
 
@@ -114,6 +123,19 @@ where
     }
 }
 
+impl<S> Status for &mut S
+where
+    S: Status,
+{
+    fn status(&self) -> u16 {
+        (**self).status()
+    }
+
+    fn status_message(&self) -> Option<&'_ str> {
+        (**self).status_message()
+    }
+}
+
 pub trait Query {
     fn uri(&self) -> &'_ str;
 
@@ -130,6 +152,19 @@ where
 
     fn method(&self) -> Method {
         (*self).method()
+    }
+}
+
+impl<Q> Query for &mut Q
+where
+    Q: Query,
+{
+    fn uri(&self) -> &'_ str {
+        (**self).uri()
+    }
+
+    fn method(&self) -> Method {
+        (**self).method()
     }
 }
 
