@@ -335,6 +335,9 @@ pub trait Wifi {
     fn start(&mut self) -> Result<(), Self::Error>;
     fn stop(&mut self) -> Result<(), Self::Error>;
 
+    fn connect(&mut self) -> Result<(), Self::Error>;
+    fn disconnect(&mut self) -> Result<(), Self::Error>;
+
     fn is_started(&self) -> Result<bool, Self::Error>;
     fn is_connected(&self) -> Result<bool, Self::Error>;
 
@@ -370,6 +373,14 @@ where
 
     fn stop(&mut self) -> Result<(), Self::Error> {
         (*self).stop()
+    }
+
+    fn connect(&mut self) -> Result<(), Self::Error> {
+        (*self).connect()
+    }
+
+    fn disconnect(&mut self) -> Result<(), Self::Error> {
+        (*self).disconnect()
     }
 
     fn is_started(&self) -> Result<bool, Self::Error> {
