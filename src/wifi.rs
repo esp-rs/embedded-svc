@@ -332,12 +332,11 @@ pub trait Wifi {
 
     fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
 
-    // fn start(&mut self) -> Result<(), Self::Error>;
-    // fn stop(&mut self) -> Result<(), Self::Error>;
+    fn start(&mut self) -> Result<(), Self::Error>;
+    fn stop(&mut self) -> Result<(), Self::Error>;
 
     fn is_started(&self) -> Result<bool, Self::Error>;
-
-    fn is_up(&self) -> Result<bool, Self::Error>;
+    fn is_connected(&self) -> Result<bool, Self::Error>;
 
     fn scan_n<const N: usize>(
         &mut self,
@@ -365,20 +364,20 @@ where
         (*self).set_configuration(conf)
     }
 
-    // fn start(&mut self) -> Result<(), Self::Error> {
-    //     (*self).start()
-    // }
+    fn start(&mut self) -> Result<(), Self::Error> {
+        (*self).start()
+    }
 
-    // fn stop(&mut self) -> Result<(), Self::Error> {
-    //     (*self).stop()
-    // }
+    fn stop(&mut self) -> Result<(), Self::Error> {
+        (*self).stop()
+    }
 
     fn is_started(&self) -> Result<bool, Self::Error> {
         (**self).is_started()
     }
 
-    fn is_up(&self) -> Result<bool, Self::Error> {
-        (**self).is_up()
+    fn is_connected(&self) -> Result<bool, Self::Error> {
+        (**self).is_connected()
     }
 
     fn scan_n<const N: usize>(
