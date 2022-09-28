@@ -44,7 +44,7 @@ pub mod server {
                     self.sender.session()
                 );
 
-                self.sender.send(frame_type, &frame_data)
+                self.sender.send(frame_type, frame_data)
             }
             .await
         }
