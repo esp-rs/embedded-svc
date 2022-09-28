@@ -238,9 +238,16 @@ pub mod asynch {
         pub use super::*;
 
         pub trait Acceptor: ErrorType {
-            type Connection: Sender<Error = Self::Error> + Receiver<Error = Self::Error>;
+            type Sender<'a>: Sender<Error = Self::Error>
+            where
+                Self: 'a;
+            type Receiver<'a>: Receiver<Error = Self::Error>
+            where
+                Self: 'a;
 
-            type AcceptFuture<'a>: Future<Output = Result<Self::Connection, Self::Error>>
+            type AcceptFuture<'a>: Future<
+                Output = Result<(Self::Sender<'a>, Self::Receiver<'a>), Self::Error>,
+            >
             where
                 Self: 'a;
 
@@ -251,13 +258,29 @@ pub mod asynch {
         where
             A: Acceptor,
         {
-            type Connection = A::Connection;
+            type Sender<'a> = A::Sender<'a> where Self: 'a;
+            type Receiver<'a> = A::Receiver<'a> where Self: 'a;
 
             type AcceptFuture<'a>
             = A::AcceptFuture<'a> where Self: 'a;
 
             fn accept(&self) -> Self::AcceptFuture<'_> {
                 (*self).accept()
+            }
+        }
+
+        impl<A> Acceptor for &mut A
+        where
+            A: Acceptor,
+        {
+            type Sender<'a> = A::Sender<'a> where Self: 'a;
+            type Receiver<'a> = A::Receiver<'a> where Self: 'a;
+
+            type AcceptFuture<'a>
+            = A::AcceptFuture<'a> where Self: 'a;
+
+            fn accept(&self) -> Self::AcceptFuture<'_> {
+                (**self).accept()
             }
         }
     }

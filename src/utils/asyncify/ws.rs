@@ -1,6 +1,7 @@
 #[cfg(feature = "alloc")]
 pub mod server {
     use core::future::Future;
+    use core::marker::PhantomData;
     use core::pin::Pin;
     use core::task::{Context, Poll, Waker};
     use core::{mem, slice};
@@ -14,6 +15,7 @@ pub mod server {
 
     use log::info;
 
+    use crate::executor::asynch::Unblocker;
     use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
     use crate::ws::{callback_server::*, *};
 
@@ -21,20 +23,39 @@ pub mod server {
     pub use async_traits_impl::*;
 
     #[allow(dead_code)]
-    pub struct AsyncConnection<U, C, S>
-    where
-        C: RawCondvar,
-    {
+    pub struct AsyncSender<U, S> {
         unblocker: U,
         sender: S,
-        shared: Arc<Mutex<C::RawMutex, SharedReceiverState>>,
-        condvar: Arc<Condvar<C>>,
     }
 
-    impl<C, S> AsyncConnection<(), C, S>
+    impl<S> AsyncSender<(), S>
     where
-        C: RawCondvar,
         S: Sender + SessionProvider + Send + Clone + 'static,
+    {
+        pub async fn send_blocking(
+            &mut self,
+            frame_type: FrameType,
+            frame_data: &[u8],
+        ) -> Result<(), S::Error> {
+            async move {
+                info!(
+                    "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
+                    frame_type,
+                    frame_data.len(),
+                    self.sender.session()
+                );
+
+                self.sender.send(frame_type, &frame_data)
+            }
+            .await
+        }
+    }
+
+    impl<U, S> AsyncSender<U, S>
+    where
+        U: Unblocker,
+        S: Sender + SessionProvider + Send + Clone + 'static,
+        S::Error: Send + Sync + 'static,
     {
         pub async fn send(
             &mut self,
@@ -51,24 +72,35 @@ pub mod server {
             let mut sender = self.sender.clone();
             let frame_data: Vec<u8> = frame_data.to_owned();
 
-            async move { sender.send(frame_type, &frame_data) }.await
+            self.unblocker
+                .unblock(move || sender.send(frame_type, &frame_data))
+                .await
         }
     }
 
-    impl<U, C, S> AsyncConnection<U, C, S>
+    #[allow(dead_code)]
+    pub struct AsyncReceiver<C, E>
     where
-        U: Send,
+        C: RawCondvar,
+    {
+        shared: Arc<Mutex<C::RawMutex, SharedReceiverState>>,
+        condvar: Arc<Condvar<C>>,
+        _ep: PhantomData<fn() -> E>,
+    }
+
+    impl<C, E> AsyncReceiver<C, E>
+    where
         C: RawCondvar + Send + Sync,
         C::RawMutex: Send + Sync,
-        S: ErrorType + Send,
     {
         pub fn recv<'a>(
             &'a mut self,
             frame_data_buf: &'a mut [u8],
-        ) -> AsyncReceiverFuture<'a, U, C, S> {
+        ) -> AsyncReceiverFuture<'a, C, E> {
             AsyncReceiverFuture {
                 receiver: self,
                 frame_data_buf,
+                _ep: PhantomData,
             }
         }
     }
@@ -93,20 +125,20 @@ pub mod server {
         receiver_state: Arc<M>,
     }
 
-    pub struct AsyncReceiverFuture<'a, U, C, S>
+    pub struct AsyncReceiverFuture<'a, C, E>
     where
         C: RawCondvar,
     {
-        receiver: &'a mut AsyncConnection<U, C, S>,
+        receiver: &'a mut AsyncReceiver<C, E>,
         frame_data_buf: &'a mut [u8],
+        _ep: PhantomData<fn() -> E>,
     }
 
-    impl<'a, U, C, S> Future for AsyncReceiverFuture<'a, U, C, S>
+    impl<'a, C, E> Future for AsyncReceiverFuture<'a, C, E>
     where
         C: RawCondvar,
-        S: ErrorType,
     {
-        type Output = Result<(FrameType, usize), S::Error>;
+        type Output = Result<(FrameType, usize), E>;
 
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let frame_data_buf_ptr = self.frame_data_buf.as_mut_ptr();
@@ -177,23 +209,30 @@ pub mod server {
         C::RawMutex: Send + Sync,
         S: Sender + Send + Clone + 'static,
     {
-        type Output = Result<AsyncConnection<U, C, S>, <S as ErrorType>::Error>;
+        type Output = Result<
+            (AsyncSender<U, S>, AsyncReceiver<C, <S as ErrorType>::Error>),
+            <S as ErrorType>::Error,
+        >;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let mut accept = self.accept.lock();
 
             match mem::replace(&mut accept.data, None) {
                 Some(Some((shared, sender))) => {
-                    let connection = AsyncConnection {
+                    let sender = AsyncSender {
                         unblocker: self.unblocker.clone(),
                         sender,
+                    };
+
+                    let receiver = AsyncReceiver {
                         shared,
                         condvar: self.condvar.clone(),
+                        _ep: PhantomData,
                     };
 
                     self.condvar.notify_all();
 
-                    Poll::Ready(Ok(connection))
+                    Poll::Ready(Ok((sender, receiver)))
                 }
                 Some(None) => {
                     accept.data = Some(None);
@@ -399,57 +438,43 @@ pub mod server {
 
     #[cfg(all(feature = "nightly", feature = "experimental"))]
     mod async_traits_impl {
+        use core::fmt::Debug;
         use core::future::Future;
-
-        extern crate alloc;
-        use alloc::borrow::ToOwned;
-        use alloc::vec::Vec;
-
-        use log::info;
+        use core::marker::PhantomData;
 
         use crate::executor::asynch::Unblocker;
         use crate::utils::mutex::RawCondvar;
         use crate::ws::{callback_server::*, *};
 
-        use super::{AsyncAcceptor, AsyncConnection, AsyncReceiverFuture};
+        use super::{AsyncAcceptor, AsyncReceiver, AsyncReceiverFuture, AsyncSender};
 
-        impl<U, C, S> ErrorType for AsyncConnection<U, C, S>
+        impl<U, S> ErrorType for AsyncSender<U, S>
         where
-            C: RawCondvar,
             S: ErrorType,
         {
             type Error = S::Error;
         }
 
-        impl<U, C, S> asynch::Sender for AsyncConnection<U, C, S>
+        impl<U, S> asynch::Sender for AsyncSender<U, S>
         where
             U: Unblocker,
-            C: RawCondvar,
             S: Sender + SessionProvider + Send + Clone + 'static,
             S::Error: Send + Sync + 'static,
         {
             type SendFuture<'a>
-            = U::UnblockFuture<Result<(), S::Error>> where Self: 'a;
+            = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
 
-            fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Self::SendFuture<'_> {
-                info!(
-                    "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
-                    frame_type,
-                    frame_data.len(),
-                    self.sender.session()
-                );
-
-                let mut sender = self.sender.clone();
-                let frame_data: Vec<u8> = frame_data.to_owned();
-
-                self.unblocker
-                    .unblock(move || sender.send(frame_type, &frame_data))
+            fn send<'a>(
+                &'a mut self,
+                frame_type: FrameType,
+                frame_data: &'a [u8],
+            ) -> Self::SendFuture<'a> {
+                async move { AsyncSender::send(self, frame_type, frame_data).await }
             }
         }
 
-        impl<C, S> asynch::Sender for AsyncConnection<(), C, S>
+        impl<S> asynch::Sender for AsyncSender<(), S>
         where
-            C: RawCondvar,
             S: Sender + SessionProvider + Send + Clone + 'static,
         {
             type SendFuture<'a>
@@ -460,24 +485,32 @@ pub mod server {
                 frame_type: FrameType,
                 frame_data: &'a [u8],
             ) -> Self::SendFuture<'a> {
-                async move { AsyncConnection::send(self, frame_type, frame_data).await }
+                async move { AsyncSender::send_blocking(self, frame_type, frame_data).await }
             }
         }
 
-        impl<U, C, S> asynch::Receiver for AsyncConnection<U, C, S>
+        impl<C, E> ErrorType for AsyncReceiver<C, E>
         where
-            U: Send,
+            C: RawCondvar,
+            E: Debug,
+        {
+            type Error = E;
+        }
+
+        impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
+        where
             C: RawCondvar + Send + Sync,
             C::RawMutex: Send + Sync,
-            S: ErrorType + Send,
+            E: Debug,
         {
             type ReceiveFuture<'a>
-            = AsyncReceiverFuture<'a, U, C, S> where Self: 'a;
+            = AsyncReceiverFuture<'a, C, E> where Self: 'a;
 
             fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
                 AsyncReceiverFuture {
                     receiver: self,
                     frame_data_buf,
+                    _ep: PhantomData,
                 }
             }
         }
@@ -500,7 +533,8 @@ pub mod server {
             S: Sender + SessionProvider + Send + Clone + 'static,
             S::Error: Send + Sync + 'static,
         {
-            type Connection = AsyncConnection<U, C, S>;
+            type Sender<'a> = AsyncSender<U, S> where U: 'a, C: 'a, S: 'a;
+            type Receiver<'a> = AsyncReceiver<C, S::Error> where U: 'a, C: 'a;
 
             type AcceptFuture<'a>
             = &'a Self where Self: 'a;
@@ -517,7 +551,8 @@ pub mod server {
             C::RawMutex: Send + Sync,
             S: Sender + SessionProvider + Send + Clone + 'static,
         {
-            type Connection = AsyncConnection<(), C, S>;
+            type Sender<'a> = AsyncSender<(), S> where C: 'a, S: 'a;
+            type Receiver<'a> = AsyncReceiver<C, S::Error> where C: 'a;
 
             type AcceptFuture<'a>
             = &'a Self where Self: 'a;
