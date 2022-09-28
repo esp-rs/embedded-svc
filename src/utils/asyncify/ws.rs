@@ -15,7 +15,6 @@ pub mod server {
 
     use log::info;
 
-    use crate::executor::asynch::Unblocker;
     use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
     use crate::ws::{callback_server::*, *};
 
@@ -51,9 +50,10 @@ pub mod server {
         }
     }
 
+    #[cfg(feature = "nightly")]
     impl<U, S> AsyncSender<U, S>
     where
-        U: Unblocker,
+        U: crate::executor::asynch::Unblocker,
         S: Sender + SessionProvider + Send + Clone + 'static,
         S::Error: Send + Sync + 'static,
     {
