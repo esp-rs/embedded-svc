@@ -79,7 +79,7 @@ pub trait RawStorage: StorageBase {
 
     fn get_raw<'a>(&self, name: &str, buf: &'a mut [u8]) -> Result<Option<&'a [u8]>, Self::Error>;
 
-    fn put_raw(&mut self, name: &str, buf: &[u8]) -> Result<bool, Self::Error>;
+    fn set_raw(&mut self, name: &str, buf: &[u8]) -> Result<bool, Self::Error>;
 }
 
 impl<R> RawStorage for &mut R
@@ -94,8 +94,8 @@ where
         (**self).get_raw(name, buf)
     }
 
-    fn put_raw(&mut self, name: &str, buf: &[u8]) -> Result<bool, Self::Error> {
-        (**self).put_raw(name, buf)
+    fn set_raw(&mut self, name: &str, buf: &[u8]) -> Result<bool, Self::Error> {
+        (**self).set_raw(name, buf)
     }
 }
 
@@ -132,27 +132,16 @@ where
     }
 }
 
-pub struct StorageImpl<const N: usize, R, S> {
-    raw_storage: R,
-    serde: S,
-}
-
-impl<const N: usize, R, S> StorageImpl<N, R, S> {
-    pub fn new(raw_storage: R, serde: S) -> Self {
-        Self { raw_storage, serde }
-    }
-}
-
 #[derive(Debug)]
-pub enum StorageError<S, R> {
-    SerdeError(S),
+pub enum StorageError<R, S> {
     RawStorageError(R),
+    SerdeError(S),
 }
 
-impl<S, R> fmt::Display for StorageError<S, R>
+impl<R, S> fmt::Display for StorageError<R, S>
 where
-    S: fmt::Display,
     R: fmt::Display,
+    S: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -163,39 +152,36 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<S, R> std::error::Error for StorageError<S, R>
+impl<R, S> std::error::Error for StorageError<R, S>
 where
-    S: std::error::Error,
     R: std::error::Error,
+    S: std::error::Error,
 {
 }
 
-impl<const N: usize, R, S> StorageBase for StorageImpl<N, R, S>
-where
-    R: RawStorage,
-    S: SerDe,
-{
-    type Error = StorageError<S::Error, R::Error>;
+pub struct StorageImpl<const N: usize, R, S> {
+    raw_storage: R,
+    serde: S,
+}
 
-    fn contains(&self, name: &str) -> Result<bool, Self::Error> {
+impl<const N: usize, R, S> StorageImpl<N, R, S> {
+    pub const fn new(raw_storage: R, serde: S) -> Self {
+        Self { raw_storage, serde }
+    }
+
+    pub fn contains(&self, name: &str) -> Result<bool, StorageError<R, S>> {
         self.raw_storage
             .contains(name)
             .map_err(StorageError::RawStorageError)
     }
 
-    fn remove(&mut self, name: &str) -> Result<bool, Self::Error> {
+    pub fn remove(&mut self, name: &str) -> Result<bool, StorageError<R, S>> {
         self.raw_storage
             .remove(name)
             .map_err(StorageError::RawStorageError)
     }
-}
 
-impl<const N: usize, R, S> Storage for StorageImpl<N, R, S>
-where
-    R: RawStorage,
-    S: SerDe,
-{
-    fn get<T>(&self, name: &str) -> Result<Option<T>, Self::Error>
+    pub fn get<T>(&self, name: &str) -> Result<Option<T>, StorageError<R, S>>
     where
         T: DeserializeOwned,
     {
@@ -216,7 +202,7 @@ where
         }
     }
 
-    fn set<T>(&mut self, name: &str, value: &T) -> Result<bool, Self::Error>
+    pub fn set<T>(&mut self, name: &str, value: &T) -> Result<bool, StorageError<R, S>>
     where
         T: Serialize,
     {
@@ -228,8 +214,44 @@ where
             .map_err(StorageError::SerdeError)?;
 
         self.raw_storage
-            .put_raw(name, buf)
+            .set_raw(name, buf)
             .map_err(StorageError::RawStorageError)
+    }
+}
+
+impl<const N: usize, R, S> StorageBase for StorageImpl<N, R, S>
+where
+    R: RawStorage,
+    S: SerDe,
+{
+    type Error = StorageError<R::Error, S::Error>;
+
+    fn contains(&self, name: &str) -> Result<bool, Self::Error> {
+        StorageImpl::contains(self, name)
+    }
+
+    fn remove(&mut self, name: &str) -> Result<bool, Self::Error> {
+        StorageImpl::remove(self, name)
+    }
+}
+
+impl<const N: usize, R, S> Storage for StorageImpl<N, R, S>
+where
+    R: RawStorage,
+    S: SerDe,
+{
+    fn get<T>(&self, name: &str) -> Result<Option<T>, Self::Error>
+    where
+        T: DeserializeOwned,
+    {
+        StorageImpl::get(self, name)
+    }
+
+    fn set<T>(&mut self, name: &str, value: &T) -> Result<bool, Self::Error>
+    where
+        T: Serialize,
+    {
+        StorageImpl::set(self, name, value)
     }
 }
 
@@ -238,19 +260,17 @@ struct Entry<'a> {
     value: &'a dyn Any,
 }
 
-pub struct DynStorageImpl<'a, const N: usize>([Option<Entry<'a>>; N]);
-
 #[derive(Debug)]
 pub struct NoSpaceError;
 
-impl<'a, const N: usize> StorageBase for DynStorageImpl<'a, N> {
-    type Error = NoSpaceError;
+pub struct DynStorageImpl<'a, const N: usize>([Option<Entry<'a>>; N]);
 
-    fn contains(&self, name: &str) -> Result<bool, Self::Error> {
+impl<'a, const N: usize> DynStorageImpl<'a, N> {
+    pub fn contains(&self, name: &str) -> Result<bool, NoSpaceError> {
         Ok(self.get(name)?.is_some())
     }
 
-    fn remove(&mut self, name: &str) -> Result<bool, Self::Error> {
+    pub fn remove(&mut self, name: &str) -> Result<bool, NoSpaceError> {
         if let Some(place) = self.0.iter_mut().find(|entry| {
             entry
                 .as_ref()
@@ -263,11 +283,9 @@ impl<'a, const N: usize> StorageBase for DynStorageImpl<'a, N> {
             Ok(false)
         }
     }
-}
 
-impl<'a, const N: usize> DynStorage<'a> for DynStorageImpl<'a, N> {
     #[allow(clippy::unnecessary_lazy_evaluations)]
-    fn get(&self, name: &str) -> Result<Option<&'a dyn Any>, Self::Error> {
+    pub fn get(&self, name: &str) -> Result<Option<&'a dyn Any>, NoSpaceError> {
         Ok(self.0.iter().find_map(|entry| {
             entry
                 .as_ref()
@@ -275,7 +293,7 @@ impl<'a, const N: usize> DynStorage<'a> for DynStorageImpl<'a, N> {
         }))
     }
 
-    fn set(&mut self, name: &'a str, value: &'a dyn Any) -> Result<bool, Self::Error> {
+    pub fn set(&mut self, name: &'a str, value: &'a dyn Any) -> Result<bool, NoSpaceError> {
         if let Some(entry) = self
             .0
             .iter_mut()
@@ -295,5 +313,28 @@ impl<'a, const N: usize> DynStorage<'a> for DynStorageImpl<'a, N> {
         } else {
             Err(NoSpaceError)
         }
+    }
+}
+
+impl<'a, const N: usize> StorageBase for DynStorageImpl<'a, N> {
+    type Error = NoSpaceError;
+
+    fn contains(&self, name: &str) -> Result<bool, Self::Error> {
+        DynStorageImpl::contains(self, name)
+    }
+
+    fn remove(&mut self, name: &str) -> Result<bool, Self::Error> {
+        DynStorageImpl::remove(self, name)
+    }
+}
+
+impl<'a, const N: usize> DynStorage<'a> for DynStorageImpl<'a, N> {
+    #[allow(clippy::unnecessary_lazy_evaluations)]
+    fn get(&self, name: &str) -> Result<Option<&'a dyn Any>, Self::Error> {
+        DynStorageImpl::get(self, name)
+    }
+
+    fn set(&mut self, name: &'a str, value: &'a dyn Any) -> Result<bool, Self::Error> {
+        DynStorageImpl::set(self, name, value)
     }
 }
