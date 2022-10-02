@@ -164,7 +164,11 @@ pub struct StorageImpl<const N: usize, R, S> {
     serde: S,
 }
 
-impl<const N: usize, R, S> StorageImpl<N, R, S> {
+impl<const N: usize, R, S> StorageImpl<N, R, S>
+where
+    R: RawStorage,
+    S: SerDe,
+{
     pub const fn new(raw_storage: R, serde: S) -> Self {
         Self { raw_storage, serde }
     }
