@@ -145,8 +145,8 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SerdeError(e) => write!(f, "SerDe error: {}", e),
             Self::RawStorageError(e) => write!(f, "Storage error: {}", e),
+            Self::SerdeError(e) => write!(f, "SerDe error: {}", e),
         }
     }
 }
@@ -173,19 +173,19 @@ where
         Self { raw_storage, serde }
     }
 
-    pub fn contains(&self, name: &str) -> Result<bool, StorageError<R, S>> {
+    pub fn contains(&self, name: &str) -> Result<bool, StorageError<R::Error, S::Error>> {
         self.raw_storage
             .contains(name)
             .map_err(StorageError::RawStorageError)
     }
 
-    pub fn remove(&mut self, name: &str) -> Result<bool, StorageError<R, S>> {
+    pub fn remove(&mut self, name: &str) -> Result<bool, StorageError<R::Error, S::Error>> {
         self.raw_storage
             .remove(name)
             .map_err(StorageError::RawStorageError)
     }
 
-    pub fn get<T>(&self, name: &str) -> Result<Option<T>, StorageError<R, S>>
+    pub fn get<T>(&self, name: &str) -> Result<Option<T>, StorageError<R::Error, S::Error>>
     where
         T: DeserializeOwned,
     {
@@ -206,7 +206,11 @@ where
         }
     }
 
-    pub fn set<T>(&mut self, name: &str, value: &T) -> Result<bool, StorageError<R, S>>
+    pub fn set<T>(
+        &mut self,
+        name: &str,
+        value: &T,
+    ) -> Result<bool, StorageError<R::Error, S::Error>>
     where
         T: Serialize,
     {
