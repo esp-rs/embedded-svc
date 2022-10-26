@@ -462,7 +462,7 @@ pub mod server {
             S::Error: Send + Sync + 'static,
         {
             type SendFuture<'a>
-            = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
+            = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
             fn send<'a>(
                 &'a mut self,
@@ -478,7 +478,7 @@ pub mod server {
             S: Sender + SessionProvider + Send + Clone + 'static,
         {
             type SendFuture<'a>
-            = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
+            = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
             fn send<'a>(
                 &'a mut self,

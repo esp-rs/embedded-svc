@@ -264,7 +264,7 @@ mod async_traits_impl {
         type Data = P;
 
         type SendFuture<'a>
-        = impl Future<Output = ()> where Self: 'a;
+        = impl Future<Output = ()> + 'a where Self: 'a;
 
         fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
             async move { AsyncPostbox::send(self, value).await }

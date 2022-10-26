@@ -211,7 +211,7 @@ pub mod asynch {
         S: super::Sender + Send,
     {
         type SendFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
         fn send<'a>(
             &'a mut self,
@@ -227,7 +227,7 @@ pub mod asynch {
         R: super::Receiver + Send,
     {
         type ReceiveFuture<'a>
-        = impl Future<Output = Result<(FrameType, usize), Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<(FrameType, usize), Self::Error>> + 'a where Self: 'a;
 
         fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
             async move { self.api.recv(frame_data_buf) }

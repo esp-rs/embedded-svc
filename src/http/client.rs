@@ -383,14 +383,14 @@ pub mod asynch {
         C: Connection,
     {
         type WriteFuture<'b>
-        = impl Future<Output = Result<usize, Self::Error>> where Self: 'b;
+        = impl Future<Output = Result<usize, Self::Error>> + 'b where Self: 'b;
 
         fn write<'b>(&'b mut self, buf: &'b [u8]) -> Self::WriteFuture<'b> {
             async move { self.0.write(buf).await }
         }
 
         type FlushFuture<'b>
-        = impl Future<Output = Result<(), Self::Error>> where Self: 'b;
+        = impl Future<Output = Result<(), Self::Error>> + 'b where Self: 'b;
 
         fn flush(&mut self) -> Self::FlushFuture<'_> {
             async move { self.0.flush().await }
@@ -459,7 +459,7 @@ pub mod asynch {
         C: Connection,
     {
         type ReadFuture<'b>
-        = impl Future<Output = Result<usize, Self::Error>> where Self: 'b;
+        = impl Future<Output = Result<usize, Self::Error>> + 'b where Self: 'b;
 
         fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Self::ReadFuture<'b> {
             async move { self.0.read(buf).await }
@@ -742,7 +742,7 @@ pub mod asynch {
     where
         C: super::Connection,
     {
-        type ReadFuture<'a> = impl Future<Output = Result<usize, Self::Error>>
+        type ReadFuture<'a> = impl Future<Output = Result<usize, Self::Error>> + 'a
         where Self: 'a;
 
         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
@@ -754,14 +754,14 @@ pub mod asynch {
     where
         C: super::Connection,
     {
-        type WriteFuture<'a> = impl Future<Output = Result<usize, Self::Error>>
+        type WriteFuture<'a> = impl Future<Output = Result<usize, Self::Error>> + 'a
         where Self: 'a;
 
         fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
             async move { self.connection.write(buf) }
         }
 
-        type FlushFuture<'a> = impl Future<Output = Result<(), Self::Error>>
+        type FlushFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a
         where Self: 'a;
 
         fn flush(&mut self) -> Self::FlushFuture<'_> {
@@ -782,10 +782,10 @@ pub mod asynch {
         type RawConnection = RawTrivialUnblocking<C::RawConnection>;
 
         type IntoResponseFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
         type IntoRequestFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
         fn initiate_request<'a>(
             &'a mut self,

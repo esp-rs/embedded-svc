@@ -56,7 +56,7 @@ pub mod asynch {
         R: super::Read,
     {
         type ReadFuture<'a>
-        = impl Future<Output = Result<usize, Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<usize, Self::Error>> + 'a where Self: 'a;
 
         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
             async move { self.api.read(buf) }
@@ -68,14 +68,14 @@ pub mod asynch {
         W: super::Write,
     {
         type WriteFuture<'a>
-        = impl Future<Output = Result<usize, Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<usize, Self::Error>> + 'a where Self: 'a;
 
         fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
             async move { self.api.write(buf) }
         }
 
         type FlushFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
         fn flush(&mut self) -> Self::FlushFuture<'_> {
             async move { self.api.flush() }
@@ -131,7 +131,7 @@ pub mod asynch {
         R: super::Read,
     {
         type ReadFuture<'a>
-        = impl Future<Output = Result<usize, Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<usize, Self::Error>> + 'a where Self: 'a;
 
         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
             async move { unsafe { self.api.as_mut() }.unwrap().read(buf) }
@@ -143,14 +143,14 @@ pub mod asynch {
         W: super::Write,
     {
         type WriteFuture<'a>
-        = impl Future<Output = Result<usize, Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<usize, Self::Error>> + 'a where Self: 'a;
 
         fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
             async move { unsafe { self.api.as_mut() }.unwrap().write(buf) }
         }
 
         type FlushFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> where Self: 'a;
+        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
         fn flush(&mut self) -> Self::FlushFuture<'_> {
             async move { unsafe { self.api.as_mut() }.unwrap().flush() }
