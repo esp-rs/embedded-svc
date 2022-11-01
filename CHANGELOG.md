@@ -12,7 +12,7 @@ Release 0.23 is a backwards-incompatible release where almost all traits were to
 ### Major Changes
 
 The main themes of the 0.23 release are:
-* Loose weight - the `utils` module was reduced to the bare minimum necessary. After all, the main goal of this crate is to provide traits, not utilities
+* Lose weight - the `utils` module was reduced to the bare minimum necessary. After all, the main goal of this crate is to provide traits, not utilities
 * In addition to all traits being implementable in `no_std` environments, make sure they do **not** have explicit or implicit dependencies on an allocator being available (the Rust `alloc` module)
 * Improve the experimental HTTP client and server traits
 * Separate the notions of using a "nightly" compiler (which is a precondition for all async support) from "experimental" features, which might or might not be async-related
