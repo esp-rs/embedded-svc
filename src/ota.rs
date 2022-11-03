@@ -42,6 +42,7 @@ pub enum LoadResult {
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum SlotState {
+    Factory,
     Valid,
     Invalid,
     Unverified,
