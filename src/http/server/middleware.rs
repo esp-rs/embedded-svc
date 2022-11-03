@@ -69,11 +69,15 @@ pub mod asynch {
     {
         type HandleFuture<'a>: Future<Output = HandlerResult> + Send
         where
-            Self: 'a;
+            Self: 'a,
+            R: 'a,
+            S: 'a;
 
-        fn handle<H>(&self, req: R, resp: S, handler: &H) -> Self::HandleFuture<'_>
+        fn handle<'a, H>(&'a self, req: R, resp: S, handler: &'a H) -> Self::HandleFuture<'a>
         where
-            H: Handler<R, S>;
+            H: Handler<R, S> + 'a,
+            R: 'a,
+            S: 'a;
 
         fn compose<H>(self, handler: H) -> CompositeHandler<Self, H>
         where
@@ -120,9 +124,15 @@ pub mod asynch {
         type HandleFuture<'a>
         where
             Self: 'a,
+            R: 'a,
+            S: 'a,
         = impl Future<Output = HandlerResult> + Send + 'a;
 
-        fn handle(&self, req: R, resp: S) -> Self::HandleFuture<'_> {
+        fn handle<'a>(&'a self, req: R, resp: S) -> Self::HandleFuture<'a>
+        where
+            R: 'a,
+            S: 'a,
+        {
             self.middleware.handle(req, resp, &self.handler)
         }
     }

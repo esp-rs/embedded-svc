@@ -176,9 +176,14 @@ pub mod asynch {
     {
         type HandleFuture<'a>: Future<Output = HandlerResult>
         where
-            Self: 'a;
+            Self: 'a,
+            R: 'a,
+            S: 'a;
 
-        fn handle(&self, req: R, resp: S) -> Self::HandleFuture<'_>;
+        fn handle<'a>(&'a self, req: R, resp: S) -> Self::HandleFuture<'a>
+        where
+            R: 'a,
+            S: 'a;
     }
 
     // type HFuture = impl Future<Output = HandlerResult;
