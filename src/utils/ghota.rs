@@ -471,7 +471,7 @@ pub mod asynch {
         type ReadFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Result<usize, Self::Error>>;
+        = impl Future<Output = Result<usize, Self::Error>> + 'a;
 
         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'_> {
             async move { self.response.reader().read(buf).await.map_err(Error::Http) }
@@ -497,23 +497,23 @@ pub mod asynch {
         type GetLatestReleaseFuture<'b>
         where
             Self: 'b,
-        = impl Future<Output = Result<Option<FirmwareInfo>, Self::Error>>;
+        = impl Future<Output = Result<Option<FirmwareInfo>, Self::Error>> + 'b;
 
         #[cfg(feature = "alloc")]
         type GetReleasesFuture<'b>
         where
             Self: 'b,
-        = impl Future<Output = Result<alloc::vec::Vec<FirmwareInfo>, Self::Error>>;
+        = impl Future<Output = Result<alloc::vec::Vec<FirmwareInfo>, Self::Error>> + 'b;
 
         type GetReleasesNFuture<'b, const N: usize>
         where
             Self: 'b,
-        = impl Future<Output = Result<heapless::Vec<FirmwareInfo, N>, Self::Error>>;
+        = impl Future<Output = Result<heapless::Vec<FirmwareInfo, N>, Self::Error>> + 'b;
 
         type OpenFuture<'b>
         where
             Self: 'b,
-        = impl Future<Output = Result<Self::OtaRead<'b>, Self::Error>>;
+        = impl Future<Output = Result<Self::OtaRead<'b>, Self::Error>> + 'b;
 
         fn get_latest_release(&mut self) -> Self::GetLatestReleaseFuture<'_> {
             async move {

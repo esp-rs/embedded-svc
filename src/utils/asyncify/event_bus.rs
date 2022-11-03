@@ -74,7 +74,7 @@ where
     type SendFuture<'a>
     where
         Self: 'a,
-    = impl Future<Output = ()>;
+    = impl Future<Output = ()> + 'a;
 
     fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
         async move {

@@ -64,7 +64,7 @@ where
     type SendFuture<'a>
     where
         Self: 'a,
-    = impl Future<Output = Result<(), Self::Error>>;
+    = impl Future<Output = Result<(), Self::Error>> + 'a;
 
     fn send(&mut self, frame_type: FrameType, frame_data: Option<&[u8]>) -> Self::SendFuture<'_> {
         info!(

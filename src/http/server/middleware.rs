@@ -120,7 +120,7 @@ pub mod asynch {
         type HandleFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = HandlerResult> + Send;
+        = impl Future<Output = HandlerResult> + Send + 'a;
 
         fn handle(&self, req: R, resp: S) -> Self::HandleFuture<'_> {
             self.middleware.handle(req, resp, &self.handler)

@@ -259,7 +259,7 @@ pub mod adapt {
             T: 'a,
             S: 'a,
             Self: 'a,
-        = impl Future<Output = ()> + Send;
+        = impl Future<Output = ()> + Send + 'a;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
             #[allow(clippy::clone_double_ref)]
@@ -283,7 +283,7 @@ pub mod adapt {
             T: 'a,
             S: 'a,
             Self: 'a,
-        = impl Future<Output = T> + Send;
+        = impl Future<Output = T> + Send + 'a;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             async move {

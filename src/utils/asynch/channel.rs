@@ -44,7 +44,7 @@ pub mod adapt {
         type SendFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = ()> + Send;
+        = impl Future<Output = ()> + Send + 'a;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
             let inner = &mut self.inner;
@@ -65,7 +65,7 @@ pub mod adapt {
         type RecvFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Self::Data> + Send;
+        = impl Future<Output = Self::Data> + Send + 'a;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             let inner = &mut self.inner;
@@ -101,7 +101,7 @@ pub mod adapt {
         type SendFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = ()> + Send;
+        = impl Future<Output = ()> + Send + 'a;
 
         fn send(&mut self, value: Self::Data) -> Self::SendFuture<'_> {
             async move { send_both(&mut self.first, &mut self.second, value).await }
@@ -118,7 +118,7 @@ pub mod adapt {
         type RecvFuture<'a>
         where
             Self: 'a,
-        = impl Future<Output = Self::Data> + Send;
+        = impl Future<Output = Self::Data> + Send + 'a;
 
         fn recv(&mut self) -> Self::RecvFuture<'_> {
             async move { recv_both(&mut self.first, &mut self.second).await }
