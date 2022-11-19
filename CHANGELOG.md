@@ -49,7 +49,17 @@ Furthermore, the `Eth` trait now no longer assumes that the driver implementing 
 
 #### http
 
-TODO
+This module underwent complete refactoring. Major changes:
+* `Connection` trait: this is the major HTTP abstraction for both client code and server handlers. Amongst other reasons, introducing this trait solves the problem where the underlying TCP socket abstraction cannot be split into separate "reader" and "writer". Note that certain methods of the `Connection` trait can only be called when the connection is in a certain state (i.e. "client request submitted" phase vs "client request submitted" phase) and will panic otherwise. There are two safe, non-panicking wrappers of `Connection` for both HTTP client and server: `Request` and `Response`, where the recommendation for user code is to use the `Connection` trait via the `Request` wrapper (`Request` is automatically turned into `Response` once the request is submitted)
+* On error, the server `Handler` trait is now required to return a dedicated `HandlerError` structure, which is just a wrapper around an error message. `HandlerError` is expected to be turned into an HTTP 500 response by trait implementors. The generified `E: Debug` error that used to be returned by the `Handler` trait introduced a very complex lifetime handling in user code and was therefore retired. Note that since `HandlerError` does not allocate, the maximum error message that it can contain is 64 characters. Longer messages are automatically truncated.
+* The `registry` module is removed, as the `Registry` trait was impossible to implement without allocations. Instead, the new `utils::http::registry` utility is offered
+* `Query` trait, allowing user to retrive the HTTP method and URI
+* Implement traits on `& T` and `&mut T` where appropriate
+* `headers` module with utility functions for building a headers' array for submission
+* `Blocking` and `TrivialUnblocking` adaptors from async to blocking traits and vice versa
+* `Header` utility in `utils::http`
+* The `session` module is significantly simplified and moved to `utils::http::session`
+* The `cookies` module is moved to `utils::http::cookies`
 
 #### httpd
 
@@ -110,7 +120,24 @@ Completely retired utilities:
 * `rest`
 * `json_io`
 
-TODO: `utils::mutex`
+##### utils::mutex
+
+This is a module that provides mutex and condvar abstractions, but with the caveat that these abstractions are supposed to *only* be used by:
+* Other utilities in the `utils` module, namely the `utils::asyncify` module, and the helper `utils::mqtt` module (the latter can optionally be used by implementors of the synchronous `mqtt` traits)
+* Implementors of the `embedded-svc` traits
+
+It is *not* intended for general, public use. 
+If users need a synchronous mutex or condvar abstractions for their application code, they are strongly encouraged to use one of the following options:
+* For STD-compatible environments, the mutex and condvar abstractions provided by the Rust STD library itself
+* For no_std environments, one of the following:
+ * The synchronous mutex abstractions provided by the `embassy-sync` crate
+ * The critical section provided by the `critical-section` crate
+ * Note that the no_std options above only provide a mutex abstration. If users need a condvar abstraction (usually only the case for RTOS environments which provde a thread/task notion), they should use the native condvar facilities of their RTOS
+
+Furthermore:
+ * When the `embedded-svc` utilities are used in a STD-compatible environment, the mutex and condvar abstractions of `utils::mutex` 
+are already implemented in terms of Rust's STD mutex and condvar abstractions, and users should not be concerned with this module at all
+ * When the `embedded-svc` utilities are used in a no_std environment (i.e., an RTOS that provides blocking synchronization primitives, as well as the notion of task/threads but these are not Rust STD compatible), users are required to provide implementations of the `RawMutex` and `RawCondvar` traits
 
 #### wifi
 
