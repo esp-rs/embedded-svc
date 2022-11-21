@@ -10,7 +10,7 @@ use enumset::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "use_strum")]
-use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
+use strum_macros::{Display, EnumIter, EnumMessage, EnumString, EnumVariantNames, FromRepr};
 
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
@@ -19,7 +19,7 @@ use num_enum::TryFromPrimitive;
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter)
+    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames, FromRepr)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
@@ -72,7 +72,7 @@ impl Default for AuthMethod {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter)
+    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames, FromRepr)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
@@ -114,7 +114,7 @@ impl Default for Protocol {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter)
+    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames, FromRepr)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
@@ -201,7 +201,7 @@ impl Default for ClientConfiguration {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter)
+    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames, FromRepr)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
