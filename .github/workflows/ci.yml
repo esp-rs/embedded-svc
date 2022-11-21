@@ -33,5 +33,7 @@ jobs:
         run: cargo clippy --features experimental,nightly --no-deps --target riscv32imc-esp-espidf -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort -- -Dwarnings
       - name: Build | Experimental
         run: cargo build --features experimental,nightly --target riscv32imc-esp-espidf -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
-      - name: Build | Compile / no_std
+      - name: Build | Compile / no_std, alloc
         run: cargo build --no-default-features --features experimental,nightly,alloc,use_serde,use_strum,use_numenum --target riscv32imc-esp-espidf -Zbuild-std=core,alloc,panic_abort -Zbuild-std-features=panic_immediate_abort
+      - name: Build | Compile / no_std
+        run: cargo build --no-default-features --features experimental,nightly,use_serde,use_strum,use_numenum --target riscv32imc-esp-espidf -Zbuild-std=core,alloc,panic_abort -Zbuild-std-features=panic_immediate_abort
