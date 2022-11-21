@@ -282,6 +282,7 @@ pub mod client {
         use core::future::Future;
 
         extern crate alloc;
+        use alloc::borrow::ToOwned;
         use alloc::string::String;
         use alloc::sync::Arc;
         use alloc::vec::Vec;
