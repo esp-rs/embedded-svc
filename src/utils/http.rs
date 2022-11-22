@@ -1,6 +1,7 @@
 use core::str;
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Headers<'b, const N: usize = 64>([(&'b str, &'b str); N]);
 
 impl<'b, const N: usize> Headers<'b, N> {
@@ -370,6 +371,7 @@ pub mod server {
         use crate::utils::mutex::{Mutex, RawMutex};
 
         #[derive(Debug)]
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         pub enum SessionError {
             MaxSessionsReachedError,
         }
@@ -404,6 +406,7 @@ pub mod server {
         }
 
         #[derive(Debug, Default)]
+        #[cfg_attr(feature = "defmt", derive(defmt::Format))]
         pub struct SessionData<S> {
             id: heapless::String<32>,
             last_accessed: Duration,

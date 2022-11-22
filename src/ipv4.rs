@@ -14,6 +14,7 @@ pub use no_std_net::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Mask(pub u8);
@@ -74,9 +75,11 @@ impl From<Mask> for Ipv4Addr {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "std", derive(Hash))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Subnet {
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub gateway: Ipv4Addr,
     pub mask: Mask,
 }
@@ -109,11 +112,15 @@ impl FromStr for Subnet {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientSettings {
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub ip: Ipv4Addr,
     pub subnet: Subnet,
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub dns: Option<Ipv4Addr>,
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 
@@ -132,12 +139,14 @@ impl Default for ClientSettings {
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct DHCPClientSettings {
     pub hostname: Option<heapless::String<30>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum ClientConfiguration {
     DHCP(DHCPClientSettings),
@@ -170,11 +179,14 @@ impl Default for ClientConfiguration {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct RouterConfiguration {
     pub subnet: Subnet,
     pub dhcp_enabled: bool,
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub dns: Option<Ipv4Addr>,
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 
@@ -193,6 +205,7 @@ impl Default for RouterConfiguration {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Configuration {
     Client(ClientConfiguration),
@@ -206,11 +219,15 @@ impl Default for Configuration {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct IpInfo {
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub ip: Ipv4Addr,
     pub subnet: Subnet,
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub dns: Option<Ipv4Addr>,
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 

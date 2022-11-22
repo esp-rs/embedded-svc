@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::ipv4;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Configuration {
     pub count: u32,
@@ -29,8 +30,10 @@ impl Default for Configuration {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Info {
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub addr: ipv4::Ipv4Addr,
     pub seqno: u32,
     pub ttl: u8,
@@ -39,6 +42,7 @@ pub struct Info {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Reply {
     Timeout,
@@ -46,6 +50,7 @@ pub enum Reply {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Summary {
     pub transmitted: u32,
@@ -54,6 +59,9 @@ pub struct Summary {
 }
 
 pub trait Ping {
+    #[cfg(feature = "defmt")]
+    type Error: Debug + defmt::Format;
+    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
@@ -96,6 +104,9 @@ pub mod asynch {
     pub use super::{Configuration, Reply, Summary};
 
     pub trait Ping {
+        #[cfg(feature = "defmt")]
+        type Error: Debug + defmt::Format;
+        #[cfg(not(feature = "defmt"))]
         type Error: Debug;
 
         type PingFuture<'a>: Future<Output = Result<Summary, Self::Error>>

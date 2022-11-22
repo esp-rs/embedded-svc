@@ -5,6 +5,7 @@ use crate::io::{Io, Read, Write};
 use crate::utils::io::*;
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Slot {
     pub label: heapless::String<32>,
@@ -13,6 +14,7 @@ pub struct Slot {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct FirmwareInfo {
     pub version: heapless::String<24>,
@@ -23,6 +25,7 @@ pub struct FirmwareInfo {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct UpdateProgress {
     pub progress: u32,
@@ -31,6 +34,7 @@ pub struct UpdateProgress {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Hash))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum LoadResult {
     ReloadMore,
@@ -40,6 +44,7 @@ pub enum LoadResult {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Hash))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum SlotState {
     Factory,
@@ -285,6 +290,7 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct BlockingOta<B, O>
     where
         O: Ota,

@@ -19,6 +19,7 @@ pub fn try_read_full<R: Read>(mut read: R, buf: &mut [u8]) -> Result<usize, (R::
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CopyError<R, W> {
     Read(R),
     Write(W),

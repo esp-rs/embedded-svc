@@ -3,6 +3,9 @@ use core::result::Result;
 use core::time::Duration;
 
 pub trait ErrorType {
+    #[cfg(feature = "defmt")]
+    type Error: Debug + defmt::Format;
+    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 }
 

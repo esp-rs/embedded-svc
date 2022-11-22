@@ -1,6 +1,9 @@
 use core::fmt::Debug;
 
 pub trait ErrorType {
+    #[cfg(feature = "defmt")]
+    type Error: Debug + defmt::Format;
+    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 }
 
@@ -22,6 +25,7 @@ pub type Fragmented = bool;
 pub type Final = bool;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum FrameType {
     Text(Fragmented),
     Binary(Fragmented),
@@ -101,6 +105,9 @@ pub mod callback_server {
     pub use super::*;
 
     pub trait SessionProvider {
+        #[cfg(feature = "defmt")]
+        type Session: Clone + Send + PartialEq + Debug + defmt::Format;
+        #[cfg(not(feature = "defmt"))]
         type Session: Clone + Send + PartialEq + Debug;
 
         fn session(&self) -> Self::Session;

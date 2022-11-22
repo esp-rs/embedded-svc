@@ -16,6 +16,7 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 use num_enum::TryFromPrimitive;
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -69,6 +70,7 @@ impl Default for AuthMethod {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -111,6 +113,7 @@ impl Default for Protocol {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -135,6 +138,7 @@ impl Default for SecondaryChannel {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointInfo {
     pub ssid: heapless::String<32>,
@@ -142,17 +146,20 @@ pub struct AccessPointInfo {
     pub channel: u8,
     pub secondary_channel: SecondaryChannel,
     pub signal_strength: i8,
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct AccessPointConfiguration {
     pub ssid: heapless::String<32>,
     pub ssid_hidden: bool,
     pub channel: u8,
     pub secondary_channel: Option<u8>,
+    #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub protocols: EnumSet<Protocol>,
     pub auth_method: AuthMethod,
     pub password: heapless::String<64>,
@@ -175,6 +182,7 @@ impl Default for AccessPointConfiguration {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
     pub ssid: heapless::String<32>,
@@ -198,6 +206,7 @@ impl Default for ClientConfiguration {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -221,6 +230,7 @@ pub enum Capability {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Configuration {
     None,
@@ -324,6 +334,9 @@ impl Default for Configuration {
 }
 
 pub trait Wifi {
+    #[cfg(feature = "defmt")]
+    type Error: Debug + defmt::Format;
+    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;

@@ -13,20 +13,22 @@ readme = "README.md"
 rust-version = "1.61"
 
 [features]
-default = ["std", "use_serde", "use_strum", "use_numenum"]
+default = ["std", "use_serde", "use_strum", "use_numenum", "log"]
 
 std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std"]
-alloc = ["anyhow", "embedded-io/alloc", "serde/alloc"]
+alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "defmt?/alloc"]
 nightly = ["futures", "embedded-io/async"]
 experimental = ["futures"]
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
+defmt = ["dep:defmt", "heapless/defmt", "heapless/defmt-impl"]
+log = ["dep:log"]
 
 [dependencies]
 heapless = { version = "0.7" }
 embedded-io = { version = "0.3", default-features = false }
-log = { version = "0.4", default-features = false }
+log = { version = "0.4", default-features = false, optional = true }
 no-std-net = { version = "0.5", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"] }
 futures = { version = "0.3", default-features = false, optional = true }
@@ -35,3 +37,4 @@ strum = { version = "0.23", default-features = false, optional = true, features 
 strum_macros = { version = "0.23", optional = true }
 num_enum = { version = "0.5", default-features = false, optional = true }
 anyhow = { version = "1", default-features = false, optional = true } # Only used by the deprecated httpd module
+defmt = { version = "0.3", optional = true }

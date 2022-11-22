@@ -263,6 +263,21 @@ pub mod client {
         }
     }
 
+    #[cfg(feature = "defmt")]
+    impl<CV, M, E> AsyncConnection<CV, M, E>
+    where
+        CV: RawCondvar + Send + Sync + 'static,
+        CV::RawMutex: Sync + 'static,
+        M: Send,
+        E: Debug + defmt::Format + Send + 'static,
+    {
+        #[allow(clippy::should_implement_trait)]
+        pub fn next(&mut self) -> NextFuture<'_, CV, M, E> {
+            NextFuture(&self.0)
+        }
+    }
+
+    #[cfg(not(feature = "defmt"))]
     impl<CV, M, E> AsyncConnection<CV, M, E>
     where
         CV: RawCondvar + Send + Sync + 'static,
@@ -445,6 +460,16 @@ pub mod client {
             }
         }
 
+        #[cfg(feature = "defmt")]
+        impl<CV, M, E> ErrorType for AsyncConnection<CV, M, E>
+        where
+            CV: RawCondvar,
+            E: Debug + defmt::Format,
+        {
+            type Error = E;
+        }
+
+        #[cfg(not(feature = "defmt"))]
         impl<CV, M, E> ErrorType for AsyncConnection<CV, M, E>
         where
             CV: RawCondvar,
@@ -453,6 +478,25 @@ pub mod client {
             type Error = E;
         }
 
+        #[cfg(feature = "defmt")]
+        impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
+        where
+            CV: RawCondvar + Send + Sync + 'static,
+            CV::RawMutex: Send + Sync + 'static,
+            M: Send,
+            E: Debug + defmt::Format + Send + 'static,
+        {
+            type Message = M;
+
+            type NextFuture<'a>
+            = NextFuture<'a, CV, Self::Message, Self::Error> where Self: 'a, CV: 'a, M: 'a;
+
+            fn next(&mut self) -> Self::NextFuture<'_> {
+                NextFuture(&self.0)
+            }
+        }
+
+        #[cfg(not(feature = "defmt"))]
         impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
         where
             CV: RawCondvar + Send + Sync + 'static,
