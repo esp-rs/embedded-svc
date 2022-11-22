@@ -3,6 +3,7 @@ use crate::io::{Error, Io, Read, Write};
 pub use super::{Headers, Method, Status};
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Client<C>(C);
 
 impl<C> Client<C>
@@ -73,6 +74,7 @@ where
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Request<C>(C);
 
 impl<C> Request<C>
@@ -123,6 +125,7 @@ where
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Response<C>(C);
 
 impl<C> Response<C>
@@ -269,6 +272,7 @@ pub mod asynch {
     pub use crate::http::{Headers, Method, Status};
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Client<C>(C);
 
     impl<C> Client<C>
@@ -342,6 +346,7 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Request<C>(C);
 
     impl<C> Request<C>
@@ -398,6 +403,7 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Response<C>(C);
 
     impl<C> Response<C>
@@ -551,6 +557,7 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct BlockingConnection<B, C>
     where
         C: Connection,

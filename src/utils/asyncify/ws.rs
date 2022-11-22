@@ -13,8 +13,7 @@ pub mod server {
 
     use heapless;
 
-    use log::info;
-
+    use crate::macros::net_log;
     use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
     use crate::ws::{callback_server::*, *};
 
@@ -37,7 +36,8 @@ pub mod server {
             frame_data: &[u8],
         ) -> Result<(), S::Error> {
             async move {
-                info!(
+                net_log!(
+                    info,
                     "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
                     frame_type,
                     frame_data.len(),
@@ -62,7 +62,8 @@ pub mod server {
             frame_type: FrameType,
             frame_data: &[u8],
         ) -> Result<(), S::Error> {
-            info!(
+            net_log!(
+                info,
                 "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
                 frame_type,
                 frame_data.len(),
@@ -295,7 +296,7 @@ pub mod server {
             if connection.is_new() {
                 let session = connection.session();
 
-                info!("New WS connection {:?}", session);
+                net_log!(info, "New WS connection {:?}", session);
 
                 if !self.process_accept(session, connection) {
                     return connection.send(FrameType::Close, &[]);
@@ -312,15 +313,18 @@ pub mod server {
                     let conn = self.connections.swap_remove(index);
 
                     Self::process_receive_close(&conn.receiver_state);
-                    info!("Closed WS connection {:?}", session);
+                    net_log!(info, "Closed WS connection {:?}", session);
                 }
             } else {
                 let session = connection.session();
                 let (frame_type, len) = connection.recv(&mut self.frame_data_buf)?;
 
-                info!(
+                net_log!(
+                    info,
                     "Incoming data (frame_type={:?}, frame_len={}) from WS connection {:?}",
-                    frame_type, len, session
+                    frame_type,
+                    len,
+                    session
                 );
 
                 if let Some(connection) = self
@@ -489,6 +493,16 @@ pub mod server {
             }
         }
 
+        #[cfg(feature = "defmt")]
+        impl<C, E> ErrorType for AsyncReceiver<C, E>
+        where
+            C: RawCondvar,
+            E: Debug + defmt::Format,
+        {
+            type Error = E;
+        }
+
+        #[cfg(not(feature = "defmt"))]
         impl<C, E> ErrorType for AsyncReceiver<C, E>
         where
             C: RawCondvar,
@@ -497,6 +511,26 @@ pub mod server {
             type Error = E;
         }
 
+        #[cfg(feature = "defmt")]
+        impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
+        where
+            C: RawCondvar + Send + Sync,
+            C::RawMutex: Send + Sync,
+            E: Debug + defmt::Format,
+        {
+            type ReceiveFuture<'a>
+            = AsyncReceiverFuture<'a, C, E> where Self: 'a;
+
+            fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
+                AsyncReceiverFuture {
+                    receiver: self,
+                    frame_data_buf,
+                    _ep: PhantomData,
+                }
+            }
+        }
+
+        #[cfg(not(feature = "defmt"))]
         impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
         where
             C: RawCondvar + Send + Sync,

@@ -25,6 +25,7 @@ pub mod asynch {
     }
 
     #[derive(Clone, Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Blocking<B, T> {
         pub blocker: B,
         pub api: T,
@@ -37,6 +38,7 @@ pub mod asynch {
     }
 
     #[derive(Clone, Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct RawBlocking<B, T> {
         pub blocker: *const B,
         pub api: *mut T,
@@ -58,6 +60,7 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct TrivialUnblocking<T> {
         pub api: T,
     }
@@ -69,6 +72,7 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct RawTrivialUnblocking<T> {
         pub api: *mut T,
     }
@@ -120,6 +124,7 @@ pub mod asynch {
     }
 
     #[derive(Clone, Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Unblocking<U, T> {
         pub unblocker: U,
         pub api: T,
@@ -132,6 +137,7 @@ pub mod asynch {
     }
 
     #[derive(Clone, Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct RawUnblocking<U, T> {
         pub unblocker: *const U,
         pub api: *mut T,

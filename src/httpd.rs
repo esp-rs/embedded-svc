@@ -328,6 +328,7 @@ impl From<anyhow::Error> for Response {
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
@@ -596,7 +597,7 @@ pub mod sessions {
 
     use std::sync::{Mutex, RwLock};
 
-    use log::{info, warn};
+    use crate::macros::net_log;
 
     use super::{Request, Response, Result, SessionState, State};
 
@@ -648,7 +649,7 @@ pub mod sessions {
         }
 
         fn invalidate(&mut self, session_id: &str) -> bool {
-            info!("Invalidating session {}", session_id);
+            net_log!(info, "Invalidating session {}", session_id);
 
             self.data.remove(session_id).is_some()
         }
@@ -697,7 +698,8 @@ pub mod sessions {
                         }
 
                         if new_sess && self.data.len() == self.max_sessions {
-                            warn!(
+                            net_log!(
+                                warn,
                                 "Cannot create a new session - max session limit ({}) exceeded",
                                 self.max_sessions
                             );
@@ -710,7 +712,7 @@ pub mod sessions {
                                 Self::insert_session_cookie("", &new_session_id),
                             );
 
-                            info!("New session {} created", &new_session_id);
+                            net_log!(info, "New session {} created", &new_session_id);
 
                             self.data.insert(
                                 new_session_id,
@@ -740,7 +742,7 @@ pub mod sessions {
         }
 
         fn cleanup(&mut self) {
-            info!("Performing sessions cleanup");
+            net_log!(info, "Performing sessions cleanup");
 
             let now = std::time::Instant::now();
 

@@ -12,6 +12,7 @@ pub mod status {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "std", derive(Hash))]
 pub enum Method {
     Delete,

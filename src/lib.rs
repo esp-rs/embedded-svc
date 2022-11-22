@@ -11,6 +11,9 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(all(feature = "defmt", feature = "log"))]
+compile_error!("You must enable at most one of the following features: defmt, log");
+
 pub mod eth;
 pub mod event_bus;
 pub mod executor;
@@ -21,6 +24,7 @@ pub mod http;
 pub mod httpd; // TODO: Retire
 pub mod io;
 pub mod ipv4;
+pub mod macros;
 pub mod mqtt;
 #[cfg(feature = "experimental")]
 pub mod ota;

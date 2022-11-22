@@ -6,6 +6,9 @@ extern crate alloc;
 use serde::{Deserialize, Serialize};
 
 pub trait ErrorType {
+    #[cfg(feature = "defmt")]
+    type Error: Debug + defmt::Format;
+    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 }
 
@@ -26,6 +29,7 @@ where
 /// Quality of service
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum QoS {
     AtMostOnce = 0,
     AtLeastOnce = 1,
@@ -35,6 +39,7 @@ pub enum QoS {
 pub type MessageId = u32;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Event<M> {
     BeforeConnect,
     Connected(bool),
@@ -115,6 +120,7 @@ where
 
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MessageImpl {
     id: MessageId,
     topic: Option<alloc::string::String>,
@@ -157,6 +163,7 @@ impl Message for MessageImpl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Details {
     Complete,
     InitialChunk(InitialChunkData),
@@ -164,11 +171,13 @@ pub enum Details {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct InitialChunkData {
     pub total_data_size: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SubsequentChunkData {
     pub current_data_offset: usize,
     pub total_data_size: usize,

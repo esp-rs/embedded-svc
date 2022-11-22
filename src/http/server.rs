@@ -6,6 +6,7 @@ pub use super::{Headers, Method, Query, Status};
 pub use crate::io::Io;
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Request<C>(C);
 
 impl<C> Request<C>
@@ -91,6 +92,7 @@ where
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Response<C>(C);
 
 impl<C> Response<C>
@@ -208,6 +210,23 @@ impl HandlerError {
     }
 }
 
+#[cfg(feature = "defmt")]
+impl<E> From<E> for HandlerError
+where
+    E: Debug + defmt::Format,
+{
+    fn from(e: E) -> Self {
+        let mut string: heapless::String<64> = "".into();
+
+        if write!(&mut string, "{:?}", e).is_err() {
+            string = "(Error string too big)".into();
+        }
+
+        Self(string)
+    }
+}
+
+#[cfg(not(feature = "defmt"))]
 impl<E> From<E> for HandlerError
 where
     E: Debug,
@@ -353,6 +372,7 @@ pub mod asynch {
     pub use crate::io::{Error, Io};
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Request<C>(C);
 
     impl<C> Request<C>
@@ -441,6 +461,7 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct Response<C>(C);
 
     impl<C> Response<C>

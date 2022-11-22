@@ -5,6 +5,9 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 pub trait StorageBase {
+    #[cfg(feature = "defmt")]
+    type Error: Debug + defmt::Format;
+    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn contains(&self, name: &str) -> Result<bool, Self::Error>;
@@ -100,6 +103,9 @@ where
 }
 
 pub trait SerDe {
+    #[cfg(feature = "defmt")]
+    type Error: Debug + defmt::Format;
+    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn serialize<'a, T>(&self, slice: &'a mut [u8], value: &T) -> Result<&'a [u8], Self::Error>
@@ -133,6 +139,7 @@ where
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum StorageError<R, S> {
     RawStorageError(R),
     SerdeError(S),
@@ -269,6 +276,7 @@ struct Entry<'a> {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct NoSpaceError;
 
 pub struct DynStorageImpl<'a, const N: usize>([Option<Entry<'a>>; N]);

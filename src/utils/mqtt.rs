@@ -105,6 +105,18 @@ pub mod client {
     where
         CV: RawCondvar;
 
+    #[cfg(feature = "defmt")]
+    impl<CV, M, E> Connection<CV, M, E>
+    where
+        CV: RawCondvar,
+        E: Debug + defmt::Format,
+    {
+        pub fn new(connection_state: Arc<ConnStateGuard<CV, ConnState<M, E>>>) -> Self {
+            Self(connection_state)
+        }
+    }
+
+    #[cfg(not(feature = "defmt"))]
     impl<CV, M, E> Connection<CV, M, E>
     where
         CV: RawCondvar,
@@ -115,6 +127,16 @@ pub mod client {
         }
     }
 
+    #[cfg(feature = "defmt")]
+    impl<CV, M, E> ErrorType for Connection<CV, M, E>
+    where
+        CV: RawCondvar,
+        E: Debug + defmt::Format,
+    {
+        type Error = E;
+    }
+
+    #[cfg(not(feature = "defmt"))]
     impl<CV, M, E> ErrorType for Connection<CV, M, E>
     where
         CV: RawCondvar,
@@ -123,6 +145,36 @@ pub mod client {
         type Error = E;
     }
 
+    #[cfg(feature = "defmt")]
+    impl<CV, M, E> crate::mqtt::client::Connection for Connection<CV, M, E>
+    where
+        CV: RawCondvar,
+        E: Debug + defmt::Format,
+    {
+        type Message = M;
+
+        fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>> {
+            let mut state = self.0.state.lock();
+
+            loop {
+                if let Some(data) = &mut *state {
+                    let pulled = mem::replace(data, ConnState(None));
+
+                    match pulled {
+                        ConnState(Some(event)) => {
+                            self.0.state_changed.notify_all();
+                            return Some(event);
+                        }
+                        ConnState(None) => state = self.0.state_changed.wait(state),
+                    }
+                } else {
+                    return None;
+                }
+            }
+        }
+    }
+
+    #[cfg(not(feature = "defmt"))]
     impl<CV, M, E> crate::mqtt::client::Connection for Connection<CV, M, E>
     where
         CV: RawCondvar,
