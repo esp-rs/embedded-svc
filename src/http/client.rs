@@ -557,7 +557,6 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct BlockingConnection<B, C>
     where
         C: Connection,

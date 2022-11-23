@@ -13,7 +13,7 @@ readme = "README.md"
 rust-version = "1.61"
 
 [features]
-default = ["std", "use_serde", "use_strum", "use_numenum", "defmt"]
+default = ["std", "use_serde", "use_strum", "use_numenum", "log"]
 
 std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std"]
 alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "defmt?/alloc"]
