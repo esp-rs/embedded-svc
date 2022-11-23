@@ -1,9 +1,6 @@
 use core::fmt::Debug;
 
 pub trait Eth {
-    #[cfg(feature = "defmt")]
-    type Error: Debug + defmt::Format;
-    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn start(&mut self) -> Result<(), Self::Error>;

@@ -59,9 +59,6 @@ pub struct Summary {
 }
 
 pub trait Ping {
-    #[cfg(feature = "defmt")]
-    type Error: Debug + defmt::Format;
-    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
@@ -104,9 +101,6 @@ pub mod asynch {
     pub use super::{Configuration, Reply, Summary};
 
     pub trait Ping {
-        #[cfg(feature = "defmt")]
-        type Error: Debug + defmt::Format;
-        #[cfg(not(feature = "defmt"))]
         type Error: Debug;
 
         type PingFuture<'a>: Future<Output = Result<Summary, Self::Error>>

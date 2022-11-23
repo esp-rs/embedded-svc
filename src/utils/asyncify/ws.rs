@@ -493,16 +493,6 @@ pub mod server {
             }
         }
 
-        #[cfg(feature = "defmt")]
-        impl<C, E> ErrorType for AsyncReceiver<C, E>
-        where
-            C: RawCondvar,
-            E: Debug + defmt::Format,
-        {
-            type Error = E;
-        }
-
-        #[cfg(not(feature = "defmt"))]
         impl<C, E> ErrorType for AsyncReceiver<C, E>
         where
             C: RawCondvar,
@@ -511,26 +501,6 @@ pub mod server {
             type Error = E;
         }
 
-        #[cfg(feature = "defmt")]
-        impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
-        where
-            C: RawCondvar + Send + Sync,
-            C::RawMutex: Send + Sync,
-            E: Debug + defmt::Format,
-        {
-            type ReceiveFuture<'a>
-            = AsyncReceiverFuture<'a, C, E> where Self: 'a;
-
-            fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
-                AsyncReceiverFuture {
-                    receiver: self,
-                    frame_data_buf,
-                    _ep: PhantomData,
-                }
-            }
-        }
-
-        #[cfg(not(feature = "defmt"))]
         impl<C, E> asynch::Receiver for AsyncReceiver<C, E>
         where
             C: RawCondvar + Send + Sync,
