@@ -5,9 +5,6 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 pub trait StorageBase {
-    #[cfg(feature = "defmt")]
-    type Error: Debug + defmt::Format;
-    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn contains(&self, name: &str) -> Result<bool, Self::Error>;
@@ -103,9 +100,6 @@ where
 }
 
 pub trait SerDe {
-    #[cfg(feature = "defmt")]
-    type Error: Debug + defmt::Format;
-    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn serialize<'a, T>(&self, slice: &'a mut [u8], value: &T) -> Result<&'a [u8], Self::Error>

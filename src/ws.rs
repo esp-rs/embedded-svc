@@ -1,9 +1,6 @@
 use core::fmt::Debug;
 
 pub trait ErrorType {
-    #[cfg(feature = "defmt")]
-    type Error: Debug + defmt::Format;
-    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 }
 
@@ -105,9 +102,6 @@ pub mod callback_server {
     pub use super::*;
 
     pub trait SessionProvider {
-        #[cfg(feature = "defmt")]
-        type Session: Clone + Send + PartialEq + Debug + defmt::Format;
-        #[cfg(not(feature = "defmt"))]
         type Session: Clone + Send + PartialEq + Debug;
 
         fn session(&self) -> Self::Session;

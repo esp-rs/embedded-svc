@@ -334,9 +334,6 @@ impl Default for Configuration {
 }
 
 pub trait Wifi {
-    #[cfg(feature = "defmt")]
-    type Error: Debug + defmt::Format;
-    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 
     fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;

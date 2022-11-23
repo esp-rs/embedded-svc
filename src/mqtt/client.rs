@@ -6,9 +6,6 @@ extern crate alloc;
 use serde::{Deserialize, Serialize};
 
 pub trait ErrorType {
-    #[cfg(feature = "defmt")]
-    type Error: Debug + defmt::Format;
-    #[cfg(not(feature = "defmt"))]
     type Error: Debug;
 }
 
