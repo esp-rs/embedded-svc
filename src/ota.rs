@@ -290,7 +290,6 @@ pub mod asynch {
     }
 
     #[derive(Debug)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct BlockingOta<B, O>
     where
         O: Ota,

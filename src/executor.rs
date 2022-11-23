@@ -38,7 +38,6 @@ pub mod asynch {
     }
 
     #[derive(Clone, Debug)]
-    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
     pub struct RawBlocking<B, T> {
         pub blocker: *const B,
         pub api: *mut T,
