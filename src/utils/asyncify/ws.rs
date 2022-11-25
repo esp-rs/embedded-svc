@@ -13,7 +13,7 @@ pub mod server {
 
     use heapless;
 
-    use crate::macros::net_log;
+    use crate::macros::svc_log;
     use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
     use crate::ws::{callback_server::*, *};
 
@@ -36,7 +36,7 @@ pub mod server {
             frame_data: &[u8],
         ) -> Result<(), S::Error> {
             async move {
-                net_log!(
+                svc_log!(
                     info,
                     "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
                     frame_type,
@@ -62,7 +62,7 @@ pub mod server {
             frame_type: FrameType,
             frame_data: &[u8],
         ) -> Result<(), S::Error> {
-            net_log!(
+            svc_log!(
                 info,
                 "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
                 frame_type,
@@ -296,7 +296,7 @@ pub mod server {
             if connection.is_new() {
                 let session = connection.session();
 
-                net_log!(info, "New WS connection {:?}", session);
+                svc_log!(info, "New WS connection {:?}", session);
 
                 if !self.process_accept(session, connection) {
                     return connection.send(FrameType::Close, &[]);
@@ -313,13 +313,13 @@ pub mod server {
                     let conn = self.connections.swap_remove(index);
 
                     Self::process_receive_close(&conn.receiver_state);
-                    net_log!(info, "Closed WS connection {:?}", session);
+                    svc_log!(info, "Closed WS connection {:?}", session);
                 }
             } else {
                 let session = connection.session();
                 let (frame_type, len) = connection.recv(&mut self.frame_data_buf)?;
 
-                net_log!(
+                svc_log!(
                     info,
                     "Incoming data (frame_type={:?}, frame_len={}) from WS connection {:?}",
                     frame_type,
