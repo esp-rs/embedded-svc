@@ -217,7 +217,7 @@ where
     fn from(e: E) -> Self {
         let mut string: heapless::String<64> = "".into();
 
-        if write!(&mut string, "{:?}", e).is_err() {
+        if write!(&mut string, "{e:?}").is_err() {
             string = "(Error string too big)".into();
         }
 

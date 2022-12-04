@@ -73,13 +73,13 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::BeforeConnect => write!(f, "BeforeConnect"),
-            Self::Connected(connected) => write!(f, "Connected(session: {})", connected),
+            Self::Connected(connected) => write!(f, "Connected(session: {connected})"),
             Self::Disconnected => write!(f, "Disconnected"),
-            Self::Subscribed(message_id) => write!(f, "Subscribed({})", message_id),
-            Self::Unsubscribed(message_id) => write!(f, "Unsubscribed({})", message_id),
-            Self::Published(message_id) => write!(f, "Published({})", message_id),
-            Self::Received(message) => write!(f, "Received({})", message),
-            Self::Deleted(message_id) => write!(f, "Deleted({})", message_id),
+            Self::Subscribed(message_id) => write!(f, "Subscribed({message_id})"),
+            Self::Unsubscribed(message_id) => write!(f, "Unsubscribed({message_id})"),
+            Self::Published(message_id) => write!(f, "Published({message_id})"),
+            Self::Received(message) => write!(f, "Received({message})"),
+            Self::Deleted(message_id) => write!(f, "Deleted({message_id})"),
         }
     }
 }

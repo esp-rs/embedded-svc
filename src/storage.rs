@@ -146,8 +146,8 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::RawStorageError(e) => write!(f, "Storage error: {}", e),
-            Self::SerdeError(e) => write!(f, "SerDe error: {}", e),
+            Self::RawStorageError(e) => write!(f, "Storage error: {e}"),
+            Self::SerdeError(e) => write!(f, "SerDe error: {e}"),
         }
     }
 }

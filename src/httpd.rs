@@ -323,7 +323,7 @@ impl From<anyhow::Error> for Response {
     fn from(err: anyhow::Error) -> Self {
         Response::new(500)
             .status_message(err.to_string())
-            .body(format!("{:#?}", err).into())
+            .body(format!("{err:#?}").into())
     }
 }
 
@@ -760,7 +760,7 @@ pub mod sessions {
             impl<'a> std::fmt::LowerHex for ByteBuf<'a> {
                 fn fmt(&self, fmtr: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
                     for byte in self.0 {
-                        fmtr.write_fmt(format_args!("{:02x}", byte))?;
+                        fmtr.write_fmt(format_args!("{byte:02x}"))?;
                     }
 
                     Ok(())
@@ -791,7 +791,7 @@ pub mod sessions {
 
         fn insert_session_cookie(_cookies: &str, session_id: &str) -> String {
             let mut cookie_str = String::new();
-            write!(cookie_str, "SESSIONID={}", session_id).unwrap();
+            write!(cookie_str, "SESSIONID={session_id}").unwrap();
 
             cookie_str
         }
