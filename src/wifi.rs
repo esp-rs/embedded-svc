@@ -333,6 +333,96 @@ impl Default for Configuration {
     }
 }
 
+pub mod config {
+
+    #[cfg(feature = "use_serde")]
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+    #[repr(u32)]
+    pub enum ScanType {
+        Active = 0,
+        Passive = 1,
+    }
+
+    impl ScanType {
+        pub const fn new() -> Self {
+            Self::Active
+        }
+    }
+
+    impl From<ScanType> for u32 {
+        fn from(s: ScanType) -> Self {
+            match s {
+                ScanType::Active => 0,
+                ScanType::Passive => 1,
+            }
+        }
+    }
+
+    impl Default for ScanType {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+    pub struct ScanTime {
+        pub active: (u32, u32),
+        pub passive: u32,
+    }
+
+    impl ScanTime {
+        pub const fn new() -> Self {
+            Self {
+                active: (0, 0),
+                passive: 0,
+            }
+        }
+    }
+
+    impl Default for ScanTime {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+    pub struct ScanConfig {
+        pub bssid: Option<[u8; 6]>,
+        pub ssid: Option<heapless::String<32>>,
+        pub channel: Option<u8>,
+        pub scan_type: ScanType,
+        pub scan_time: ScanTime,
+        pub show_hidden: bool,
+    }
+
+    impl ScanConfig {
+        pub const fn new() -> Self {
+            Self {
+                bssid: None,
+                ssid: None,
+                channel: None,
+                scan_type: ScanType::new(),
+                scan_time: ScanTime::new(),
+                show_hidden: false,
+            }
+        }
+    }
+
+    impl Default for ScanConfig {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+}
+
 pub trait Wifi {
     type Error: Debug;
 
@@ -353,10 +443,22 @@ pub trait Wifi {
 
     fn scan_n<const N: usize>(
         &mut self,
+        scan_config: &config::ScanConfig,
     ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error>;
 
     #[cfg(feature = "alloc")]
-    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
+    fn scan(
+        &mut self,
+        scan_config: &config::ScanConfig,
+    ) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
+
+    fn start_scan(&mut self, scan_config: &config::ScanConfig) -> Result<(), Self::Error>;
+    fn stop_scan(&mut self) -> Result<(), Self::Error>;
+    fn get_scan_result_n<const N: usize>(
+        &mut self,
+    ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error>;
+    #[cfg(feature = "alloc")]
+    fn get_scan_result(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
 }
 
 impl<W> Wifi for &mut W
@@ -403,12 +505,34 @@ where
 
     fn scan_n<const N: usize>(
         &mut self,
+        scan_config: &config::ScanConfig,
     ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error> {
-        (*self).scan_n()
+        (*self).scan_n(scan_config)
     }
 
     #[cfg(feature = "alloc")]
-    fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error> {
-        (*self).scan()
+    fn scan(
+        &mut self,
+        scan_config: &config::ScanConfig,
+    ) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error> {
+        (*self).scan(scan_config)
+    }
+
+    fn start_scan(&mut self, scan_config: &config::ScanConfig) -> Result<(), Self::Error> {
+        (*self).start_scan(scan_config)
+    }
+
+    fn stop_scan(&mut self) -> Result<(), Self::Error> {
+        (*self).stop_scan()
+    }
+
+    fn get_scan_result_n<const N: usize>(
+        &mut self,
+    ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error> {
+        (*self).get_scan_result_n()
+    }
+
+    fn get_scan_result(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error> {
+        (*self).get_scan_result()
     }
 }
