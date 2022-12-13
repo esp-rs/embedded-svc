@@ -7,9 +7,7 @@ pub mod server {
     use core::{mem, slice};
 
     extern crate alloc;
-    use alloc::borrow::ToOwned;
     use alloc::sync::Arc;
-    use alloc::vec::Vec;
 
     use heapless;
 
@@ -62,6 +60,9 @@ pub mod server {
             frame_type: FrameType,
             frame_data: &[u8],
         ) -> Result<(), S::Error> {
+            #[cfg(not(feature = "std"))]
+            use alloc::borrow::ToOwned;
+
             svc_log!(
                 info,
                 "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
@@ -71,7 +72,7 @@ pub mod server {
             );
 
             let mut sender = self.sender.clone();
-            let frame_data: Vec<u8> = frame_data.to_owned();
+            let frame_data: alloc::vec::Vec<u8> = frame_data.to_owned();
 
             self.unblocker
                 .unblock(move || sender.send(frame_type, &frame_data))
