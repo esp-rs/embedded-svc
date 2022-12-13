@@ -237,7 +237,7 @@ pub trait Handler<C>: Send
 where
     C: Connection,
 {
-    fn handle(&self, connection: C) -> HandlerResult;
+    fn handle(&self, connection: &mut C) -> HandlerResult;
 }
 
 impl<C, H> Handler<C> for &H
@@ -245,39 +245,9 @@ where
     C: Connection,
     H: Handler<C> + Send + Sync,
 {
-    fn handle(&self, connection: C) -> HandlerResult {
+    fn handle(&self, connection: &mut C) -> HandlerResult {
         (*self).handle(connection)
     }
-}
-
-pub struct FnConnectionHandler<F>(F);
-
-impl<F> FnConnectionHandler<F> {
-    pub const fn new<C>(f: F) -> Self
-    where
-        C: Connection,
-        F: Fn(&mut C) -> HandlerResult + Send,
-    {
-        Self(f)
-    }
-}
-
-impl<C, F> Handler<&mut C> for FnConnectionHandler<F>
-where
-    C: Connection,
-    F: Fn(&mut C) -> HandlerResult + Send,
-{
-    fn handle(&self, connection: &mut C) -> HandlerResult {
-        self.0(connection)
-    }
-}
-
-pub fn handler<F, C>(f: F) -> FnHandler<F>
-where
-    C: Connection,
-    F: Fn(Request<&mut C>) -> HandlerResult + Send,
-{
-    FnHandler::new(f)
 }
 
 pub struct FnHandler<F>(F);
@@ -292,7 +262,7 @@ impl<F> FnHandler<F> {
     }
 }
 
-impl<C, F> Handler<&mut C> for FnHandler<F>
+impl<C, F> Handler<C> for FnHandler<F>
 where
     C: Connection,
     F: Fn(Request<&mut C>) -> HandlerResult + Send,
@@ -306,7 +276,7 @@ pub trait Middleware<C>: Send
 where
     C: Connection,
 {
-    fn handle<'a, H>(&'a self, connection: C, handler: &'a H) -> HandlerResult
+    fn handle<'a, H>(&'a self, connection: &'a mut C, handler: &'a H) -> HandlerResult
     where
         H: Handler<C>;
 
@@ -339,7 +309,7 @@ where
     H: Handler<C>,
     C: Connection,
 {
-    fn handle(&self, connection: C) -> HandlerResult {
+    fn handle(&self, connection: &mut C) -> HandlerResult {
         self.middleware.handle(connection, &self.handler)
     }
 }
@@ -568,7 +538,7 @@ pub mod asynch {
             Self: 'a,
             C: 'a;
 
-        fn handle(&self, connection: C) -> Self::HandleFuture<'_>;
+        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a>;
     }
 
     impl<H, C> Handler<C> for &H
@@ -579,7 +549,7 @@ pub mod asynch {
         type HandleFuture<'a>
         = H::HandleFuture<'a> where Self: 'a, C: 'a;
 
-        fn handle(&self, connection: C) -> Self::HandleFuture<'_> {
+        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a> {
             (*self).handle(connection)
         }
     }
@@ -593,7 +563,7 @@ pub mod asynch {
             Self: 'a,
             C: 'a;
 
-        fn handle<'a, H>(&'a self, connection: C, handler: &'a H) -> Self::HandleFuture<'a>
+        fn handle<'a, H>(&'a self, connection: &'a mut C, handler: &'a H) -> Self::HandleFuture<'a>
         where
             H: Handler<C>;
 
@@ -629,7 +599,7 @@ pub mod asynch {
         type HandleFuture<'a>
         = impl Future<Output = HandlerResult> + Send + 'a where Self: 'a, C: 'a;
 
-        fn handle(&self, connection: C) -> Self::HandleFuture<'_> {
+        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a> {
             self.middleware.handle(connection, &self.handler)
         }
     }
