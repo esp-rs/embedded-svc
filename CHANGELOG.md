@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2022-12-13
+
+HTTP server traits:
+* Change the signatures of `Handler`, `Middleware`, `asynch::Handler` and `asynch::Middleware` so that middleware implementations can use the HTTP connection after the handler has finished execution
+* Remove the `handler` utility method, as it was adding little value besides calling `FnHandler::new()`
+* Remove the `FnConnectionHandler` Fn `Handler` implementation, as it was confusing to have it in addition to the `FnHandler` implementation
+
 ## [0.23.2] - 2022-12-08
 
 * Const functions for strum_enums
