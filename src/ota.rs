@@ -17,9 +17,9 @@ pub struct Slot {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct FirmwareInfo {
-    pub version: heapless::String<24>,
-    pub released: heapless::String<24>,
-    pub description: Option<heapless::String<128>>,
+    pub version: heapless::String<32>,
+    pub released: heapless::String<32>,
+    pub description: Option<heapless::String<32>>,
     pub signature: Option<heapless::Vec<u8, 32>>,
     pub download_id: Option<heapless::String<128>>,
 }
