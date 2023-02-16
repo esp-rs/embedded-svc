@@ -181,7 +181,7 @@ impl Default for AccessPointConfiguration {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
@@ -191,6 +191,17 @@ pub struct ClientConfiguration {
     pub auth_method: AuthMethod,
     pub password: heapless::String<64>,
     pub channel: Option<u8>,
+}
+
+impl Debug for ClientConfiguration {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ClientConfiguration")
+            .field("ssid", &self.ssid)
+            .field("bssid", &self.bssid)
+            .field("auth_method", &self.auth_method)
+            .field("channel", &self.channel)
+            .finish()
+    }
 }
 
 impl Default for ClientConfiguration {
