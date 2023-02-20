@@ -412,3 +412,88 @@ where
         (*self).scan()
     }
 }
+
+#[cfg(all(feature = "nightly", feature = "experimental"))]
+mod asynch {
+    use super::*;
+
+    pub trait AsyncWifi {
+        type Error: Debug;
+
+        async fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error>;
+
+        async fn get_configuration(&self) -> Result<Configuration, Self::Error>;
+
+        async fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error>;
+
+        async fn start(&mut self) -> Result<(), Self::Error>;
+        async fn stop(&mut self) -> Result<(), Self::Error>;
+
+        async fn connect(&mut self) -> Result<(), Self::Error>;
+        async fn disconnect(&mut self) -> Result<(), Self::Error>;
+
+        async fn is_started(&self) -> Result<bool, Self::Error>;
+        async fn is_connected(&self) -> Result<bool, Self::Error>;
+
+        async fn scan_n<const N: usize>(
+            &mut self,
+        ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error>;
+
+        #[cfg(feature = "alloc")]
+        async fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error>;
+    }
+
+    impl<W> AsyncWifi for &mut W
+    where
+        W: AsyncWifi,
+    {
+        type Error = W::Error;
+
+        async fn get_capabilities(&self) -> Result<EnumSet<Capability>, Self::Error> {
+            (**self).get_capabilities().await
+        }
+
+        async fn get_configuration(&self) -> Result<Configuration, Self::Error> {
+            (**self).get_configuration().await
+        }
+
+        async fn set_configuration(&mut self, conf: &Configuration) -> Result<(), Self::Error> {
+            (*self).set_configuration(conf).await
+        }
+
+        async fn start(&mut self) -> Result<(), Self::Error> {
+            (*self).start().await
+        }
+
+        async fn stop(&mut self) -> Result<(), Self::Error> {
+            (*self).stop().await
+        }
+
+        async fn connect(&mut self) -> Result<(), Self::Error> {
+            (*self).connect().await
+        }
+
+        async fn disconnect(&mut self) -> Result<(), Self::Error> {
+            (*self).disconnect().await
+        }
+
+        async fn is_started(&self) -> Result<bool, Self::Error> {
+            (**self).is_started().await
+        }
+
+        async fn is_connected(&self) -> Result<bool, Self::Error> {
+            (**self).is_connected().await
+        }
+
+        async fn scan_n<const N: usize>(
+            &mut self,
+        ) -> Result<(heapless::Vec<AccessPointInfo, N>, usize), Self::Error> {
+            (*self).scan_n().await
+        }
+
+        #[cfg(feature = "alloc")]
+        async fn scan(&mut self) -> Result<alloc::vec::Vec<AccessPointInfo>, Self::Error> {
+            (*self).scan().await
+        }
+    }
+}
