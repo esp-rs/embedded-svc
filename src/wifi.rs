@@ -425,7 +425,7 @@ where
 }
 
 #[cfg(all(feature = "nightly", feature = "experimental"))]
-mod asynch {
+pub mod asynch {
     use futures::Future;
 
     use super::*;
