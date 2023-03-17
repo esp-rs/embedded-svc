@@ -474,7 +474,7 @@ pub mod server {
                 frame_type: FrameType,
                 frame_data: &'a [u8],
             ) -> Self::SendFuture<'a> {
-                async move { AsyncSender::send(self, frame_type, frame_data).await }
+                AsyncSender::send(self, frame_type, frame_data)
             }
         }
 
@@ -490,7 +490,7 @@ pub mod server {
                 frame_type: FrameType,
                 frame_data: &'a [u8],
             ) -> Self::SendFuture<'a> {
-                async move { AsyncSender::send_blocking(self, frame_type, frame_data).await }
+                AsyncSender::send_blocking(self, frame_type, frame_data)
             }
         }
 
