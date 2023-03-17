@@ -391,14 +391,14 @@ pub mod asynch {
         = impl Future<Output = Result<usize, Self::Error>> + 'b where Self: 'b;
 
         fn write<'b>(&'b mut self, buf: &'b [u8]) -> Self::WriteFuture<'b> {
-            async move { self.0.write(buf).await }
+            self.0.write(buf)
         }
 
         type FlushFuture<'b>
         = impl Future<Output = Result<(), Self::Error>> + 'b where Self: 'b;
 
         fn flush(&mut self) -> Self::FlushFuture<'_> {
-            async move { self.0.flush().await }
+            self.0.flush()
         }
     }
 
@@ -468,7 +468,7 @@ pub mod asynch {
         = impl Future<Output = Result<usize, Self::Error>> + 'b where Self: 'b;
 
         fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Self::ReadFuture<'b> {
-            async move { self.0.read(buf).await }
+            self.0.read(buf)
         }
     }
 
