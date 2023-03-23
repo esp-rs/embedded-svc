@@ -35,7 +35,7 @@ pub mod server {
         ) -> Result<(), S::Error> {
             async move {
                 svc_log!(
-                    info,
+                    debug,
                     "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
                     frame_type,
                     frame_data.len(),
@@ -64,7 +64,7 @@ pub mod server {
             use alloc::borrow::ToOwned;
 
             svc_log!(
-                info,
+                debug,
                 "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
                 frame_type,
                 frame_data.len(),
@@ -321,7 +321,7 @@ pub mod server {
                 let (frame_type, len) = connection.recv(&mut self.frame_data_buf)?;
 
                 svc_log!(
-                    info,
+                    debug,
                     "Incoming data (frame_type={:?}, frame_len={}) from WS connection {:?}",
                     frame_type,
                     len,
