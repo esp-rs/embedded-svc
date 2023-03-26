@@ -484,7 +484,10 @@ pub mod asynch {
 
         fn get_configuration(&self) -> Self::GetConfigurationFuture<'_>;
 
-        fn set_configuration(&mut self, conf: &Configuration) -> Self::SetConfigurationFuture<'_>;
+        fn set_configuration<'a>(
+            &'a mut self,
+            conf: &'a Configuration,
+        ) -> Self::SetConfigurationFuture<'a>;
 
         fn start(&mut self) -> Self::StartFuture<'_>;
         fn stop(&mut self) -> Self::StopFuture<'_>;
@@ -560,7 +563,10 @@ pub mod asynch {
             (**self).get_configuration()
         }
 
-        fn set_configuration(&mut self, conf: &Configuration) -> Self::SetConfigurationFuture<'_> {
+        fn set_configuration<'a>(
+            &'a mut self,
+            conf: &'a Configuration,
+        ) -> Self::SetConfigurationFuture<'a> {
             (**self).set_configuration(conf)
         }
 
