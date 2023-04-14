@@ -275,67 +275,46 @@ pub mod asynch {
     pub use super::{Details, ErrorType, Event, Message, MessageId, QoS};
 
     pub trait Client: ErrorType {
-        type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
-        where
-            Self: 'a;
+        async fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error>;
 
-        type UnsubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
-        where
-            Self: 'a;
-
-        fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a>;
-
-        fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a>;
+        async fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error>;
     }
 
     impl<C> Client for &mut C
     where
         C: Client,
     {
-        type SubscribeFuture<'a>
-        = C::SubscribeFuture<'a> where Self: 'a;
-
-        type UnsubscribeFuture<'a>
-        = C::UnsubscribeFuture<'a> where Self: 'a;
-
-        fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a> {
-            (*self).subscribe(topic, qos)
+        async fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error> {
+            (*self).subscribe(topic, qos).await
         }
 
-        fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a> {
-            (*self).unsubscribe(topic)
+        async fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error>{
+            (*self).unsubscribe(topic).await
         }
     }
 
     pub trait Publish: ErrorType {
-        type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
-        where
-            Self: 'a;
-
-        fn publish<'a>(
+        async fn publish<'a>(
             &'a mut self,
             topic: &'a str,
             qos: QoS,
             retain: bool,
             payload: &'a [u8],
-        ) -> Self::PublishFuture<'a>;
+        ) -> Result<MessageId, Self::Error>;
     }
 
     impl<P> Publish for &mut P
     where
         P: Publish,
     {
-        type PublishFuture<'a>
-        = P::PublishFuture<'a> where Self: 'a;
-
-        fn publish<'a>(
+        async fn publish<'a>(
             &'a mut self,
             topic: &'a str,
             qos: QoS,
             retain: bool,
             payload: &'a [u8],
-        ) -> Self::PublishFuture<'a> {
-            (*self).publish(topic, qos, retain, payload)
+        ) -> Result<MessageId, Self::Error> {
+            (*self).publish(topic, qos, retain, payload).await
         }
     }
 

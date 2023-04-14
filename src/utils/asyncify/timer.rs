@@ -1,5 +1,4 @@
 use core::future::Future;
-use core::mem;
 use core::pin::Pin;
 use core::result::Result;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -105,7 +104,7 @@ where
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some(duration) = mem::replace(&mut self.1, None) {
+        if let Some(duration) = self.1.take() {
             self.0.timer.after(duration).unwrap();
         }
 

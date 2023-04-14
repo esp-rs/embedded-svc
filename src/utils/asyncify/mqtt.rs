@@ -279,7 +279,6 @@ pub mod client {
     #[cfg(all(feature = "nightly", feature = "experimental"))]
     mod async_traits_impl {
         use core::fmt::Debug;
-        use core::future::Future;
 
         extern crate alloc;
         use alloc::borrow::ToOwned;
@@ -313,24 +312,18 @@ pub mod client {
             C::Error: Clone,
             Self::Error: Send + Sync + 'static,
         {
-            type SubscribeFuture<'a>
-            = U::UnblockFuture<Result<MessageId, C::Error>> where Self: 'a;
-
-            type UnsubscribeFuture<'a>
-            = U::UnblockFuture<Result<MessageId, C::Error>> where Self: 'a;
-
-            fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a> {
+            async fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, C::Error> {
                 let topic: String = topic.to_owned();
                 let client = self.0.clone();
 
-                self.1.unblock(move || client.lock().subscribe(&topic, qos))
+                self.1.unblock(move || client.lock().subscribe(&topic, qos)).await
             }
 
-            fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a> {
+            async fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, C::Error> {
                 let topic: String = topic.to_owned();
                 let client = self.0.clone();
 
-                self.1.unblock(move || client.lock().unsubscribe(&topic))
+                self.1.unblock(move || client.lock().unsubscribe(&topic)).await
             }
         }
 
@@ -342,22 +335,20 @@ pub mod client {
             C::Error: Clone,
             Self::Error: Send + Sync + 'static,
         {
-            type PublishFuture<'a>
-            = U::UnblockFuture<Result<MessageId, C::Error>> where Self: 'a;
 
-            fn publish<'a>(
+            async fn publish<'a>(
                 &'a mut self,
                 topic: &'a str,
                 qos: QoS,
                 retain: bool,
                 payload: &'a [u8],
-            ) -> Self::PublishFuture<'a> {
+            ) -> Result<MessageId, C::Error> {
                 let topic: String = topic.to_owned();
                 let payload: Vec<u8> = payload.to_owned();
                 let client = self.0.clone();
 
                 self.1
-                    .unblock(move || client.lock().publish(&topic, qos, retain, &payload))
+                    .unblock(move || client.lock().publish(&topic, qos, retain, &payload)).await
             }
         }
 
@@ -382,17 +373,15 @@ pub mod client {
         where
             E: crate::mqtt::client::Enqueue + Send,
         {
-            type PublishFuture<'a>
-            = impl Future<Output = Result<MessageId, E::Error>> + Send + 'a where Self: 'a;
-
-            fn publish<'a>(
+/*  */
+            async fn publish<'a>(
                 &'a mut self,
                 topic: &'a str,
                 qos: QoS,
                 retain: bool,
                 payload: &'a [u8],
-            ) -> Self::PublishFuture<'a> {
-                enqueue_publish(&mut self.0.client, topic, qos, retain, payload)
+            ) -> Result<MessageId, E::Error>{
+                enqueue_publish(&mut self.0.client, topic, qos, retain, payload).await
             }
         }
 
@@ -400,17 +389,15 @@ pub mod client {
         where
             P: crate::mqtt::client::Publish + Send,
         {
-            type PublishFuture<'a>
-            = impl Future<Output = Result<MessageId, P::Error>> + Send + 'a where Self: 'a;
 
-            fn publish<'a>(
+            async fn publish<'a>(
                 &'a mut self,
                 topic: &'a str,
                 qos: QoS,
                 retain: bool,
                 payload: &'a [u8],
-            ) -> Self::PublishFuture<'a> {
-                publish_publish(&mut self.0.client, topic, qos, retain, payload)
+            ) -> Result<MessageId, P::Error> {
+                publish_publish(&mut self.0.client, topic, qos, retain, payload).await
             }
         }
 
@@ -418,18 +405,12 @@ pub mod client {
         where
             C: crate::mqtt::client::Client + Send,
         {
-            type SubscribeFuture<'a>
-            = impl Future<Output = Result<MessageId, C::Error>> + Send + 'a where Self: 'a;
-
-            type UnsubscribeFuture<'a>
-            = impl Future<Output = Result<MessageId, C::Error>> + Send + 'a where Self: 'a;
-
-            fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a> {
-                client_subscribe(&mut self.0.client, topic, qos)
+            async fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) ->  Result<MessageId, C::Error>{
+                client_subscribe(&mut self.0.client, topic, qos).await
             }
 
-            fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a> {
-                client_unsubscribe(&mut self.0.client, topic)
+            async fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, C::Error> {
+                client_unsubscribe(&mut self.0.client, topic).await
             }
         }
 

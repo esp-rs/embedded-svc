@@ -120,11 +120,7 @@ pub mod asynch {
     pub trait Sender {
         type Data: Send;
 
-        type SendFuture<'a>: Future + Send
-        where
-            Self: 'a;
-
-        fn send(&self, value: Self::Data) -> Self::SendFuture<'_>;
+        async fn send(&self, value: Self::Data);
     }
 
     impl<S> Sender for &mut S
@@ -133,11 +129,8 @@ pub mod asynch {
     {
         type Data = S::Data;
 
-        type SendFuture<'a>
-        = S::SendFuture<'a> where Self: 'a;
-
-        fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
-            (**self).send(value)
+        async fn send(&self, value: Self::Data) {
+            (**self).send(value).await
         }
     }
 
@@ -147,11 +140,8 @@ pub mod asynch {
     {
         type Data = S::Data;
 
-        type SendFuture<'a>
-        = S::SendFuture<'a> where Self: 'a;
-
-        fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
-            (*self).send(value)
+        async fn send(&self, value: Self::Data) {
+            (*self).send(value).await
         }
     }
 

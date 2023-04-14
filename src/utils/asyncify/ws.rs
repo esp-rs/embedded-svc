@@ -4,7 +4,7 @@ pub mod server {
     use core::marker::PhantomData;
     use core::pin::Pin;
     use core::task::{Context, Poll, Waker};
-    use core::{mem, slice};
+    use core::slice;
 
     extern crate alloc;
     use alloc::sync::Arc;
@@ -219,7 +219,7 @@ pub mod server {
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let mut accept = self.accept.lock();
 
-            match mem::replace(&mut accept.data, None) {
+            match accept.data.take() {
                 Some(Some((shared, sender))) => {
                     let sender = AsyncSender {
                         unblocker: self.unblocker.clone(),
@@ -362,7 +362,7 @@ pub mod server {
 
                 accept.data = Some(Some((receiver_state, sender)));
 
-                if let Some(waker) = mem::replace(&mut accept.waker, None) {
+                if let Some(waker) = accept.waker.take() {
                     waker.wake();
                 }
 
@@ -386,7 +386,7 @@ pub mod server {
 
             shared.data = ReceiverData::Metadata((frame_type, len));
 
-            if let Some(waker) = mem::replace(&mut shared.waker, None) {
+            if let Some(waker) = shared.waker.take() {
                 waker.wake();
             }
 
@@ -413,7 +413,7 @@ pub mod server {
 
             accept.data = Some(None);
 
-            if let Some(waker) = mem::replace(&mut accept.waker, None) {
+            if let Some(waker) = accept.waker.take() {
                 waker.wake();
             }
         }
@@ -423,7 +423,7 @@ pub mod server {
 
             shared.data = ReceiverData::Closed;
 
-            if let Some(waker) = mem::replace(&mut shared.waker, None) {
+            if let Some(waker) = shared.waker.take() {
                 waker.wake();
             }
         }
@@ -444,7 +444,6 @@ pub mod server {
     #[cfg(all(feature = "nightly", feature = "experimental"))]
     mod async_traits_impl {
         use core::fmt::Debug;
-        use core::future::Future;
         use core::marker::PhantomData;
 
         use crate::executor::asynch::Unblocker;
@@ -466,15 +465,12 @@ pub mod server {
             S: Sender + SessionProvider + Send + Clone + 'static,
             S::Error: Send + Sync + 'static,
         {
-            type SendFuture<'a>
-            = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
-
-            fn send<'a>(
-                &'a mut self,
+            async fn send(
+                &mut self,
                 frame_type: FrameType,
-                frame_data: &'a [u8],
-            ) -> Self::SendFuture<'a> {
-                AsyncSender::send(self, frame_type, frame_data)
+                frame_data: &[u8],
+            ) -> Result<(), Self::Error>{
+                AsyncSender::send(self, frame_type, frame_data).await
             }
         }
 
@@ -482,15 +478,12 @@ pub mod server {
         where
             S: Sender + SessionProvider + Send + Clone + 'static,
         {
-            type SendFuture<'a>
-            = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
-
-            fn send<'a>(
-                &'a mut self,
+            async fn send(
+                &mut self,
                 frame_type: FrameType,
-                frame_data: &'a [u8],
-            ) -> Self::SendFuture<'a> {
-                AsyncSender::send_blocking(self, frame_type, frame_data)
+                frame_data: &[u8],
+            ) -> Result<(), Self::Error> {
+                AsyncSender::send_blocking(self, frame_type, frame_data).await
             }
         }
 
@@ -508,15 +501,15 @@ pub mod server {
             C::RawMutex: Send + Sync,
             E: Debug,
         {
-            type ReceiveFuture<'a>
-            = AsyncReceiverFuture<'a, C, E> where Self: 'a;
+            //type ReceiveFuture<'a>
+            //= AsyncReceiverFuture<'a, C, E> where Self: 'a;
 
-            fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
-                AsyncReceiverFuture {
+            async fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error>{
+                AsyncReceiverFuture{
                     receiver: self,
                     frame_data_buf,
                     _ep: PhantomData,
-                }
+                }.await
             }
         }
 

@@ -58,7 +58,6 @@ mod async_wrapper {
 mod blocking_unblocker {
     use core::future::Future;
     use core::marker::PhantomData;
-    use core::mem;
     use core::task::Poll;
 
     extern crate alloc;
@@ -117,7 +116,7 @@ mod blocking_unblocker {
             mut self: core::pin::Pin<&mut Self>,
             _cx: &mut core::task::Context<'_>,
         ) -> Poll<Self::Output> {
-            let computation = mem::replace(&mut self.computation, None);
+            let computation = self.computation.take();
 
             if let Some(computation) = computation {
                 Poll::Ready((computation)())

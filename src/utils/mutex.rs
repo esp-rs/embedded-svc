@@ -251,7 +251,7 @@ impl RawCondvar for StdRawCondvar {
     }
 
     unsafe fn wait(&self, mutex: &Self::RawMutex) {
-        let guard = core::mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+        let guard = mutex.1.borrow_mut().take().unwrap();
 
         let guard = self.0.wait(guard).unwrap();
 
@@ -259,7 +259,7 @@ impl RawCondvar for StdRawCondvar {
     }
 
     unsafe fn wait_timeout(&self, mutex: &Self::RawMutex, duration: Duration) -> bool {
-        let guard = core::mem::replace(&mut *mutex.1.borrow_mut(), None).unwrap();
+        let guard = mutex.1.borrow_mut().take().unwrap();
 
         let (guard, wtr) = self.0.wait_timeout(guard, duration).unwrap();
 
