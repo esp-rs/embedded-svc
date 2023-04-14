@@ -312,18 +312,26 @@ pub mod client {
             C::Error: Clone,
             Self::Error: Send + Sync + 'static,
         {
-            async fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, C::Error> {
+            async fn subscribe<'a>(
+                &'a mut self,
+                topic: &'a str,
+                qos: QoS,
+            ) -> Result<MessageId, C::Error> {
                 let topic: String = topic.to_owned();
                 let client = self.0.clone();
 
-                self.1.unblock(move || client.lock().subscribe(&topic, qos)).await
+                self.1
+                    .unblock(move || client.lock().subscribe(&topic, qos))
+                    .await
             }
 
             async fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, C::Error> {
                 let topic: String = topic.to_owned();
                 let client = self.0.clone();
 
-                self.1.unblock(move || client.lock().unsubscribe(&topic)).await
+                self.1
+                    .unblock(move || client.lock().unsubscribe(&topic))
+                    .await
             }
         }
 
@@ -335,7 +343,6 @@ pub mod client {
             C::Error: Clone,
             Self::Error: Send + Sync + 'static,
         {
-
             async fn publish<'a>(
                 &'a mut self,
                 topic: &'a str,
@@ -348,7 +355,8 @@ pub mod client {
                 let client = self.0.clone();
 
                 self.1
-                    .unblock(move || client.lock().publish(&topic, qos, retain, &payload)).await
+                    .unblock(move || client.lock().publish(&topic, qos, retain, &payload))
+                    .await
             }
         }
 
@@ -373,14 +381,14 @@ pub mod client {
         where
             E: crate::mqtt::client::Enqueue + Send,
         {
-/*  */
+            /*  */
             async fn publish<'a>(
                 &'a mut self,
                 topic: &'a str,
                 qos: QoS,
                 retain: bool,
                 payload: &'a [u8],
-            ) -> Result<MessageId, E::Error>{
+            ) -> Result<MessageId, E::Error> {
                 enqueue_publish(&mut self.0.client, topic, qos, retain, payload).await
             }
         }
@@ -389,7 +397,6 @@ pub mod client {
         where
             P: crate::mqtt::client::Publish + Send,
         {
-
             async fn publish<'a>(
                 &'a mut self,
                 topic: &'a str,
@@ -405,7 +412,11 @@ pub mod client {
         where
             C: crate::mqtt::client::Client + Send,
         {
-            async fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) ->  Result<MessageId, C::Error>{
+            async fn subscribe<'a>(
+                &'a mut self,
+                topic: &'a str,
+                qos: QoS,
+            ) -> Result<MessageId, C::Error> {
                 client_subscribe(&mut self.0.client, topic, qos).await
             }
 

@@ -464,7 +464,6 @@ pub mod asynch {
         type RawConnection: Read<Error = Self::RawConnectionError>
             + Write<Error = Self::RawConnectionError>;
 
-
         fn split(&mut self) -> (&Self::Headers, &mut Self::Read);
 
         async fn initiate_response<'a>(
@@ -491,7 +490,6 @@ pub mod asynch {
 
         type RawConnection = C::RawConnection;
 
-
         fn split(&mut self) -> (&Self::Headers, &mut Self::Read) {
             (*self).split()
         }
@@ -501,7 +499,7 @@ pub mod asynch {
             status: u16,
             message: Option<&'a str>,
             headers: &'a [(&'a str, &'a str)],
-        ) -> Result<(),Self::Error>{
+        ) -> Result<(), Self::Error> {
             (*self).initiate_response(status, message, headers).await
         }
 
@@ -526,7 +524,7 @@ pub mod asynch {
         C: Connection,
         H: Handler<C> + Send + Sync,
     {
-        async fn handle(&self, connection: &mut C) -> Result<(),HandlerError> {
+        async fn handle(&self, connection: &mut C) -> Result<(), HandlerError> {
             (*self).handle(connection).await
         }
     }
@@ -566,7 +564,7 @@ pub mod asynch {
         H: Handler<C>,
         C: Connection,
     {
-        async fn handle(&self, connection: &mut C) -> Result<(),HandlerError> {
+        async fn handle(&self, connection: &mut C) -> Result<(), HandlerError> {
             self.middleware.handle(connection, &self.handler).await
         }
     }
@@ -764,7 +762,7 @@ pub mod asynch {
     where
         C: super::Connection,
     {
-        async fn read(&mut self, buf: &mut [u8]) -> Result<usize,Self::Error> {            
+        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
             self.connection.read(buf)
         }
     }
@@ -773,11 +771,11 @@ pub mod asynch {
     where
         C: super::Connection,
     {
-        async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {            
+        async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
             self.connection.write(buf)
         }
 
-        async fn flush(&mut self) -> Result<(), Self::Error>{
+        async fn flush(&mut self) -> Result<(), Self::Error> {
             self.connection.flush()
         }
     }

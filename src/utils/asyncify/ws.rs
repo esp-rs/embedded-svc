@@ -3,8 +3,8 @@ pub mod server {
     use core::future::Future;
     use core::marker::PhantomData;
     use core::pin::Pin;
-    use core::task::{Context, Poll, Waker};
     use core::slice;
+    use core::task::{Context, Poll, Waker};
 
     extern crate alloc;
     use alloc::sync::Arc;
@@ -469,7 +469,7 @@ pub mod server {
                 &mut self,
                 frame_type: FrameType,
                 frame_data: &[u8],
-            ) -> Result<(), Self::Error>{
+            ) -> Result<(), Self::Error> {
                 AsyncSender::send(self, frame_type, frame_data).await
             }
         }
@@ -504,12 +504,16 @@ pub mod server {
             //type ReceiveFuture<'a>
             //= AsyncReceiverFuture<'a, C, E> where Self: 'a;
 
-            async fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error>{
-                AsyncReceiverFuture{
+            async fn recv(
+                &mut self,
+                frame_data_buf: &mut [u8],
+            ) -> Result<(FrameType, usize), Self::Error> {
+                AsyncReceiverFuture {
                     receiver: self,
                     frame_data_buf,
                     _ep: PhantomData,
-                }.await
+                }
+                .await
             }
         }
 

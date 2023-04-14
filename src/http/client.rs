@@ -386,7 +386,7 @@ pub mod asynch {
     where
         C: Connection,
     {
-        async fn write(&mut self, buf: &[u8]) ->  Result<usize, Self::Error> {
+        async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
             self.0.write(buf).await
         }
 
@@ -507,7 +507,7 @@ pub mod asynch {
             method: Method,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
-        ) -> Result<(),Self::Error>{
+        ) -> Result<(), Self::Error> {
             (*self).initiate_request(method, uri, headers).await
         }
 
@@ -515,7 +515,7 @@ pub mod asynch {
             (**self).is_request_initiated()
         }
 
-        async fn initiate_response(&mut self) -> Result<(),Self::Error>{
+        async fn initiate_response(&mut self) -> Result<(), Self::Error> {
             (*self).initiate_response().await
         }
 
@@ -724,21 +724,20 @@ pub mod asynch {
     where
         C: super::Connection,
     {
-        async fn read(&mut self, buf: &mut [u8]) -> Result<usize,Self::Error> {
+        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
             self.connection.read(buf)
         }
-
     }
 
     impl<C> Write for TrivialUnblockingConnection<C>
     where
         C: super::Connection,
     {
-        async fn write(&mut self, buf: & [u8]) -> Result<usize, Self::Error> {
+        async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
             self.connection.write(buf)
         }
 
-        async fn flush(&mut self) -> Result<(),Self::Error> {
+        async fn flush(&mut self) -> Result<(), Self::Error> {
             self.connection.flush()
         }
     }
@@ -760,7 +759,7 @@ pub mod asynch {
             method: Method,
             uri: &'a str,
             headers: &'a [(&'a str, &'a str)],
-        ) -> Result<(),Self::Error>{
+        ) -> Result<(), Self::Error> {
             self.connection.initiate_request(method, uri, headers)
         }
 

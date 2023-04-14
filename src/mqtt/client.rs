@@ -275,7 +275,11 @@ pub mod asynch {
     pub use super::{Details, ErrorType, Event, Message, MessageId, QoS};
 
     pub trait Client: ErrorType {
-        async fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error>;
+        async fn subscribe<'a>(
+            &'a mut self,
+            topic: &'a str,
+            qos: QoS,
+        ) -> Result<MessageId, Self::Error>;
 
         async fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error>;
     }
@@ -284,11 +288,15 @@ pub mod asynch {
     where
         C: Client,
     {
-        async fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error> {
+        async fn subscribe<'a>(
+            &'a mut self,
+            topic: &'a str,
+            qos: QoS,
+        ) -> Result<MessageId, Self::Error> {
             (*self).subscribe(topic, qos).await
         }
 
-        async fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error>{
+        async fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error> {
             (*self).unsubscribe(topic).await
         }
     }

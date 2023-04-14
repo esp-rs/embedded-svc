@@ -62,13 +62,12 @@ pub mod asynch {
     where
         W: super::Write,
     {
-
         async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-            self.api.write(buf) 
+            self.api.write(buf)
         }
 
-        async fn flush(&mut self) -> Result<(), Self::Error>{
-            self.api.flush() 
+        async fn flush(&mut self) -> Result<(), Self::Error> {
+            self.api.flush()
         }
     }
 
@@ -120,7 +119,7 @@ pub mod asynch {
     where
         R: super::Read,
     {
-        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error>{
+        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
             unsafe { self.api.as_mut() }.unwrap().read(buf)
         }
     }
@@ -133,7 +132,7 @@ pub mod asynch {
             unsafe { self.api.as_mut() }.unwrap().write(buf)
         }
 
-        async fn flush(&mut self) -> Result<(), Self::Error>{
+        async fn flush(&mut self) -> Result<(), Self::Error> {
             unsafe { self.api.as_mut() }.unwrap().flush()
         }
     }

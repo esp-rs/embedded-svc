@@ -126,15 +126,20 @@ pub mod asynch {
     pub use super::{ErrorType, Fragmented, FrameType};
 
     pub trait Receiver: ErrorType {
-
-        async fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error>;
+        async fn recv(
+            &mut self,
+            frame_data_buf: &mut [u8],
+        ) -> Result<(FrameType, usize), Self::Error>;
     }
 
     impl<R> Receiver for &mut R
     where
         R: Receiver,
     {
-        async fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error> {
+        async fn recv(
+            &mut self,
+            frame_data_buf: &mut [u8],
+        ) -> Result<(FrameType, usize), Self::Error> {
             (*self).recv(frame_data_buf).await
         }
     }
@@ -155,7 +160,7 @@ pub mod asynch {
             &mut self,
             frame_type: FrameType,
             frame_data: &[u8],
-        ) ->  Result<(), Self::Error>{
+        ) -> Result<(), Self::Error> {
             (*self).send(frame_type, frame_data).await
         }
     }
@@ -202,8 +207,8 @@ pub mod asynch {
             &mut self,
             frame_type: FrameType,
             frame_data: &[u8],
-        ) -> Result<(), Self::Error> {            
-            self.api.send(frame_type, frame_data) 
+        ) -> Result<(), Self::Error> {
+            self.api.send(frame_type, frame_data)
         }
     }
 
@@ -211,7 +216,10 @@ pub mod asynch {
     where
         R: super::Receiver + Send,
     {
-        async fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error> {
+        async fn recv(
+            &mut self,
+            frame_data_buf: &mut [u8],
+        ) -> Result<(FrameType, usize), Self::Error> {
             self.api.recv(frame_data_buf)
         }
     }

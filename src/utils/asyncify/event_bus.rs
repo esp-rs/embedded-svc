@@ -250,7 +250,8 @@ mod async_traits_impl {
             let blocking_postbox = self.blocking_postbox.clone();
 
             self.unblocker
-                .unblock(move || blocking_postbox.post(&value, None).map(|_| ()).unwrap()).await
+                .unblock(move || blocking_postbox.post(&value, None).map(|_| ()).unwrap())
+                .await
         }
     }
 
