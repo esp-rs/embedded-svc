@@ -102,6 +102,14 @@ where
     pub fn release(self) -> C {
         self.0
     }
+
+    pub fn write<'b>(&'b mut self, buf: &'b [u8]) -> Result<usize, C::Error> {
+        self.0.write(buf)
+    }
+
+    pub fn flush(&mut self) -> Result<(), C::Error> {
+        self.0.flush()
+    }
 }
 
 impl<C> Io for Request<C>
@@ -151,6 +159,22 @@ where
     pub fn release(self) -> C {
         self.0
     }
+
+    pub fn status(&self) -> u16 {
+        self.0.status()
+    }
+
+    pub fn status_message(&self) -> Option<&'_ str> {
+        self.0.status_message()
+    }
+
+    pub fn header(&self, name: &str) -> Option<&'_ str> {
+        self.0.header(name)
+    }
+
+    pub fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Result<usize, C::Error> {
+        self.0.read(buf)
+    }
 }
 
 impl<C> Status for Response<C>
@@ -158,11 +182,11 @@ where
     C: Connection,
 {
     fn status(&self) -> u16 {
-        self.0.status()
+        Response::status(self)
     }
 
     fn status_message(&self) -> Option<&'_ str> {
-        self.0.status_message()
+        Response::status_message(self)
     }
 }
 
@@ -171,7 +195,7 @@ where
     C: Connection,
 {
     fn header(&self, name: &str) -> Option<&'_ str> {
-        self.0.header(name)
+        Response::header(self, name)
     }
 }
 
@@ -187,7 +211,7 @@ where
     C: Connection,
 {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.0.read(buf)
+        Response::read(self, buf)
     }
 }
 
@@ -374,6 +398,14 @@ pub mod asynch {
         pub fn release(self) -> C {
             self.0
         }
+
+        pub async fn write<'b>(&'b mut self, buf: &'b [u8]) -> Result<usize, C::Error> {
+            self.0.write(buf).await
+        }
+
+        pub async fn flush(&mut self) -> Result<(), C::Error> {
+            self.0.flush().await
+        }
     }
 
     impl<C> Io for Request<C>
@@ -391,14 +423,14 @@ pub mod asynch {
         = impl Future<Output = Result<usize, Self::Error>> + 'b where Self: 'b;
 
         fn write<'b>(&'b mut self, buf: &'b [u8]) -> Self::WriteFuture<'b> {
-            self.0.write(buf)
+            Request::write(self, buf)
         }
 
         type FlushFuture<'b>
         = impl Future<Output = Result<(), Self::Error>> + 'b where Self: 'b;
 
         fn flush(&mut self) -> Self::FlushFuture<'_> {
-            self.0.flush()
+            Request::flush(self)
         }
     }
 
@@ -429,6 +461,22 @@ pub mod asynch {
         pub fn release(self) -> C {
             self.0
         }
+
+        pub fn status(&self) -> u16 {
+            self.0.status()
+        }
+
+        pub fn status_message(&self) -> Option<&'_ str> {
+            self.0.status_message()
+        }
+
+        pub fn header(&self, name: &str) -> Option<&'_ str> {
+            self.0.header(name)
+        }
+
+        pub async fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Result<usize, C::Error> {
+            self.0.read(buf).await
+        }
     }
 
     impl<C> Status for Response<C>
@@ -436,11 +484,11 @@ pub mod asynch {
         C: Connection,
     {
         fn status(&self) -> u16 {
-            self.0.status()
+            Response::status(self)
         }
 
         fn status_message(&self) -> Option<&'_ str> {
-            self.0.status_message()
+            Response::status_message(self)
         }
     }
 
@@ -449,7 +497,7 @@ pub mod asynch {
         C: Connection,
     {
         fn header(&self, name: &str) -> Option<&'_ str> {
-            self.0.header(name)
+            Response::header(self, name)
         }
     }
 
@@ -468,7 +516,7 @@ pub mod asynch {
         = impl Future<Output = Result<usize, Self::Error>> + 'b where Self: 'b;
 
         fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Self::ReadFuture<'b> {
-            self.0.read(buf)
+            Response::read(self, buf)
         }
     }
 

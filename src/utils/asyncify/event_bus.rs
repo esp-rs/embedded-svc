@@ -1,6 +1,5 @@
 use core::future::Future;
 use core::marker::PhantomData;
-use core::mem;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 
@@ -112,7 +111,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.0 .0 .0.lock();
 
-        let value = mem::replace(&mut state.value, None);
+        let value = state.value.take();
 
         if let Some(value) = value {
             self.0 .0 .1.notify_all();
@@ -173,7 +172,7 @@ where
                 let (mut state, condvar) = (pair.0.lock(), &pair.1);
 
                 while state.value.is_some() {
-                    if let Some(waker) = mem::replace(&mut state.waker, None) {
+                    if let Some(waker) = state.waker.take() {
                         waker.wake();
                     }
 
@@ -182,7 +181,7 @@ where
 
                 state.value = Some(payload.clone());
 
-                if let Some(waker) = mem::replace(&mut state.waker, None) {
+                if let Some(waker) = state.waker.take() {
                     waker.wake();
                 }
             }

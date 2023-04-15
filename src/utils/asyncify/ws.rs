@@ -3,8 +3,8 @@ pub mod server {
     use core::future::Future;
     use core::marker::PhantomData;
     use core::pin::Pin;
+    use core::slice;
     use core::task::{Context, Poll, Waker};
-    use core::{mem, slice};
 
     extern crate alloc;
     use alloc::sync::Arc;
@@ -219,7 +219,7 @@ pub mod server {
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let mut accept = self.accept.lock();
 
-            match mem::replace(&mut accept.data, None) {
+            match accept.data.take() {
                 Some(Some((shared, sender))) => {
                     let sender = AsyncSender {
                         unblocker: self.unblocker.clone(),
@@ -362,7 +362,7 @@ pub mod server {
 
                 accept.data = Some(Some((receiver_state, sender)));
 
-                if let Some(waker) = mem::replace(&mut accept.waker, None) {
+                if let Some(waker) = accept.waker.take() {
                     waker.wake();
                 }
 
@@ -386,7 +386,7 @@ pub mod server {
 
             shared.data = ReceiverData::Metadata((frame_type, len));
 
-            if let Some(waker) = mem::replace(&mut shared.waker, None) {
+            if let Some(waker) = shared.waker.take() {
                 waker.wake();
             }
 
@@ -413,7 +413,7 @@ pub mod server {
 
             accept.data = Some(None);
 
-            if let Some(waker) = mem::replace(&mut accept.waker, None) {
+            if let Some(waker) = accept.waker.take() {
                 waker.wake();
             }
         }
@@ -423,7 +423,7 @@ pub mod server {
 
             shared.data = ReceiverData::Closed;
 
-            if let Some(waker) = mem::replace(&mut shared.waker, None) {
+            if let Some(waker) = shared.waker.take() {
                 waker.wake();
             }
         }
