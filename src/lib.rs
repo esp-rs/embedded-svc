@@ -4,7 +4,14 @@
     all(feature = "nightly", not(version("1.65"))),
     feature(generic_associated_types)
 )]
-#![cfg_attr(feature = "nightly", feature(type_alias_impl_trait))]
+#![cfg_attr(
+    all(feature = "nightly", not(version("1.70"))),
+    feature(type_alias_impl_trait)
+)]
+#![cfg_attr(
+    all(feature = "nightly", version("1.70")),
+    feature(impl_trait_in_assoc_type)
+)]
 
 #[cfg(feature = "alloc")]
 #[allow(unused_imports)]
