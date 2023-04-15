@@ -9,8 +9,14 @@
     all(feature = "nightly", version("1.70")),
     feature(impl_trait_in_assoc_type)
 )]
-#![cfg_attr(feature = "nightly", feature(async_fn_in_trait))]
-#![cfg_attr(feature = "nightly", allow(incomplete_features))]
+#![cfg_attr(
+    all(feature = "nightly", feature = "embedded-io-async"),
+    feature(async_fn_in_trait)
+)]
+#![cfg_attr(
+    all(feature = "nightly", feature = "embedded-io-async"),
+    allow(incomplete_features)
+)]
 
 #[cfg(feature = "alloc")]
 #[allow(unused_imports)]
