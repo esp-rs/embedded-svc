@@ -2,6 +2,13 @@ pub use embedded_io::adapters;
 pub use embedded_io::blocking::*;
 pub use embedded_io::*;
 
+#[cfg(all(
+    feature = "nightly",
+    feature = "experimental",
+    feature = "embedded-io-async"
+))]
+pub use embedded_io_3_4_compat_async::*;
+
 #[cfg(all(feature = "nightly", feature = "experimental"))]
 pub mod asynch {
     use core::future::Future;
@@ -511,6 +518,132 @@ mod embedded_io_3_async {
         #[inline]
         fn flush(&mut self) -> Self::FlushFuture<'_> {
             async move { Ok(()) }
+        }
+    }
+}
+
+#[cfg(all(
+    feature = "nightly",
+    feature = "experimental",
+    feature = "embedded-io-async"
+))]
+mod embedded_io_3_4_compat_async {
+    use core::future::Future;
+
+    pub struct EmbIo<T>(pub T);
+
+    impl<T> super::Io for EmbIo<T>
+    where
+        T: super::Io,
+    {
+        type Error = T::Error;
+    }
+
+    impl<T> super::embedded_io_3_async::Read for EmbIo<T>
+    where
+        T: embedded_io::asynch::Read,
+    {
+        type ReadFuture<'a> = impl Future<Output = Result<usize, Self::Error>> + 'a
+        where
+            Self: 'a;
+
+        fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
+            self.0.read(buf)
+        }
+    }
+
+    impl<T> embedded_io::asynch::Read for EmbIo<T>
+    where
+        T: super::embedded_io_3_async::Read,
+    {
+        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            self.0.read(buf).await
+        }
+    }
+
+    impl<T> super::embedded_io_3_async::BufRead for EmbIo<T>
+    where
+        T: embedded_io::asynch::BufRead,
+    {
+        type FillBufFuture<'a> = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a
+        where
+            Self: 'a;
+
+        fn fill_buf(&mut self) -> Self::FillBufFuture<'_> {
+            self.0.fill_buf()
+        }
+
+        fn consume(&mut self, amt: usize) {
+            self.0.consume(amt)
+        }
+    }
+
+    impl<T> embedded_io::asynch::BufRead for EmbIo<T>
+    where
+        T: super::embedded_io_3_async::BufRead,
+    {
+        async fn fill_buf(&mut self) -> Result<&[u8], Self::Error> {
+            self.0.fill_buf().await
+        }
+
+        fn consume(&mut self, amt: usize) {
+            self.0.consume(amt)
+        }
+    }
+
+    impl<T> super::embedded_io_3_async::Write for EmbIo<T>
+    where
+        T: embedded_io::asynch::Write,
+    {
+        type WriteFuture<'a> = impl Future<Output = Result<usize, Self::Error>> + 'a
+        where
+            Self: 'a;
+
+        type FlushFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a
+        where
+            Self: 'a;
+
+        fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
+            self.0.write(buf)
+        }
+
+        fn flush(&mut self) -> Self::FlushFuture<'_> {
+            self.0.flush()
+        }
+    }
+
+    impl<T> embedded_io::asynch::Write for EmbIo<T>
+    where
+        T: super::embedded_io_3_async::Write,
+    {
+        async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            self.0.write(buf).await
+        }
+
+        async fn flush(&mut self) -> Result<(), Self::Error> {
+            self.0.flush().await
+        }
+    }
+
+    impl<T> super::embedded_io_3_async::Seek for EmbIo<T>
+    where
+        T: embedded_io::asynch::Seek,
+    {
+        type SeekFuture<'a> = impl Future<Output = Result<u64, Self::Error>> + 'a
+        where
+            Self: 'a;
+
+        fn seek(&mut self, pos: super::SeekFrom) -> Self::SeekFuture<'_> {
+            self.0.seek(pos)
+        }
+    }
+
+    impl<T> embedded_io::asynch::Seek for EmbIo<T>
+    where
+        T: super::embedded_io_3_async::Seek,
+    {
+        async fn seek(&mut self, pos: embedded_io::SeekFrom) -> Result<u64, Self::Error> {
+            self.0.seek(pos).await
         }
     }
 }
