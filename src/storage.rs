@@ -174,6 +174,14 @@ where
         Self { raw_storage, serde }
     }
 
+    pub fn raw_storage(&self) -> &R {
+        &self.raw_storage
+    }
+
+    pub fn raw_storage_mut(&mut self) -> &mut R {
+        &mut self.raw_storage
+    }
+
     pub fn contains(&self, name: &str) -> Result<bool, StorageError<R::Error, S::Error>> {
         self.raw_storage
             .contains(name)
