@@ -17,7 +17,7 @@
     all(feature = "nightly", feature = "embedded-io-async"),
     allow(incomplete_features)
 )]
-#![allow(clippy::unused-unit)] // enumset
+#![allow(clippy::unused_unit)] // enumset
 
 #[cfg(feature = "alloc")]
 #[allow(unused_imports)]
