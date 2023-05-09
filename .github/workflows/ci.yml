@@ -1,13 +1,13 @@
 name: CI
 
 on:
-  workflow_dispatch
   push:
     branches:
       - master
   pull_request:
   schedule:
     - cron: '50 4 * * *'
+  workflow_dispatch:
 
 env:
   rust_toolchain: nightly
