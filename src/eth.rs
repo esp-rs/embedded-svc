@@ -7,7 +7,7 @@ pub trait Eth {
     fn stop(&mut self) -> Result<(), Self::Error>;
 
     fn is_started(&self) -> Result<bool, Self::Error>;
-    fn is_up(&self) -> Result<bool, Self::Error>;
+    fn is_connected(&self) -> Result<bool, Self::Error>;
 }
 
 impl<E> Eth for &mut E
@@ -28,8 +28,8 @@ where
         (**self).is_started()
     }
 
-    fn is_up(&self) -> Result<bool, Self::Error> {
-        (**self).is_up()
+    fn is_connected(&self) -> Result<bool, Self::Error> {
+        (**self).is_connected()
     }
 }
 
@@ -54,7 +54,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        type IsUpFuture<'a>: Future<Output = Result<bool, Self::Error>>
+        type IsConnectedFuture<'a>: Future<Output = Result<bool, Self::Error>>
         where
             Self: 'a;
 
@@ -62,7 +62,7 @@ pub mod asynch {
         fn stop(&mut self) -> Self::StopFuture<'_>;
 
         fn is_started(&self) -> Self::IsStartedFuture<'_>;
-        fn is_up(&self) -> Self::IsUpFuture<'_>;
+        fn is_connected(&self) -> Self::IsConnectedFuture<'_>;
     }
 
     impl<E> Eth for &mut E
@@ -83,7 +83,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        type IsUpFuture<'a> = E::IsUpFuture<'a>
+        type IsConnectedFuture<'a> = E::IsConnectedFuture<'a>
         where
             Self: 'a;
 
@@ -99,8 +99,8 @@ pub mod asynch {
             (**self).is_started()
         }
 
-        fn is_up(&self) -> Self::IsUpFuture<'_> {
-            (**self).is_up()
+        fn is_connected(&self) -> Self::IsConnectedFuture<'_> {
+            (**self).is_connected()
         }
     }
 }
