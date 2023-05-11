@@ -24,6 +24,7 @@ use num_enum::TryFromPrimitive;
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
+#[derive(Default)]
 pub enum AuthMethod {
     #[cfg_attr(feature = "use_strum", strum(serialize = "none", message = "None"))]
     None,
@@ -35,6 +36,7 @@ pub enum AuthMethod {
         feature = "use_strum",
         strum(serialize = "wpa2personal", message = "WPA2 Personal")
     )]
+    #[default]
     WPA2Personal,
     #[cfg_attr(
         feature = "use_strum",
@@ -63,12 +65,6 @@ pub enum AuthMethod {
     WAPIPersonal,
 }
 
-impl Default for AuthMethod {
-    fn default() -> Self {
-        AuthMethod::WPA2Personal
-    }
-}
-
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -78,6 +74,7 @@ impl Default for AuthMethod {
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
+#[derive(Default)]
 pub enum Protocol {
     #[cfg_attr(
         feature = "use_strum",
@@ -93,6 +90,7 @@ pub enum Protocol {
         feature = "use_strum",
         strum(serialize = "p802d11bgn", message = "802.11BGN")
     )]
+    #[default]
     P802D11BGN,
     #[cfg_attr(
         feature = "use_strum",
@@ -106,12 +104,6 @@ pub enum Protocol {
     P802D11LR,
 }
 
-impl Default for Protocol {
-    fn default() -> Self {
-        Protocol::P802D11BGN
-    }
-}
-
 #[derive(EnumSetType, Debug, PartialOrd)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -121,20 +113,16 @@ impl Default for Protocol {
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
+#[derive(Default)]
 pub enum SecondaryChannel {
     // TODO: Need to extend that for 5GHz
     #[cfg_attr(feature = "use_strum", strum(serialize = "none", message = "None"))]
+    #[default]
     None,
     #[cfg_attr(feature = "use_strum", strum(serialize = "above", message = "Above"))]
     Above,
     #[cfg_attr(feature = "use_strum", strum(serialize = "below", message = "Below"))]
     Below,
-}
-
-impl Default for SecondaryChannel {
-    fn default() -> Self {
-        SecondaryChannel::None
-    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -243,7 +231,9 @@ pub enum Capability {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[derive(Default)]
 pub enum Configuration {
+    #[default]
     None,
     Client(ClientConfiguration),
     AccessPoint(AccessPointConfiguration),
@@ -335,12 +325,6 @@ impl Configuration {
                 self.as_mixed_conf_mut()
             }
         }
-    }
-}
-
-impl Default for Configuration {
-    fn default() -> Self {
-        Configuration::None
     }
 }
 

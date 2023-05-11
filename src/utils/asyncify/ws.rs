@@ -308,7 +308,7 @@ pub mod server {
                     .connections
                     .iter()
                     .enumerate()
-                    .find_map(|(index, conn)| (conn.session == session).then(|| index))
+                    .find_map(|(index, conn)| (conn.session == session).then_some(index))
                 {
                     let conn = self.connections.swap_remove(index);
 

@@ -31,7 +31,9 @@ use strum_macros::{Display, EnumIter, EnumMessage, EnumString};
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
 
+#[derive(Default)]
 pub enum Body {
+    #[default]
     Empty,
     Bytes(Vec<u8>),
     #[cfg(feature = "std")]
@@ -53,12 +55,6 @@ impl Body {
             Body::Read(Some(len), _) => Some(*len),
             _ => None,
         }
-    }
-}
-
-impl Default for Body {
-    fn default() -> Self {
-        Body::Empty
     }
 }
 
