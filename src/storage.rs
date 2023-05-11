@@ -1,5 +1,4 @@
 use core::any::Any;
-use core::ffi::CStr;
 use core::fmt::{self, Debug};
 
 use serde::de::DeserializeOwned;
@@ -144,10 +143,7 @@ pub trait StorageIterate {
 }
 
 pub trait StorageEntry {
-    fn name_cstr(&self) -> &CStr;
-    fn name(&self) -> Option<&str> {
-        self.name_cstr().to_str().ok()
-    }
+    fn name(&self) -> &str;
 }
 
 #[derive(Debug)]
