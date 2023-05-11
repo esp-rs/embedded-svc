@@ -10,7 +10,7 @@ description = "A set of traits for services higher level than embedded-hal and t
 repository = "https://github.com/esp-rs/embedded-svc"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-rust-version = "1.61"
+rust-version = "1.66"
 
 [features]
 default = ["std", "use_serde", "use_strum", "use_numenum", "log"]
