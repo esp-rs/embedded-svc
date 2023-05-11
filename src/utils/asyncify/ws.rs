@@ -15,7 +15,7 @@ pub mod server {
     use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
     use crate::ws::{callback_server::*, *};
 
-    #[cfg(all(feature = "nightly", feature = "experimental"))]
+    #[cfg(feature = "nightly")]
     pub use async_traits_impl::*;
 
     #[allow(dead_code)]
@@ -48,7 +48,6 @@ pub mod server {
         }
     }
 
-    #[cfg(feature = "nightly")]
     impl<U, S> AsyncSender<U, S>
     where
         U: crate::executor::asynch::Unblocker,
@@ -441,7 +440,7 @@ pub mod server {
         }
     }
 
-    #[cfg(all(feature = "nightly", feature = "experimental"))]
+    #[cfg(feature = "nightly")]
     mod async_traits_impl {
         use core::fmt::Debug;
         use core::future::Future;

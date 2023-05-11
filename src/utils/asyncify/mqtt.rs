@@ -10,9 +10,9 @@ pub mod client {
 
     use crate::mqtt::client::{Event, MessageId, QoS};
     use crate::utils::mqtt::client::ConnStateGuard;
-    use crate::utils::mutex::RawCondvar;
+    use crate::utils::mutex::{Mutex, RawCondvar, RawMutex};
 
-    #[cfg(all(feature = "nightly", feature = "experimental"))]
+    #[cfg(feature = "nightly")]
     pub use async_traits_impl::*;
 
     async fn enqueue_publish<'a, E>(
@@ -276,7 +276,29 @@ pub mod client {
         }
     }
 
-    #[cfg(all(feature = "nightly", feature = "experimental"))]
+    impl<C> crate::utils::asyncify::AsyncWrapper<C> for AsyncClient<(), Blocking<C, Publishing>> {
+        fn new(sync: C) -> Self {
+            AsyncClient::new(
+                (),
+                Blocking {
+                    client: sync,
+                    _policy: Publishing,
+                },
+            )
+        }
+    }
+
+    impl<U, R, C> crate::utils::asyncify::UnblockingAsyncWrapper<U, C>
+        for AsyncClient<U, Arc<Mutex<R, C>>>
+    where
+        R: RawMutex,
+    {
+        fn new(unblocker: U, sync: C) -> Self {
+            AsyncClient::new(unblocker, Arc::new(Mutex::new(sync)))
+        }
+    }
+
+    #[cfg(feature = "nightly")]
     mod async_traits_impl {
         use core::fmt::Debug;
         use core::future::Future;
@@ -361,16 +383,6 @@ pub mod client {
             }
         }
 
-        impl<U, R, C> crate::utils::asyncify::UnblockingAsyncWrapper<U, C>
-            for AsyncClient<U, Arc<Mutex<R, C>>>
-        where
-            R: RawMutex,
-        {
-            fn new(unblocker: U, sync: C) -> Self {
-                AsyncClient::new(unblocker, Arc::new(Mutex::new(sync)))
-            }
-        }
-
         impl<E, P> ErrorType for AsyncClient<(), Blocking<E, P>>
         where
             E: ErrorType,
@@ -430,18 +442,6 @@ pub mod client {
 
             fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a> {
                 client_unsubscribe(&mut self.0.client, topic)
-            }
-        }
-
-        impl<C> crate::utils::asyncify::AsyncWrapper<C> for AsyncClient<(), Blocking<C, Publishing>> {
-            fn new(sync: C) -> Self {
-                AsyncClient::new(
-                    (),
-                    Blocking {
-                        client: sync,
-                        _policy: Publishing,
-                    },
-                )
             }
         }
 

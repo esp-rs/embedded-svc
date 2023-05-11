@@ -90,7 +90,7 @@ where
         (*self).ping_details(ip, conf, reply_callback)
     }
 }
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "nightly")]
 pub mod asynch {
     use core::fmt::Debug;
     use core::future::Future;

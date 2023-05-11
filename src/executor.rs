@@ -1,6 +1,4 @@
-#[cfg(feature = "experimental")]
 pub mod asynch {
-    #[cfg(feature = "nightly")]
     pub use unblocker::*;
 
     use core::fmt::Debug;
@@ -90,7 +88,6 @@ pub mod asynch {
         }
     }
 
-    #[cfg(feature = "nightly")]
     mod unblocker {
         use core::future::Future;
 

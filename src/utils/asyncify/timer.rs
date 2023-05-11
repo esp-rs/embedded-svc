@@ -8,10 +8,12 @@ use core::time::Duration;
 extern crate alloc;
 use alloc::sync::Arc;
 
-use futures::task::AtomicWaker;
+use atomic_waker::AtomicWaker;
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "nightly")]
 pub use async_traits_impl::*;
+
+use super::AsyncWrapper;
 
 struct TimerSignal {
     waker: AtomicWaker,
@@ -159,7 +161,13 @@ where
     }
 }
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+impl<T> AsyncWrapper<T> for AsyncTimerService<T> {
+    fn new(timer_service: T) -> Self {
+        AsyncTimerService::new(timer_service)
+    }
+}
+
+#[cfg(feature = "nightly")]
 mod async_traits_impl {
     use core::result::Result;
     use core::time::Duration;
@@ -167,7 +175,6 @@ mod async_traits_impl {
     extern crate alloc;
 
     use crate::timer::asynch::{Clock, ErrorType, OnceTimer, PeriodicTimer, TimerService};
-    use crate::utils::asyncify::AsyncWrapper;
 
     use super::{AsyncTimer, AsyncTimerService, TimerFuture};
 
@@ -209,12 +216,6 @@ mod async_traits_impl {
 
         fn tick(&mut self) -> Self::TickFuture<'_> {
             AsyncTimer::tick(self)
-        }
-    }
-
-    impl<T> AsyncWrapper<T> for AsyncTimerService<T> {
-        fn new(timer_service: T) -> Self {
-            AsyncTimerService::new(timer_service)
         }
     }
 

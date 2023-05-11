@@ -8,8 +8,10 @@ use alloc::sync::Arc;
 
 use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "nightly")]
 pub use async_traits_impl::*;
+
+use super::{AsyncWrapper, UnblockingAsyncWrapper};
 
 pub struct AsyncPostbox<U, P, PB> {
     unblocker: U,
@@ -224,13 +226,36 @@ where
     }
 }
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+impl<P, PB> AsyncWrapper<PB> for AsyncPostbox<(), P, PB> {
+    fn new(sync: PB) -> Self {
+        AsyncPostbox::new((), sync)
+    }
+}
+
+impl<U, P, PB> UnblockingAsyncWrapper<U, PB> for AsyncPostbox<U, P, PB> {
+    fn new(unblocker: U, sync: PB) -> Self {
+        AsyncPostbox::new(unblocker, sync)
+    }
+}
+
+impl<U, CV, E> UnblockingAsyncWrapper<U, E> for AsyncEventBus<U, CV, E> {
+    fn new(unblocker: U, sync: E) -> Self {
+        AsyncEventBus::new(unblocker, sync)
+    }
+}
+
+impl<CV, E> AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
+    fn new(sync: E) -> Self {
+        AsyncEventBus::new((), sync)
+    }
+}
+
+#[cfg(feature = "nightly")]
 mod async_traits_impl {
     use core::future::Future;
 
     use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider, Receiver, Sender};
     use crate::executor::asynch::Unblocker;
-    use crate::utils::asyncify::{AsyncWrapper, UnblockingAsyncWrapper};
     use crate::utils::mutex::RawCondvar;
 
     use super::{AsyncEventBus, AsyncPostbox, AsyncSubscription, NextFuture};
@@ -270,18 +295,6 @@ mod async_traits_impl {
         }
     }
 
-    impl<P, PB> AsyncWrapper<PB> for AsyncPostbox<(), P, PB> {
-        fn new(sync: PB) -> Self {
-            AsyncPostbox::new((), sync)
-        }
-    }
-
-    impl<U, P, PB> UnblockingAsyncWrapper<U, PB> for AsyncPostbox<U, P, PB> {
-        fn new(unblocker: U, sync: PB) -> Self {
-            AsyncPostbox::new(unblocker, sync)
-        }
-    }
-
     impl<CV, P, S> Receiver for AsyncSubscription<CV, P, S>
     where
         CV: RawCondvar + Send + Sync,
@@ -296,18 +309,6 @@ mod async_traits_impl {
 
         fn recv(&self) -> Self::RecvFuture<'_> {
             NextFuture(self)
-        }
-    }
-
-    impl<U, CV, E> UnblockingAsyncWrapper<U, E> for AsyncEventBus<U, CV, E> {
-        fn new(unblocker: U, sync: E) -> Self {
-            AsyncEventBus::new(unblocker, sync)
-        }
-    }
-
-    impl<CV, E> AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
-        fn new(sync: E) -> Self {
-            AsyncEventBus::new((), sync)
         }
     }
 

@@ -2,14 +2,10 @@ pub use embedded_io::adapters;
 pub use embedded_io::blocking::*;
 pub use embedded_io::*;
 
-#[cfg(all(
-    feature = "nightly",
-    feature = "experimental",
-    feature = "embedded-io-async"
-))]
+#[cfg(all(feature = "nightly", feature = "embedded-io-async"))]
 pub use embedded_io_3_4_compat_async::*;
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "nightly")]
 pub mod asynch {
     use core::future::Future;
 
@@ -165,7 +161,7 @@ pub mod asynch {
     }
 }
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "nightly")]
 mod embedded_io_3_async {
     use core::future::Future;
 
@@ -522,11 +518,7 @@ mod embedded_io_3_async {
     }
 }
 
-#[cfg(all(
-    feature = "nightly",
-    feature = "experimental",
-    feature = "embedded-io-async"
-))]
+#[cfg(all(feature = "nightly", feature = "embedded-io-async"))]
 mod embedded_io_3_4_compat_async {
     use core::future::Future;
 

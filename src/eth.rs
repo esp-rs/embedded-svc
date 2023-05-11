@@ -33,9 +33,9 @@ where
     }
 }
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+#[cfg(all(feature = "nightly"))]
 pub mod asynch {
-    use futures::Future;
+    use core::future::Future;
 
     use super::*;
 

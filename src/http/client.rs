@@ -285,7 +285,7 @@ where
     }
 }
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "nightly")]
 pub mod asynch {
     use core::future::Future;
 

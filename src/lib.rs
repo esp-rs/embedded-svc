@@ -30,7 +30,6 @@ compile_error!("You must enable at most one of the following features: defmt, lo
 pub mod eth;
 pub mod event_bus;
 pub mod executor;
-#[cfg(feature = "experimental")]
 pub mod http;
 #[cfg(feature = "std")]
 #[deprecated(since = "0.22.0", note = "Use module http::server")]
@@ -39,7 +38,6 @@ pub mod io;
 pub mod ipv4;
 pub mod macros;
 pub mod mqtt;
-#[cfg(feature = "experimental")]
 pub mod ota;
 pub mod ping;
 pub mod storage;
@@ -47,5 +45,4 @@ pub mod sys_time;
 pub mod timer;
 pub mod utils;
 pub mod wifi;
-#[cfg(feature = "experimental")]
 pub mod ws;

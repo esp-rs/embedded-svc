@@ -17,8 +17,8 @@ default = ["std", "use_serde", "use_strum", "use_numenum", "log"]
 
 std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std"]
 alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "defmt?/alloc"]
-nightly = ["futures"]
-experimental = ["futures"]
+nightly = []
+experimental = []
 embedded-io-async = ["embedded-io/async"]
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
@@ -32,7 +32,7 @@ embedded-io = { version = "0.4", default-features = false }
 log = { version = "0.4", default-features = false, optional = true }
 no-std-net = { version = "0.5", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"] }
-futures = { version = "0.3", default-features = false, optional = true }
+atomic-waker = { version = "1.1.1", default-features = false }
 enumset = { version = "1", default-features = false }
 strum = { version = "0.23", default-features = false, optional = true, features = ["derive"] }
 strum_macros = { version = "0.23", optional = true }

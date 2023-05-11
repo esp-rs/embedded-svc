@@ -5,7 +5,6 @@ use core::time::Duration;
 /// A raw Mutex trait for no_std environments. Prevents the introduction of dependency on STD for the `utils` module and its sub-modules.
 /// NOTE: Users are strongly advised to just depend on STD and use the STD Mutex in their code.
 pub trait RawMutex {
-    #[cfg(feature = "nightly")] // Remove "nightly" condition once 1.64 is out
     const INIT: Self; // A workaround for not having const fns in traits yet.
 
     fn new() -> Self;
@@ -46,16 +45,9 @@ impl<R, T> Mutex<R, T>
 where
     R: RawMutex,
 {
-    #[cfg(feature = "nightly")]
     #[inline(always)]
     pub const fn new(data: T) -> Self {
         Self::wrap(R::INIT, data)
-    }
-
-    #[cfg(not(feature = "nightly"))]
-    #[inline(always)]
-    pub fn new(data: T) -> Self {
-        Self::wrap(R::new(), data)
     }
 
     #[inline(always)]
@@ -205,7 +197,6 @@ pub struct StdRawMutex(
 
 #[cfg(feature = "std")]
 impl RawMutex for StdRawMutex {
-    #[cfg(feature = "nightly")] // Remove "nightly" condition once 1.64 is out
     #[allow(clippy::declare_interior_mutable_const)]
     const INIT: Self = Self(std::sync::Mutex::new(()), core::cell::RefCell::new(None));
 

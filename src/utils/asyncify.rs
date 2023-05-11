@@ -7,13 +7,11 @@ pub mod timer;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod ws;
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
 pub use async_wrapper::*;
 
-#[cfg(all(feature = "alloc", feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "alloc")]
 pub use blocking_unblocker::*;
 
-#[cfg(all(feature = "nightly", feature = "experimental"))]
 mod async_wrapper {
     pub trait AsyncWrapper<S> {
         fn new(sync: S) -> Self;
@@ -54,7 +52,7 @@ mod async_wrapper {
     }
 }
 
-#[cfg(all(feature = "alloc", feature = "nightly", feature = "experimental"))]
+#[cfg(feature = "alloc")]
 mod blocking_unblocker {
     use core::future::Future;
     use core::marker::PhantomData;
