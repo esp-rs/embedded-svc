@@ -3,6 +3,7 @@
 [![CI](https://github.com/esp-rs/embedded-svc/actions/workflows/ci.yml/badge.svg)](https://github.com/esp-rs/embedded-svc/actions/workflows/ci.yml)
 ![crates.io](https://img.shields.io/crates/v/embedded-svc.svg)
 [![Documentation](https://docs.rs/embedded-svc/badge.svg)](https://docs.rs/embedded-svc)
+[![Matrix](https://img.shields.io/matrix/esp-rs:matrix.org?label=join%20matrix&color=BEC5C9&logo=matrix)](https://matrix.to/#/#esp-rs:matrix.org)
 
 This crate ships traits for embedded features such as wifi, networking, httpd, logging.
 The intended use is for concrete implementations to use the traits provided in this crate as a common base.
