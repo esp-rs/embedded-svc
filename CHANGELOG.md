@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2023-05-13
+
+* MSRV 1.66 (but MSRV 1.70 necessary if `embedded-io-async` is enabled)
+* Remove the `experimental` status from all traits
+* Remove the `nightly` feature flag guard from all `asyncify` utilities as Rust GATs are stable now
+* Async `Wifi` and `Eth` traits
+* `defmt` support
+* Mask the SSID password in Wifi `ClientConfiguration`
+* Switch from `futures` to the `atomic_waker` crate in the `asyncify` utilities
+* Minor breaking change: `is_up` renamed to `is_connected` in the `Eth` trait
+* Upgrade to `embedded-io` 0.4 (but still stay away from switching the async traits to the `async` syntax)
+
 ## [0.24.0] - 2022-12-13
 
 HTTP server traits:
