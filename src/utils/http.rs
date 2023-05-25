@@ -1,5 +1,11 @@
 use core::str;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum HeaderSetError {
+    TooManyHeaders,
+}
+
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Headers<'b, const N: usize = 64>([(&'b str, &'b str); N]);
@@ -55,15 +61,19 @@ impl<'b, const N: usize> Headers<'b, N> {
             .map(|(_, value)| value)
     }
 
-    pub fn set(&mut self, name: &'b str, value: &'b str) -> &mut Self {
+    pub fn try_set(&mut self, name: &'b str, value: &'b str) -> Result<&mut Self, HeaderSetError> {
         for header in &mut self.0 {
             if header.0.is_empty() || header.0.eq_ignore_ascii_case(name) {
                 *header = (name, value);
-                return self;
+                return Ok(self);
             }
         }
 
-        panic!("No space left");
+        Err(HeaderSetError::TooManyHeaders)
+    }
+
+    pub fn set(&mut self, name: &'b str, value: &'b str) -> &mut Self {
+        self.try_set(name, value).expect("No space left")
     }
 
     pub fn remove(&mut self, name: &str) -> &mut Self {
