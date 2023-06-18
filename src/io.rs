@@ -167,7 +167,7 @@ mod embedded_io_3_async {
 
     pub use embedded_io::blocking::ReadExactError;
 
-    type ReadExactFuture<'a, T>
+    pub type ReadExactFuture<'a, T>
     where
         T: Read + ?Sized + 'a,
     = impl Future<Output = Result<(), ReadExactError<T::Error>>> + 'a;
@@ -219,7 +219,7 @@ mod embedded_io_3_async {
         fn consume(&mut self, amt: usize);
     }
 
-    type WriteAllFuture<'a, T>
+    pub type WriteAllFuture<'a, T>
     where
         T: Write + ?Sized + 'a,
     = impl Future<Output = Result<(), T::Error>> + 'a;
@@ -260,7 +260,7 @@ mod embedded_io_3_async {
         }
     }
 
-    type RewindFuture<'a, T>
+    pub type RewindFuture<'a, T>
     where
         T: Seek + ?Sized + 'a,
     = impl Future<Output = Result<(), T::Error>> + 'a;
