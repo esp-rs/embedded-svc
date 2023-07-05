@@ -288,11 +288,11 @@ pub mod client {
         }
     }
 
+    #[allow(clippy::arc_with_non_send_sync)]
     impl<U, R, C> crate::utils::asyncify::UnblockingAsyncWrapper<U, C>
         for AsyncClient<U, Arc<Mutex<R, C>>>
     where
-        R: RawMutex + Send + Sync,
-        C: Send,
+        R: RawMutex,
     {
         fn new(unblocker: U, sync: C) -> Self {
             AsyncClient::new(unblocker, Arc::new(Mutex::new(sync)))

@@ -5,8 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.25.2] - 2023-07-05
+## [0.25.3] - 2023-07-05
 * Compatibility with latest Rust nightly Clippy (fixes the "usage of `Arc<T>` where `T` is not `Send` or `Sync`" error)
+
+## [0.25.2] - 2023-07-05
+* Yanked; first attempt at ^^^
 
 ## [0.25.1] - 2023-06-18
 * Compatibility with latest Rust nightly (fixes the `can't leak private types` error)
