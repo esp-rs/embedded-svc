@@ -547,6 +547,7 @@ pub mod registry {
             Ok(self)
         }
 
+        #[allow(clippy::arc_with_non_send_sync)]
         fn middleware(mut self, middleware: Middleware) -> Result<Self> {
             self.middlewares.push(Arc::new(middleware));
             Ok(self)
@@ -562,6 +563,7 @@ pub mod app {
 
     use super::{Request, Response, Result, State, StateMap};
 
+    #[allow(clippy::arc_with_non_send_sync)]
     pub fn middleware(
         app: StateMap,
     ) -> impl for<'r> Fn(Request, &'r dyn Fn(Request) -> Result<Response>) -> Result<Response> {
@@ -675,6 +677,7 @@ pub mod sessions {
             }
         }
 
+        #[allow(clippy::arc_with_non_send_sync)]
         fn update(&mut self, session_id: Option<&str>, mut resp: Response) -> Response {
             if let Some(new_session_state) = resp.new_session_state {
                 match new_session_state {
