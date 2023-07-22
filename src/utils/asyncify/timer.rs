@@ -38,7 +38,7 @@ impl TimerSignal {
         self.waker.wake();
     }
 
-    fn poll_wait(&self, cx: &mut Context<'_>) -> Poll<usize> {
+    fn poll_wait(&self, cx: &Context<'_>) -> Poll<usize> {
         self.waker.register(cx.waker());
 
         let data = self.ticks.swap(0, Ordering::SeqCst);

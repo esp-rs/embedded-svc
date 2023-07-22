@@ -339,7 +339,7 @@ pub mod server {
             Ok(())
         }
 
-        fn process_accept<'a>(&'a mut self, session: W::Session, sender: &'a mut W) -> bool {
+        fn process_accept<'a>(&'a mut self, session: W::Session, sender: &'a W) -> bool {
             if self.connections.len() < N {
                 let receiver_state = Arc::new(Mutex::new(SharedReceiverState {
                     waker: None,
