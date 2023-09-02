@@ -1,4 +1,4 @@
-use crate::io::{Error, Read, Write};
+use crate::io::{Read, Write, WriteAllError};
 
 pub fn try_read_full<R: Read>(mut read: R, buf: &mut [u8]) -> Result<usize, (R::Error, usize)> {
     let mut offset = 0;
@@ -23,20 +23,32 @@ pub fn try_read_full<R: Read>(mut read: R, buf: &mut [u8]) -> Result<usize, (R::
 pub enum CopyError<R, W> {
     Read(R),
     Write(W),
+    WriteAll(WriteAllError<W>),
 }
 
-impl<R, W> Error for CopyError<R, W>
-where
-    R: Error,
-    W: Error,
-{
-    fn kind(&self) -> embedded_io::ErrorKind {
-        match self {
-            Self::Read(e) => e.kind(),
-            Self::Write(e) => e.kind(),
-        }
+impl<R: core::fmt::Debug, W: core::fmt::Debug> core::fmt::Display for CopyError<R, W> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{self:?}")
     }
 }
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl<R: core::fmt::Debug, W: core::fmt::Debug> std::error::Error for CopyError<R, W> {}
+
+// impl<R, W> Error for CopyError<R, W>
+// where
+//     R: Error,
+//     W: Error,
+// {
+//     fn kind(&self) -> embedded_io::ErrorKind {
+//         match self {
+//             Self::Read(e) => e.kind(),
+//             Self::Write(e) => e.kind(),
+//             Self::WriteAll(e) => e.kind(),
+//         }
+//     }
+// }
 
 pub fn copy<R, W>(read: R, write: W, buf: &mut [u8]) -> Result<u64, CopyError<R::Error, W::Error>>
 where
@@ -83,7 +95,7 @@ where
 
         write
             .write_all(&buf[0..size_read])
-            .map_err(CopyError::Write)?;
+            .map_err(CopyError::WriteAll)?;
 
         copied += size_read as u64;
         len -= size_read as u64;
@@ -171,7 +183,7 @@ pub mod asynch {
             write
                 .write_all(&buf[0..size_read])
                 .await
-                .map_err(CopyError::Write)?;
+                .map_err(CopyError::WriteAll)?;
 
             copied += size_read as u64;
             len -= size_read as u64;
