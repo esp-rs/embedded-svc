@@ -22,7 +22,7 @@ experimental = []
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
-defmt = ["dep:defmt", "heapless/defmt", "heapless/defmt-impl"]
+defmt = ["dep:defmt", "heapless/defmt", "heapless/defmt-impl", "embedded-io/defmt-03", "embedded-io-async?/defmt-03"]
 
 [dependencies]
 heapless = { version = "0.7" }
