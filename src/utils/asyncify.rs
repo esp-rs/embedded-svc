@@ -66,31 +66,43 @@ mod blocking_unblocker {
     pub struct BlockingUnblocker(());
 
     impl BlockingUnblocker {
-        pub async fn unblock<F, T>(&self, f: F) -> T
+        pub fn unblock<F, T>(&self, f: F) -> BlockingFuture<T>
         where
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static,
         {
-            BlockingFuture::new(f).await
+            BlockingFuture::new(f)
         }
     }
 
-    #[cfg(feature = "nightly")]
     impl crate::executor::asynch::Unblocker for BlockingUnblocker {
-        async fn unblock<F, T>(&self, f: F) -> T
+        type UnblockFuture<T> = BlockingFuture<T> where T: Send;
+
+        fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
         where
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static,
         {
-            BlockingUnblocker::unblock(self, f).await
+            BlockingUnblocker::unblock(self, f)
         }
     }
+
+    // #[cfg(feature = "nightly")]
+    // impl crate::executor::asynch::Unblocker for BlockingUnblocker {
+    //     async fn unblock<F, T>(&self, f: F) -> T
+    //     where
+    //         F: FnOnce() -> T + Send + 'static,
+    //         T: Send + 'static,
+    //     {
+    //         BlockingUnblocker::unblock(self, f).await
+    //     }
+    // }
 
     pub fn blocking_unblocker() -> BlockingUnblocker {
         BlockingUnblocker(())
     }
 
-    struct BlockingFuture<T> {
+    pub struct BlockingFuture<T> {
         // TODO: Need to box or else we get rustc error:
         // "type parameter `F` is part of concrete type but not used in parameter list for the `impl Trait` type alias"
         computation: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
@@ -98,7 +110,7 @@ mod blocking_unblocker {
     }
 
     impl<T> BlockingFuture<T> {
-        pub fn new<F>(computation: F) -> Self
+        fn new<F>(computation: F) -> Self
         where
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static,
