@@ -119,8 +119,6 @@ pub mod callback_server {
 
 #[cfg(feature = "nightly")]
 pub mod asynch {
-    use crate::executor::asynch::{Blocker, Blocking, TrivialUnblocking};
-
     pub use super::{ErrorType, Fragmented, FrameType};
 
     pub trait Receiver: ErrorType {
@@ -160,65 +158,6 @@ pub mod asynch {
             frame_data: &[u8],
         ) -> Result<(), Self::Error> {
             (*self).send(frame_type, frame_data).await
-        }
-    }
-
-    impl<B, E> ErrorType for Blocking<B, E>
-    where
-        E: ErrorType,
-    {
-        type Error = E::Error;
-    }
-
-    impl<B, S> super::Sender for Blocking<B, S>
-    where
-        B: Blocker,
-        S: Sender,
-    {
-        fn send(&mut self, frame_type: FrameType, frame_data: &[u8]) -> Result<(), Self::Error> {
-            self.blocker.block_on(self.api.send(frame_type, frame_data))
-        }
-    }
-
-    impl<B, R> super::Receiver for Blocking<B, R>
-    where
-        B: Blocker,
-        R: Receiver,
-    {
-        fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), Self::Error> {
-            self.blocker.block_on(self.api.recv(frame_data_buf))
-        }
-    }
-
-    impl<E> ErrorType for TrivialUnblocking<E>
-    where
-        E: ErrorType,
-    {
-        type Error = E::Error;
-    }
-
-    impl<S> Sender for TrivialUnblocking<S>
-    where
-        S: super::Sender + Send,
-    {
-        async fn send(
-            &mut self,
-            frame_type: FrameType,
-            frame_data: &[u8],
-        ) -> Result<(), Self::Error> {
-            self.api.send(frame_type, frame_data)
-        }
-    }
-
-    impl<R> Receiver for TrivialUnblocking<R>
-    where
-        R: super::Receiver + Send,
-    {
-        async fn recv(
-            &mut self,
-            frame_data_buf: &mut [u8],
-        ) -> Result<(FrameType, usize), Self::Error> {
-            self.api.recv(frame_data_buf)
         }
     }
 
