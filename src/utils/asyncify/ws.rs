@@ -11,7 +11,7 @@ pub mod server {
 
     use heapless;
 
-    use crate::macros::svc_log;
+    use crate::log::svc_log;
     use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
     use crate::ws::{callback_server::*, *};
 
