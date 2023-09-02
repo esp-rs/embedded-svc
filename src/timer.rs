@@ -92,49 +92,34 @@ where
 
 #[cfg(feature = "nightly")]
 pub mod asynch {
-    use core::future::Future;
     use core::time::Duration;
 
     pub use super::ErrorType;
 
     #[must_use]
     pub trait OnceTimer: ErrorType {
-        type AfterFuture<'a>: Future<Output = ()> + Send
-        where
-            Self: 'a;
-
-        fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error>;
+        async fn after(&mut self, duration: Duration) -> Result<(), Self::Error>;
     }
 
     impl<O> OnceTimer for &mut O
     where
         O: OnceTimer,
     {
-        type AfterFuture<'a>
-        = O::AfterFuture<'a> where Self: 'a;
-
-        fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error> {
-            (*self).after(duration)
+        async fn after(&mut self, duration: Duration) -> Result<(), Self::Error> {
+            (*self).after(duration).await
         }
     }
 
     pub trait Clock {
-        type TickFuture<'a>: Future<Output = ()> + Send
-        where
-            Self: 'a;
-
-        fn tick(&mut self) -> Self::TickFuture<'_>;
+        async fn tick(&mut self);
     }
 
     impl<R> Clock for &mut R
     where
         R: Clock,
     {
-        type TickFuture<'a>
-        = R::TickFuture<'a> where Self: 'a;
-
-        fn tick(&mut self) -> Self::TickFuture<'_> {
-            (*self).tick()
+        async fn tick(&mut self) {
+            (*self).tick().await
         }
     }
 
