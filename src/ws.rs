@@ -119,57 +119,47 @@ pub mod callback_server {
 
 #[cfg(feature = "nightly")]
 pub mod asynch {
-    use core::future::Future;
-
     use crate::executor::asynch::{Blocker, Blocking, TrivialUnblocking};
 
     pub use super::{ErrorType, Fragmented, FrameType};
 
     pub trait Receiver: ErrorType {
-        type ReceiveFuture<'a>: Future<Output = Result<(FrameType, usize), Self::Error>>
-        where
-            Self: 'a;
-
-        fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a>;
+        async fn recv(
+            &mut self,
+            frame_data_buf: &mut [u8],
+        ) -> Result<(FrameType, usize), Self::Error>;
     }
 
     impl<R> Receiver for &mut R
     where
         R: Receiver,
     {
-        type ReceiveFuture<'a>
-        = R::ReceiveFuture<'a> where Self: 'a;
-
-        fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
-            (*self).recv(frame_data_buf)
+        async fn recv(
+            &mut self,
+            frame_data_buf: &mut [u8],
+        ) -> Result<(FrameType, usize), Self::Error> {
+            (*self).recv(frame_data_buf).await
         }
     }
 
     pub trait Sender: ErrorType {
-        type SendFuture<'a>: Future<Output = Result<(), Self::Error>>
-        where
-            Self: 'a;
-
-        fn send<'a>(
-            &'a mut self,
+        async fn send(
+            &mut self,
             frame_type: FrameType,
-            frame_data: &'a [u8],
-        ) -> Self::SendFuture<'a>;
+            frame_data: &[u8],
+        ) -> Result<(), Self::Error>;
     }
 
     impl<S> Sender for &mut S
     where
         S: Sender,
     {
-        type SendFuture<'a>
-        = S::SendFuture<'a> where Self: 'a;
-
-        fn send<'a>(
-            &'a mut self,
+        async fn send(
+            &mut self,
             frame_type: FrameType,
-            frame_data: &'a [u8],
-        ) -> Self::SendFuture<'a> {
-            (*self).send(frame_type, frame_data)
+            frame_data: &[u8],
+        ) -> Result<(), Self::Error> {
+            (*self).send(frame_type, frame_data).await
         }
     }
 
@@ -211,15 +201,12 @@ pub mod asynch {
     where
         S: super::Sender + Send,
     {
-        type SendFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
-
-        fn send<'a>(
-            &'a mut self,
+        async fn send(
+            &mut self,
             frame_type: FrameType,
-            frame_data: &'a [u8],
-        ) -> Self::SendFuture<'a> {
-            async move { self.api.send(frame_type, frame_data) }
+            frame_data: &[u8],
+        ) -> Result<(), Self::Error> {
+            self.api.send(frame_type, frame_data)
         }
     }
 
@@ -227,11 +214,11 @@ pub mod asynch {
     where
         R: super::Receiver + Send,
     {
-        type ReceiveFuture<'a>
-        = impl Future<Output = Result<(FrameType, usize), Self::Error>> + 'a where Self: 'a;
-
-        fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
-            async move { self.api.recv(frame_data_buf) }
+        async fn recv(
+            &mut self,
+            frame_data_buf: &mut [u8],
+        ) -> Result<(FrameType, usize), Self::Error> {
+            self.api.recv(frame_data_buf)
         }
     }
 
@@ -246,13 +233,7 @@ pub mod asynch {
             where
                 Self: 'a;
 
-            type AcceptFuture<'a>: Future<
-                Output = Result<(Self::Sender<'a>, Self::Receiver<'a>), Self::Error>,
-            >
-            where
-                Self: 'a;
-
-            fn accept(&self) -> Self::AcceptFuture<'_>;
+            async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error>;
         }
 
         impl<A> Acceptor for &A
@@ -262,11 +243,8 @@ pub mod asynch {
             type Sender<'a> = A::Sender<'a> where Self: 'a;
             type Receiver<'a> = A::Receiver<'a> where Self: 'a;
 
-            type AcceptFuture<'a>
-            = A::AcceptFuture<'a> where Self: 'a;
-
-            fn accept(&self) -> Self::AcceptFuture<'_> {
-                (*self).accept()
+            async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error> {
+                (*self).accept().await
             }
         }
 
@@ -277,11 +255,8 @@ pub mod asynch {
             type Sender<'a> = A::Sender<'a> where Self: 'a;
             type Receiver<'a> = A::Receiver<'a> where Self: 'a;
 
-            type AcceptFuture<'a>
-            = A::AcceptFuture<'a> where Self: 'a;
-
-            fn accept(&self) -> Self::AcceptFuture<'_> {
-                (**self).accept()
+            async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error> {
+                (**self).accept().await
             }
         }
     }

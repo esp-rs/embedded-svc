@@ -287,8 +287,6 @@ where
 
 #[cfg(feature = "nightly")]
 pub mod asynch {
-    use core::future::Future;
-
     use crate::executor::asynch::{Blocker, RawBlocking, RawTrivialUnblocking};
     use crate::io::{asynch::Read, asynch::Write, Error, ErrorType};
 
@@ -521,24 +519,16 @@ pub mod asynch {
         type RawConnection: Read<Error = Self::RawConnectionError>
             + Write<Error = Self::RawConnectionError>;
 
-        type IntoRequestFuture<'a>: Future<Output = Result<(), Self::Error>>
-        where
-            Self: 'a;
-
-        type IntoResponseFuture<'a>: Future<Output = Result<(), Self::Error>>
-        where
-            Self: 'a;
-
-        fn initiate_request<'a>(
-            &'a mut self,
+        async fn initiate_request(
+            &mut self,
             method: Method,
-            uri: &'a str,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Self::IntoRequestFuture<'a>;
+            uri: &str,
+            headers: &[(&str, &str)],
+        ) -> Result<(), Self::Error>;
 
         fn is_request_initiated(&self) -> bool;
 
-        fn initiate_response(&mut self) -> Self::IntoResponseFuture<'_>;
+        async fn initiate_response(&mut self) -> Result<(), Self::Error>;
 
         fn is_response_initiated(&self) -> bool;
 
@@ -559,27 +549,21 @@ pub mod asynch {
 
         type RawConnection = C::RawConnection;
 
-        type IntoRequestFuture<'a>
-        = C::IntoRequestFuture<'a> where Self: 'a;
-
-        type IntoResponseFuture<'a>
-        = C::IntoResponseFuture<'a> where Self: 'a;
-
-        fn initiate_request<'a>(
-            &'a mut self,
+        async fn initiate_request(
+            &mut self,
             method: Method,
-            uri: &'a str,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Self::IntoRequestFuture<'a> {
-            (*self).initiate_request(method, uri, headers)
+            uri: &str,
+            headers: &[(&str, &str)],
+        ) -> Result<(), Self::Error> {
+            (*self).initiate_request(method, uri, headers).await
         }
 
         fn is_request_initiated(&self) -> bool {
             (**self).is_request_initiated()
         }
 
-        fn initiate_response(&mut self) -> Self::IntoResponseFuture<'_> {
-            (*self).initiate_response()
+        async fn initiate_response(&mut self) -> Result<(), Self::Error> {
+            (*self).initiate_response().await
         }
 
         fn is_response_initiated(&self) -> bool {
@@ -817,27 +801,21 @@ pub mod asynch {
 
         type RawConnection = RawTrivialUnblocking<C::RawConnection>;
 
-        type IntoResponseFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
-
-        type IntoRequestFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
-
-        fn initiate_request<'a>(
-            &'a mut self,
+        async fn initiate_request(
+            &mut self,
             method: Method,
-            uri: &'a str,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Self::IntoRequestFuture<'a> {
-            async move { self.connection.initiate_request(method, uri, headers) }
+            uri: &str,
+            headers: &[(&str, &str)],
+        ) -> Result<(), Self::Error> {
+            self.connection.initiate_request(method, uri, headers)
         }
 
         fn is_request_initiated(&self) -> bool {
             self.connection.is_request_initiated()
         }
 
-        fn initiate_response(&mut self) -> Self::IntoResponseFuture<'_> {
-            async move { self.connection.initiate_response() }
+        async fn initiate_response(&mut self) -> Result<(), Self::Error> {
+            self.connection.initiate_response()
         }
 
         fn is_response_initiated(&self) -> bool {

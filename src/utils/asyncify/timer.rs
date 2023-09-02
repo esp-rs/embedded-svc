@@ -61,13 +61,15 @@ impl<T> AsyncTimer<T>
 where
     T: crate::timer::OnceTimer + Send + 'static,
 {
-    pub fn after(&mut self, duration: Duration) -> Result<TimerFuture<'_, T>, T::Error> {
+    pub async fn after(&mut self, duration: Duration) -> Result<(), T::Error> {
         self.timer.cancel()?;
 
         self.signal.reset();
         self.duration = None;
 
-        Ok(TimerFuture(self, Some(duration)))
+        TimerFuture(self, Some(duration)).await;
+
+        Ok(())
     }
 
     pub fn every(&mut self, duration: Duration) -> Result<&'_ mut Self, T::Error> {
@@ -79,10 +81,10 @@ where
         Ok(self)
     }
 
-    pub fn tick(&mut self) -> TimerFuture<'_, T> {
+    pub async fn tick(&mut self) {
         self.signal.reset();
 
-        TimerFuture(self, self.duration)
+        TimerFuture(self, self.duration).await
     }
 }
 
@@ -176,7 +178,7 @@ mod async_traits_impl {
 
     use crate::timer::asynch::{Clock, ErrorType, OnceTimer, PeriodicTimer, TimerService};
 
-    use super::{AsyncTimer, AsyncTimerService, TimerFuture};
+    use super::{AsyncTimer, AsyncTimerService};
 
     impl<T> ErrorType for AsyncTimer<T>
     where
@@ -189,10 +191,8 @@ mod async_traits_impl {
     where
         T: crate::timer::OnceTimer + Send + 'static,
     {
-        type AfterFuture<'a> = TimerFuture<'a, T>;
-
-        fn after(&mut self, duration: Duration) -> Result<Self::AfterFuture<'_>, Self::Error> {
-            AsyncTimer::after(self, duration)
+        async fn after(&mut self, duration: Duration) -> Result<(), Self::Error> {
+            AsyncTimer::after(self, duration).await
         }
     }
 
@@ -211,11 +211,8 @@ mod async_traits_impl {
     where
         T: crate::timer::OnceTimer + Send + 'static,
     {
-        type TickFuture<'b>
-        = TimerFuture<'b, T> where 'a: 'b;
-
-        fn tick(&mut self) -> Self::TickFuture<'_> {
-            AsyncTimer::tick(self)
+        async fn tick(&mut self) {
+            AsyncTimer::tick(self).await
         }
     }
 

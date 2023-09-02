@@ -340,8 +340,6 @@ where
 
 #[cfg(feature = "nightly")]
 pub mod asynch {
-    use core::future::Future;
-
     use crate::executor::asynch::{Blocker, RawBlocking, RawTrivialUnblocking};
     use crate::io::{asynch::Read, asynch::Write};
 
@@ -379,11 +377,11 @@ pub mod asynch {
             Ok(Response(self.0))
         }
 
-        pub async fn into_status_response<'b>(self, status: u16) -> Result<Response<C>, C::Error> {
+        pub async fn into_status_response(self, status: u16) -> Result<Response<C>, C::Error> {
             self.into_response(status, None, &[]).await
         }
 
-        pub async fn into_ok_response<'b>(self) -> Result<Response<C>, C::Error> {
+        pub async fn into_ok_response(self) -> Result<Response<C>, C::Error> {
             self.into_response(200, Some("OK"), &[]).await
         }
 
@@ -513,18 +511,14 @@ pub mod asynch {
         type RawConnection: Read<Error = Self::RawConnectionError>
             + Write<Error = Self::RawConnectionError>;
 
-        type IntoResponseFuture<'a>: Future<Output = Result<(), Self::Error>>
-        where
-            Self: 'a;
-
         fn split(&mut self) -> (&Self::Headers, &mut Self::Read);
 
-        fn initiate_response<'a>(
-            &'a mut self,
+        async fn initiate_response(
+            &mut self,
             status: u16,
-            message: Option<&'a str>,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Self::IntoResponseFuture<'a>;
+            message: Option<&str>,
+            headers: &[(&str, &str)],
+        ) -> Result<(), Self::Error>;
 
         fn is_response_initiated(&self) -> bool;
 
@@ -543,20 +537,17 @@ pub mod asynch {
 
         type RawConnection = C::RawConnection;
 
-        type IntoResponseFuture<'a>
-        = C::IntoResponseFuture<'a> where Self: 'a;
-
         fn split(&mut self) -> (&Self::Headers, &mut Self::Read) {
             (*self).split()
         }
 
-        fn initiate_response<'a>(
-            &'a mut self,
+        async fn initiate_response(
+            &mut self,
             status: u16,
-            message: Option<&'a str>,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Self::IntoResponseFuture<'a> {
-            (*self).initiate_response(status, message, headers)
+            message: Option<&str>,
+            headers: &[(&str, &str)],
+        ) -> Result<(), Self::Error> {
+            (*self).initiate_response(status, message, headers).await
         }
 
         fn is_response_initiated(&self) -> bool {
@@ -572,12 +563,7 @@ pub mod asynch {
     where
         C: Connection,
     {
-        type HandleFuture<'a>: Future<Output = HandlerResult>
-        where
-            Self: 'a,
-            C: 'a;
-
-        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a>;
+        async fn handle(&self, connection: &mut C) -> HandlerResult;
     }
 
     impl<H, C> Handler<C> for &H
@@ -585,11 +571,8 @@ pub mod asynch {
         C: Connection,
         H: Handler<C> + Send + Sync,
     {
-        type HandleFuture<'a>
-        = H::HandleFuture<'a> where Self: 'a, C: 'a;
-
-        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a> {
-            (*self).handle(connection)
+        async fn handle(&self, connection: &mut C) -> HandlerResult {
+            (*self).handle(connection).await
         }
     }
 
@@ -597,12 +580,7 @@ pub mod asynch {
     where
         C: Connection,
     {
-        type HandleFuture<'a>: Future<Output = HandlerResult> + Send
-        where
-            Self: 'a,
-            C: 'a;
-
-        fn handle<'a, H>(&'a self, connection: &'a mut C, handler: &'a H) -> Self::HandleFuture<'a>
+        async fn handle<H>(&self, connection: &mut C, handler: &H) -> HandlerResult
         where
             H: Handler<C>;
 
@@ -635,11 +613,8 @@ pub mod asynch {
         H: Handler<C>,
         C: Connection,
     {
-        type HandleFuture<'a>
-        = impl Future<Output = HandlerResult> + Send + 'a where Self: 'a, C: 'a;
-
-        fn handle<'a>(&'a self, connection: &'a mut C) -> Self::HandleFuture<'a> {
-            self.middleware.handle(connection, &self.handler)
+        async fn handle(&self, connection: &mut C) -> HandlerResult {
+            self.middleware.handle(connection, &self.handler).await
         }
     }
 
@@ -866,9 +841,6 @@ pub mod asynch {
 
         type RawConnection = RawTrivialUnblocking<C::RawConnection>;
 
-        type IntoResponseFuture<'a>
-        = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
-
         fn split(&mut self) -> (&Self::Headers, &mut Self::Read) {
             let (headers, read) = self.connection.split();
 
@@ -881,13 +853,13 @@ pub mod asynch {
             self.connection.is_response_initiated()
         }
 
-        fn initiate_response<'a>(
-            &'a mut self,
+        async fn initiate_response(
+            &mut self,
             status: u16,
-            message: Option<&'a str>,
-            headers: &'a [(&'a str, &'a str)],
-        ) -> Self::IntoResponseFuture<'a> {
-            async move { self.connection.initiate_response(status, message, headers) }
+            message: Option<&str>,
+            headers: &[(&str, &str)],
+        ) -> Result<(), Self::Error> {
+            self.connection.initiate_response(status, message, headers)
         }
 
         fn raw_connection(&mut self) -> Result<&mut Self::RawConnection, Self::Error> {

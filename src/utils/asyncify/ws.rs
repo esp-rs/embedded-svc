@@ -443,7 +443,6 @@ pub mod server {
     #[cfg(feature = "nightly")]
     mod async_traits_impl {
         use core::fmt::Debug;
-        use core::future::Future;
         use core::marker::PhantomData;
 
         use crate::executor::asynch::Unblocker;
@@ -465,15 +464,12 @@ pub mod server {
             S: Sender + SessionProvider + Send + Clone + 'static,
             S::Error: Send + Sync + 'static,
         {
-            type SendFuture<'a>
-            = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
-
-            fn send<'a>(
-                &'a mut self,
+            async fn send(
+                &mut self,
                 frame_type: FrameType,
-                frame_data: &'a [u8],
-            ) -> Self::SendFuture<'a> {
-                AsyncSender::send(self, frame_type, frame_data)
+                frame_data: &[u8],
+            ) -> Result<(), Self::Error> {
+                AsyncSender::send(self, frame_type, frame_data).await
             }
         }
 
@@ -481,15 +477,12 @@ pub mod server {
         where
             S: Sender + SessionProvider + Send + Clone + 'static,
         {
-            type SendFuture<'a>
-            = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
-
-            fn send<'a>(
-                &'a mut self,
+            async fn send(
+                &mut self,
                 frame_type: FrameType,
-                frame_data: &'a [u8],
-            ) -> Self::SendFuture<'a> {
-                AsyncSender::send_blocking(self, frame_type, frame_data)
+                frame_data: &[u8],
+            ) -> Result<(), Self::Error> {
+                AsyncSender::send_blocking(self, frame_type, frame_data).await
             }
         }
 
@@ -507,15 +500,16 @@ pub mod server {
             C::RawMutex: Send + Sync,
             E: Debug,
         {
-            type ReceiveFuture<'a>
-            = AsyncReceiverFuture<'a, C, E> where Self: 'a;
-
-            fn recv<'a>(&'a mut self, frame_data_buf: &'a mut [u8]) -> Self::ReceiveFuture<'a> {
+            async fn recv(
+                &mut self,
+                frame_data_buf: &mut [u8],
+            ) -> Result<(FrameType, usize), Self::Error> {
                 AsyncReceiverFuture {
                     receiver: self,
                     frame_data_buf,
                     _ep: PhantomData,
                 }
+                .await
             }
         }
 
@@ -540,11 +534,8 @@ pub mod server {
             type Sender<'a> = AsyncSender<U, S> where U: 'a, C: 'a, S: 'a;
             type Receiver<'a> = AsyncReceiver<C, S::Error> where U: 'a, C: 'a;
 
-            type AcceptFuture<'a>
-            = &'a Self where Self: 'a;
-
-            fn accept(&self) -> Self::AcceptFuture<'_> {
-                self
+            async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error> {
+                self.await
             }
         }
 
@@ -558,11 +549,8 @@ pub mod server {
             type Sender<'a> = AsyncSender<(), S> where C: 'a, S: 'a;
             type Receiver<'a> = AsyncReceiver<C, S::Error> where C: 'a;
 
-            type AcceptFuture<'a>
-            = &'a Self where Self: 'a;
-
-            fn accept(&self) -> Self::AcceptFuture<'_> {
-                self
+            async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error> {
+                self.await
             }
         }
     }
