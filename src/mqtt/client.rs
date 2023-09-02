@@ -316,8 +316,6 @@ pub mod asynch {
         }
     }
 
-    /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
-    /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
     pub trait Connection: ErrorType {
         type Message<'a>
         where
