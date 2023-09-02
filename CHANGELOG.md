@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2023-09-02
+* MSRV raised to 1.71
+* All traits converted to AFIT, except `Unblocker`, which needs to compile with stable Rust
+* Upgraded to `embedded-io` 0.5 and `embedded-io-async` 0.5
+* Upgraded `strum` and `strum-macros` to 0.25
+* All pub structs in `utils::asyncify` that implement the `Future` trait are now private and wrapped with async methods
+* Removed structs `Blocking` and `TrivialAsync`, as well as all trait implementations on them, because their usefulness was questionable
+* Removed the deprecated module `httpd` and the dependency on `anyhow`
+
 ## [0.25.3] - 2023-07-05
 * Compatibility with latest Rust nightly Clippy (fixes the "usage of `Arc<T>` where `T` is not `Send` or `Sync`" error)
 
