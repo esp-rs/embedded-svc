@@ -128,9 +128,9 @@ pub mod client {
         CV: RawCondvar,
         E: Debug,
     {
-        type Message = M;
+        type Message<'a> = M where Self: 'a;
 
-        fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>> {
+        fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
             let mut state = self.0.state.lock();
 
             loop {

@@ -250,169 +250,90 @@ where
 }
 
 pub trait Connection: ErrorType {
-    type Message;
+    type Message<'a>
+    where
+        Self: 'a;
 
-    fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>>;
+    fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>>;
 }
 
 impl<C> Connection for &mut C
 where
     C: Connection,
 {
-    type Message = C::Message;
+    type Message<'a> = C::Message<'a> where Self: 'a;
 
-    fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>> {
+    fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
         (*self).next()
     }
 }
 
 #[cfg(feature = "nightly")]
 pub mod asynch {
-    use core::future::Future;
-
-    use crate::executor::asynch::{Blocker, Blocking};
-
     pub use super::{Details, ErrorType, Event, Message, MessageId, QoS};
 
     pub trait Client: ErrorType {
-        type SubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
-        where
-            Self: 'a;
+        async fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<MessageId, Self::Error>;
 
-        type UnsubscribeFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
-        where
-            Self: 'a;
-
-        fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a>;
-
-        fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a>;
+        async fn unsubscribe(&mut self, topic: &str) -> Result<MessageId, Self::Error>;
     }
 
     impl<C> Client for &mut C
     where
         C: Client,
     {
-        type SubscribeFuture<'a>
-        = C::SubscribeFuture<'a> where Self: 'a;
-
-        type UnsubscribeFuture<'a>
-        = C::UnsubscribeFuture<'a> where Self: 'a;
-
-        fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Self::SubscribeFuture<'a> {
-            (*self).subscribe(topic, qos)
+        async fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<MessageId, Self::Error> {
+            (*self).subscribe(topic, qos).await
         }
 
-        fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Self::UnsubscribeFuture<'a> {
-            (*self).unsubscribe(topic)
+        async fn unsubscribe(&mut self, topic: &str) -> Result<MessageId, Self::Error> {
+            (*self).unsubscribe(topic).await
         }
     }
 
     pub trait Publish: ErrorType {
-        type PublishFuture<'a>: Future<Output = Result<MessageId, Self::Error>> + Send
-        where
-            Self: 'a;
-
-        fn publish<'a>(
-            &'a mut self,
-            topic: &'a str,
+        async fn publish(
+            &mut self,
+            topic: &str,
             qos: QoS,
             retain: bool,
-            payload: &'a [u8],
-        ) -> Self::PublishFuture<'a>;
+            payload: &[u8],
+        ) -> Result<MessageId, Self::Error>;
     }
 
     impl<P> Publish for &mut P
     where
         P: Publish,
     {
-        type PublishFuture<'a>
-        = P::PublishFuture<'a> where Self: 'a;
-
-        fn publish<'a>(
-            &'a mut self,
-            topic: &'a str,
+        async fn publish(
+            &mut self,
+            topic: &str,
             qos: QoS,
             retain: bool,
-            payload: &'a [u8],
-        ) -> Self::PublishFuture<'a> {
-            (*self).publish(topic, qos, retain, payload)
+            payload: &[u8],
+        ) -> Result<MessageId, Self::Error> {
+            (*self).publish(topic, qos, retain, payload).await
         }
     }
 
     /// core.stream.Stream is not stable yet and on top of that it has an Item which is not
     /// parameterizable by lifetime (GATs). Therefore, we have to use a Future instead
     pub trait Connection: ErrorType {
-        type Message;
-
-        type NextFuture<'a>: Future<Output = Option<Result<Event<Self::Message>, Self::Error>>>
-            + Send
+        type Message<'a>
         where
             Self: 'a;
 
-        fn next(&mut self) -> Self::NextFuture<'_>;
+        async fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>>;
     }
 
     impl<C> Connection for &mut C
     where
         C: Connection,
     {
-        type Message = C::Message;
+        type Message<'a> = C::Message<'a> where Self: 'a;
 
-        type NextFuture<'a>
-        = C::NextFuture<'a> where Self: 'a;
-
-        fn next(&mut self) -> Self::NextFuture<'_> {
-            (*self).next()
-        }
-    }
-
-    impl<B, C> super::ErrorType for Blocking<B, C>
-    where
-        C: ErrorType,
-    {
-        type Error = C::Error;
-    }
-
-    impl<B, C> super::Client for Blocking<B, C>
-    where
-        B: Blocker,
-        C: Client,
-    {
-        fn subscribe<'a>(&'a mut self, topic: &'a str, qos: QoS) -> Result<MessageId, Self::Error> {
-            self.blocker.block_on(self.api.subscribe(topic, qos))
-        }
-
-        fn unsubscribe<'a>(&'a mut self, topic: &'a str) -> Result<MessageId, Self::Error> {
-            self.blocker.block_on(self.api.unsubscribe(topic))
-        }
-    }
-
-    impl<B, P> super::Publish for Blocking<B, P>
-    where
-        B: Blocker,
-        P: Publish,
-    {
-        fn publish<'a>(
-            &'a mut self,
-            topic: &'a str,
-            qos: QoS,
-            retain: bool,
-            payload: &'a [u8],
-        ) -> Result<MessageId, Self::Error> {
-            self.blocker
-                .block_on(self.api.publish(topic, qos, retain, payload))
-        }
-    }
-
-    impl<B, C> super::Connection for Blocking<B, C>
-    where
-        B: Blocker,
-        C: Connection,
-    {
-        type Message = C::Message;
-
-        fn next(&mut self) -> Option<Result<Event<Self::Message>, Self::Error>> {
-            self.blocker.block_on(self.api.next())
+        async fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
+            (*self).next().await
         }
     }
 }
