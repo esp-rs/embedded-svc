@@ -15,11 +15,10 @@ rust-version = "1.66"
 [features]
 default = ["std", "use_serde", "use_strum", "use_numenum", "log"]
 
-std = ["alloc", "embedded-io/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std"]
-alloc = ["anyhow", "embedded-io/alloc", "serde/alloc", "defmt?/alloc"]
-nightly = []
+std = ["alloc", "embedded-io/std", "embedded-io-async?/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std"]
+alloc = ["anyhow", "embedded-io/alloc", "embedded-io-async?/alloc", "serde/alloc", "defmt?/alloc"]
+nightly = ["embedded-io-async"]
 experimental = []
-embedded-io-async = ["embedded-io/async"]
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
@@ -28,7 +27,8 @@ log = ["dep:log"]
 
 [dependencies]
 heapless = { version = "0.7" }
-embedded-io = { version = "0.4", default-features = false }
+embedded-io = { version = "0.5", default-features = false }
+embedded-io-async = { version = "0.5", default-features = false, optional = true }
 log = { version = "0.4", default-features = false, optional = true }
 no-std-net = { version = "0.5", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"] }

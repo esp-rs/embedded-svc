@@ -1,7 +1,7 @@
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::io::{Io, Read, Write};
+use crate::io::{ErrorType, Read, Write};
 use crate::utils::io::*;
 
 #[derive(Clone, Debug)]
@@ -54,7 +54,7 @@ pub enum SlotState {
     Unknown,
 }
 
-pub trait FirmwareInfoLoader: Io {
+pub trait FirmwareInfoLoader: ErrorType {
     fn load(&mut self, buf: &[u8]) -> Result<LoadResult, Self::Error>;
 
     fn is_loaded(&self) -> bool;
@@ -79,7 +79,7 @@ where
     }
 }
 
-pub trait Ota: Io {
+pub trait Ota: ErrorType {
     type Update: OtaUpdate<Error = Self::Error>;
 
     fn get_boot_slot(&self) -> Result<Slot, Self::Error>;
@@ -170,12 +170,12 @@ pub mod asynch {
     use core::future::Future;
 
     use crate::executor::asynch::{Blocker, RawBlocking};
-    use crate::io::asynch::{Io, Read, Write};
+    use crate::io::asynch::{ErrorType, Read, Write};
     use crate::utils::io::asynch::*;
 
     pub use super::{FirmwareInfo, FirmwareInfoLoader, LoadResult, Slot, SlotState};
 
-    pub trait Ota: Io {
+    pub trait Ota: ErrorType {
         type Update: OtaUpdate<Error = Self::Error>;
 
         type GetBootSlotFuture<'a>: Future<Output = Result<Slot, Self::Error>>
@@ -313,7 +313,7 @@ pub mod asynch {
         }
     }
 
-    impl<B, O> Io for BlockingOta<B, O>
+    impl<B, O> ErrorType for BlockingOta<B, O>
     where
         O: Ota,
     {

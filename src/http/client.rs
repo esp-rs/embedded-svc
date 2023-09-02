@@ -1,4 +1,4 @@
-use crate::io::{Error, Io, Read, Write};
+use crate::io::{Error, ErrorType, Read, Write};
 
 pub use super::{Headers, Method, Status};
 
@@ -66,9 +66,9 @@ where
     }
 }
 
-impl<C> Io for Client<C>
+impl<C> ErrorType for Client<C>
 where
-    C: Io,
+    C: ErrorType,
 {
     type Error = C::Error;
 }
@@ -103,7 +103,7 @@ where
         self.0
     }
 
-    pub fn write<'b>(&'b mut self, buf: &'b [u8]) -> Result<usize, C::Error> {
+    pub fn write(&mut self, buf: &[u8]) -> Result<usize, C::Error> {
         self.0.write(buf)
     }
 
@@ -112,9 +112,9 @@ where
     }
 }
 
-impl<C> Io for Request<C>
+impl<C> ErrorType for Request<C>
 where
-    C: Io,
+    C: ErrorType,
 {
     type Error = C::Error;
 }
@@ -172,7 +172,7 @@ where
         self.0.header(name)
     }
 
-    pub fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Result<usize, C::Error> {
+    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, C::Error> {
         self.0.read(buf)
     }
 }
@@ -199,9 +199,9 @@ where
     }
 }
 
-impl<C> Io for Response<C>
+impl<C> ErrorType for Response<C>
 where
-    C: Io,
+    C: ErrorType,
 {
     type Error = C::Error;
 }
@@ -290,7 +290,7 @@ pub mod asynch {
     use core::future::Future;
 
     use crate::executor::asynch::{Blocker, RawBlocking, RawTrivialUnblocking};
-    use crate::io::{asynch::Read, asynch::Write, Error, Io};
+    use crate::io::{asynch::Read, asynch::Write, Error, ErrorType};
 
     pub use crate::http::asynch::*;
     pub use crate::http::{Headers, Method, Status};
@@ -362,9 +362,9 @@ pub mod asynch {
         }
     }
 
-    impl<C> Io for Client<C>
+    impl<C> ErrorType for Client<C>
     where
-        C: Io,
+        C: ErrorType,
     {
         type Error = C::Error;
     }
@@ -399,7 +399,7 @@ pub mod asynch {
             self.0
         }
 
-        pub async fn write<'b>(&'b mut self, buf: &'b [u8]) -> Result<usize, C::Error> {
+        pub async fn write(&mut self, buf: &[u8]) -> Result<usize, C::Error> {
             self.0.write(buf).await
         }
 
@@ -408,9 +408,9 @@ pub mod asynch {
         }
     }
 
-    impl<C> Io for Request<C>
+    impl<C> ErrorType for Request<C>
     where
-        C: Io,
+        C: ErrorType,
     {
         type Error = C::Error;
     }
@@ -419,18 +419,12 @@ pub mod asynch {
     where
         C: Connection,
     {
-        type WriteFuture<'b>
-        = impl Future<Output = Result<usize, Self::Error>> + 'b where Self: 'b;
-
-        fn write<'b>(&'b mut self, buf: &'b [u8]) -> Self::WriteFuture<'b> {
-            Request::write(self, buf)
+        async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            Request::write(self, buf).await
         }
 
-        type FlushFuture<'b>
-        = impl Future<Output = Result<(), Self::Error>> + 'b where Self: 'b;
-
-        fn flush(&mut self) -> Self::FlushFuture<'_> {
-            Request::flush(self)
+        async fn flush(&mut self) -> Result<(), Self::Error> {
+            Request::flush(self).await
         }
     }
 
@@ -474,7 +468,7 @@ pub mod asynch {
             self.0.header(name)
         }
 
-        pub async fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Result<usize, C::Error> {
+        pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, C::Error> {
             self.0.read(buf).await
         }
     }
@@ -501,9 +495,9 @@ pub mod asynch {
         }
     }
 
-    impl<C> Io for Response<C>
+    impl<C> ErrorType for Response<C>
     where
-        C: Io,
+        C: ErrorType,
     {
         type Error = C::Error;
     }
@@ -512,11 +506,8 @@ pub mod asynch {
     where
         C: Connection,
     {
-        type ReadFuture<'b>
-        = impl Future<Output = Result<usize, Self::Error>> + 'b where Self: 'b;
-
-        fn read<'b>(&'b mut self, buf: &'b mut [u8]) -> Self::ReadFuture<'b> {
-            Response::read(self, buf)
+        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            Response::read(self, buf).await
         }
     }
 
@@ -652,7 +643,7 @@ pub mod asynch {
         }
     }
 
-    impl<B, C> Io for BlockingConnection<B, C>
+    impl<B, C> ErrorType for BlockingConnection<B, C>
     where
         C: Connection,
     {
@@ -785,7 +776,7 @@ pub mod asynch {
         }
     }
 
-    impl<C> Io for TrivialUnblockingConnection<C>
+    impl<C> ErrorType for TrivialUnblockingConnection<C>
     where
         C: super::Connection,
     {
@@ -796,11 +787,8 @@ pub mod asynch {
     where
         C: super::Connection,
     {
-        type ReadFuture<'a> = impl Future<Output = Result<usize, Self::Error>> + 'a
-        where Self: 'a;
-
-        fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Self::ReadFuture<'a> {
-            async move { self.connection.read(buf) }
+        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            self.connection.read(buf)
         }
     }
 
@@ -808,18 +796,12 @@ pub mod asynch {
     where
         C: super::Connection,
     {
-        type WriteFuture<'a> = impl Future<Output = Result<usize, Self::Error>> + 'a
-        where Self: 'a;
-
-        fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
-            async move { self.connection.write(buf) }
+        async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            self.connection.write(buf)
         }
 
-        type FlushFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a
-        where Self: 'a;
-
-        fn flush(&mut self) -> Self::FlushFuture<'_> {
-            async move { self.connection.flush() }
+        async fn flush(&mut self) -> Result<(), Self::Error> {
+            self.connection.flush()
         }
     }
 
