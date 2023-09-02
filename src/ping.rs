@@ -93,9 +93,7 @@ where
 #[cfg(feature = "nightly")]
 pub mod asynch {
     use core::fmt::Debug;
-    use core::future::Future;
 
-    use crate::executor::asynch::{Blocker, Blocking};
     use crate::ipv4;
 
     pub use super::{Configuration, Reply, Summary};
@@ -103,18 +101,18 @@ pub mod asynch {
     pub trait Ping {
         type Error: Debug;
 
-        type PingFuture<'a>: Future<Output = Result<Summary, Self::Error>>
-        where
-            Self: 'a;
+        async fn ping(
+            &mut self,
+            ip: ipv4::Ipv4Addr,
+            conf: &Configuration,
+        ) -> Result<Summary, Self::Error>;
 
-        fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Self::PingFuture<'_>;
-
-        fn ping_details<F: Fn(&Summary, &Reply)>(
+        async fn ping_details<F: Fn(&Summary, &Reply)>(
             &mut self,
             ip: ipv4::Ipv4Addr,
             conf: &Configuration,
             reply_callback: &F,
-        ) -> Self::PingFuture<'_>;
+        ) -> Result<Summary, Self::Error>;
     }
 
     impl<P> Ping for &mut P
@@ -123,46 +121,21 @@ pub mod asynch {
     {
         type Error = P::Error;
 
-        type PingFuture<'a>
-        = P::PingFuture<'a> where Self: 'a;
-
-        fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Self::PingFuture<'_> {
-            (*self).ping(ip, conf)
-        }
-
-        fn ping_details<F: Fn(&Summary, &Reply)>(
-            &mut self,
-            ip: ipv4::Ipv4Addr,
-            conf: &Configuration,
-            reply_callback: &F,
-        ) -> Self::PingFuture<'_> {
-            (*self).ping_details(ip, conf, reply_callback)
-        }
-    }
-
-    impl<B, P> super::Ping for Blocking<B, P>
-    where
-        B: Blocker,
-        P: Ping,
-    {
-        type Error = P::Error;
-
-        fn ping(
+        async fn ping(
             &mut self,
             ip: ipv4::Ipv4Addr,
             conf: &Configuration,
         ) -> Result<Summary, Self::Error> {
-            self.blocker.block_on(self.api.ping(ip, conf))
+            (*self).ping(ip, conf).await
         }
 
-        fn ping_details<F: Fn(&Summary, &Reply)>(
+        async fn ping_details<F: Fn(&Summary, &Reply)>(
             &mut self,
             ip: ipv4::Ipv4Addr,
             conf: &Configuration,
             reply_callback: &F,
         ) -> Result<Summary, Self::Error> {
-            self.blocker
-                .block_on(self.api.ping_details(ip, conf, reply_callback))
+            (*self).ping_details(ip, conf, reply_callback).await
         }
     }
 }
