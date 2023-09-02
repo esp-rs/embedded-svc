@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * All traits converted to AFIT, except `Unblocker`, which needs to compile with stable Rust
 * Upgraded to `embedded-io` 0.5 and `embedded-io-async` 0.5
 * Upgraded `strum` and `strum-macros` to 0.25
+* OTA: GAT `Ota::Update` now parametric over lifetime and no longer returned by `&mut` ref
+* MQTT: GAT `Connection::Message` now parametric over lifetime
 * All pub structs in `utils::asyncify` that implement the `Future` trait are now private and wrapped with async methods
 * Removed structs `Blocking` and `TrivialAsync`, as well as all trait implementations on them, because their usefulness was questionable
 * Removed the deprecated module `httpd` and the dependency on `anyhow`
