@@ -35,34 +35,16 @@ where
 
 #[cfg(feature = "nightly")]
 pub mod asynch {
-    use core::future::Future;
-
     use super::*;
 
     pub trait Eth {
         type Error: Debug;
 
-        type StartFuture<'a>: Future<Output = Result<(), Self::Error>>
-        where
-            Self: 'a;
+        async fn start(&mut self) -> Result<(), Self::Error>;
+        async fn stop(&mut self) -> Result<(), Self::Error>;
 
-        type StopFuture<'a>: Future<Output = Result<(), Self::Error>>
-        where
-            Self: 'a;
-
-        type IsStartedFuture<'a>: Future<Output = Result<bool, Self::Error>>
-        where
-            Self: 'a;
-
-        type IsConnectedFuture<'a>: Future<Output = Result<bool, Self::Error>>
-        where
-            Self: 'a;
-
-        fn start(&mut self) -> Self::StartFuture<'_>;
-        fn stop(&mut self) -> Self::StopFuture<'_>;
-
-        fn is_started(&self) -> Self::IsStartedFuture<'_>;
-        fn is_connected(&self) -> Self::IsConnectedFuture<'_>;
+        async fn is_started(&self) -> Result<bool, Self::Error>;
+        async fn is_connected(&self) -> Result<bool, Self::Error>;
     }
 
     impl<E> Eth for &mut E
@@ -71,36 +53,20 @@ pub mod asynch {
     {
         type Error = E::Error;
 
-        type StartFuture<'a> = E::StartFuture<'a>
-        where
-            Self: 'a;
-
-        type StopFuture<'a> = E::StopFuture<'a>
-        where
-            Self: 'a;
-
-        type IsStartedFuture<'a> = E::IsStartedFuture<'a>
-        where
-            Self: 'a;
-
-        type IsConnectedFuture<'a> = E::IsConnectedFuture<'a>
-        where
-            Self: 'a;
-
-        fn start(&mut self) -> Self::StartFuture<'_> {
-            (**self).start()
+        async fn start(&mut self) -> Result<(), Self::Error> {
+            (**self).start().await
         }
 
-        fn stop(&mut self) -> Self::StopFuture<'_> {
-            (**self).stop()
+        async fn stop(&mut self) -> Result<(), Self::Error> {
+            (**self).stop().await
         }
 
-        fn is_started(&self) -> Self::IsStartedFuture<'_> {
-            (**self).is_started()
+        async fn is_started(&self) -> Result<bool, Self::Error> {
+            (**self).is_started().await
         }
 
-        fn is_connected(&self) -> Self::IsConnectedFuture<'_> {
-            (**self).is_connected()
+        async fn is_connected(&self) -> Result<bool, Self::Error> {
+            (**self).is_connected().await
         }
     }
 }
