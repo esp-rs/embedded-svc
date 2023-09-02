@@ -1,18 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(cfg_version)]
-#![cfg_attr(feature = "nightly", feature(type_alias_impl_trait))]
 #![cfg_attr(
-    all(feature = "nightly", version("1.70")),
-    feature(impl_trait_in_assoc_type)
+    feature = "nightly",
+    feature(async_fn_in_trait, impl_trait_projections)
 )]
-#![cfg_attr(
-    all(feature = "nightly", feature = "embedded-io-async"),
-    feature(async_fn_in_trait)
-)]
-#![cfg_attr(
-    all(feature = "nightly", feature = "embedded-io-async"),
-    allow(incomplete_features)
-)]
+#![cfg_attr(feature = "nightly", feature(impl_trait_in_assoc_type))]
 #![allow(clippy::unused_unit)] // enumset
 
 #[cfg(feature = "alloc")]
