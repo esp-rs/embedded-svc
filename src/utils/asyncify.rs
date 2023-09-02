@@ -62,29 +62,35 @@ mod blocking_unblocker {
 
     use alloc::boxed::Box;
 
-    use crate::executor::asynch::Unblocker;
-
     #[derive(Clone)]
-    struct BlockingUnblocker;
+    pub struct BlockingUnblocker(());
 
-    impl Unblocker for BlockingUnblocker {
-        type UnblockFuture<T>
-        = BlockingFuture<T> where T: Send;
-
-        fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
+    impl BlockingUnblocker {
+        pub async fn unblock<F, T>(&self, f: F) -> T
         where
             F: FnOnce() -> T + Send + 'static,
             T: Send + 'static,
         {
-            BlockingFuture::new(f)
+            BlockingFuture::new(f).await
         }
     }
 
-    pub fn blocking_unblocker() -> impl Unblocker + Clone {
-        BlockingUnblocker
+    #[cfg(feature = "nightly")]
+    impl crate::executor::asynch::Unblocker for BlockingUnblocker {
+        async fn unblock<F, T>(&self, f: F) -> T
+        where
+            F: FnOnce() -> T + Send + 'static,
+            T: Send + 'static,
+        {
+            BlockingUnblocker::unblock(self, f).await
+        }
     }
 
-    pub struct BlockingFuture<T> {
+    pub fn blocking_unblocker() -> BlockingUnblocker {
+        BlockingUnblocker(())
+    }
+
+    struct BlockingFuture<T> {
         // TODO: Need to box or else we get rustc error:
         // "type parameter `F` is part of concrete type but not used in parameter list for the `impl Trait` type alias"
         computation: Option<Box<dyn FnOnce() -> T + Send + 'static>>,

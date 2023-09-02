@@ -76,12 +76,12 @@ where
     S: Send,
     P: Clone + Send,
 {
-    pub async fn recv(&mut self) -> P {
+    pub async fn recv(&self) -> P {
         NextFuture(self).await
     }
 }
 
-pub struct NextFuture<'a, CV, P, S>(&'a AsyncSubscription<CV, P, S>)
+struct NextFuture<'a, CV, P, S>(&'a AsyncSubscription<CV, P, S>)
 where
     CV: RawCondvar + Send + Sync,
     CV::RawMutex: Send + Sync,
@@ -252,13 +252,11 @@ impl<CV, E> AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
 
 #[cfg(feature = "nightly")]
 mod async_traits_impl {
-    use core::future::Future;
-
     use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider, Receiver, Sender};
     use crate::executor::asynch::Unblocker;
     use crate::utils::mutex::RawCondvar;
 
-    use super::{AsyncEventBus, AsyncPostbox, AsyncSubscription, NextFuture};
+    use super::{AsyncEventBus, AsyncPostbox, AsyncSubscription};
 
     impl<U, P, PB> Sender for AsyncPostbox<U, P, PB>
     where
@@ -267,16 +265,15 @@ mod async_traits_impl {
         PB: crate::event_bus::Postbox<P> + Clone + Send + Sync + 'static,
     {
         type Data = P;
+        type Result = ();
 
-        type SendFuture<'a>
-        = U::UnblockFuture<()> where Self: 'a;
-
-        fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
+        async fn send(&self, value: Self::Data) {
             let value = value;
             let blocking_postbox = self.blocking_postbox.clone();
 
             self.unblocker
                 .unblock(move || blocking_postbox.post(&value, None).map(|_| ()).unwrap())
+                .await
         }
     }
 
@@ -286,12 +283,10 @@ mod async_traits_impl {
         PB: crate::event_bus::Postbox<P> + Clone + Send + Sync + 'static,
     {
         type Data = P;
+        type Result = ();
 
-        type SendFuture<'a>
-        = impl Future<Output = ()> + 'a where Self: 'a;
-
-        fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
-            AsyncPostbox::send(self, value)
+        async fn send(&self, value: Self::Data) {
+            AsyncPostbox::send(self, value).await
         }
     }
 
@@ -302,13 +297,10 @@ mod async_traits_impl {
         S: Send,
         P: Clone + Send,
     {
-        type Data = P;
+        type Result = P;
 
-        type RecvFuture<'a>
-        = NextFuture<'a, CV, P, S> where Self: 'a;
-
-        fn recv(&self) -> Self::RecvFuture<'_> {
-            NextFuture(self)
+        async fn recv(&self) -> Self::Result {
+            AsyncSubscription::recv(self).await
         }
     }
 

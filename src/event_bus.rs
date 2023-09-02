@@ -115,16 +115,11 @@ where
 pub mod asynch {
     pub use super::{ErrorType, Spin};
 
-    use core::future::Future;
-
     pub trait Sender {
         type Data: Send;
+        type Result: Send;
 
-        type SendFuture<'a>: Future + Send
-        where
-            Self: 'a;
-
-        fn send(&self, value: Self::Data) -> Self::SendFuture<'_>;
+        async fn send(&self, value: Self::Data) -> Self::Result;
     }
 
     impl<S> Sender for &mut S
@@ -132,12 +127,10 @@ pub mod asynch {
         S: Sender,
     {
         type Data = S::Data;
+        type Result = S::Result;
 
-        type SendFuture<'a>
-        = S::SendFuture<'a> where Self: 'a;
-
-        fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
-            (**self).send(value)
+        async fn send(&self, value: Self::Data) -> Self::Result {
+            (**self).send(value).await
         }
     }
 
@@ -146,36 +139,27 @@ pub mod asynch {
         S: Sender,
     {
         type Data = S::Data;
+        type Result = S::Result;
 
-        type SendFuture<'a>
-        = S::SendFuture<'a> where Self: 'a;
-
-        fn send(&self, value: Self::Data) -> Self::SendFuture<'_> {
-            (*self).send(value)
+        async fn send(&self, value: Self::Data) -> Self::Result {
+            (*self).send(value).await
         }
     }
 
     pub trait Receiver {
-        type Data: Send;
+        type Result: Send;
 
-        type RecvFuture<'a>: Future<Output = Self::Data> + Send
-        where
-            Self: 'a;
-
-        fn recv(&self) -> Self::RecvFuture<'_>;
+        async fn recv(&self) -> Self::Result;
     }
 
     impl<R> Receiver for &mut R
     where
         R: Receiver,
     {
-        type Data = R::Data;
+        type Result = R::Result;
 
-        type RecvFuture<'a>
-        = R::RecvFuture<'a> where Self: 'a;
-
-        fn recv(&self) -> Self::RecvFuture<'_> {
-            (**self).recv()
+        async fn recv(&self) -> Self::Result {
+            (**self).recv().await
         }
     }
 
@@ -183,18 +167,15 @@ pub mod asynch {
     where
         R: Receiver,
     {
-        type Data = R::Data;
+        type Result = R::Result;
 
-        type RecvFuture<'a>
-        = R::RecvFuture<'a> where Self: 'a;
-
-        fn recv(&self) -> Self::RecvFuture<'_> {
-            (*self).recv()
+        async fn recv(&self) -> Self::Result {
+            (*self).recv().await
         }
     }
 
     pub trait EventBus<P>: ErrorType {
-        type Subscription: Receiver<Data = P>;
+        type Subscription: Receiver<Result = P>;
 
         fn subscribe(&self) -> Result<Self::Subscription, Self::Error>;
     }
