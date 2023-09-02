@@ -94,15 +94,13 @@ pub mod server {
         C: RawCondvar + Send + Sync,
         C::RawMutex: Send + Sync,
     {
-        pub fn recv<'a>(
-            &'a mut self,
-            frame_data_buf: &'a mut [u8],
-        ) -> AsyncReceiverFuture<'a, C, E> {
+        pub async fn recv(&mut self, frame_data_buf: &mut [u8]) -> Result<(FrameType, usize), E> {
             AsyncReceiverFuture {
                 receiver: self,
                 frame_data_buf,
                 _ep: PhantomData,
             }
+            .await
         }
     }
 
@@ -126,7 +124,7 @@ pub mod server {
         receiver_state: Arc<M>,
     }
 
-    pub struct AsyncReceiverFuture<'a, C, E>
+    struct AsyncReceiverFuture<'a, C, E>
     where
         C: RawCondvar,
     {
@@ -443,13 +441,12 @@ pub mod server {
     #[cfg(feature = "nightly")]
     mod async_traits_impl {
         use core::fmt::Debug;
-        use core::marker::PhantomData;
 
         use crate::executor::asynch::Unblocker;
         use crate::utils::mutex::RawCondvar;
         use crate::ws::{callback_server::*, *};
 
-        use super::{AsyncAcceptor, AsyncReceiver, AsyncReceiverFuture, AsyncSender};
+        use super::{AsyncAcceptor, AsyncReceiver, AsyncSender};
 
         impl<U, S> ErrorType for AsyncSender<U, S>
         where
@@ -504,12 +501,7 @@ pub mod server {
                 &mut self,
                 frame_data_buf: &mut [u8],
             ) -> Result<(FrameType, usize), Self::Error> {
-                AsyncReceiverFuture {
-                    receiver: self,
-                    frame_data_buf,
-                    _ep: PhantomData,
-                }
-                .await
+                AsyncReceiver::recv(self, frame_data_buf).await
             }
         }
 

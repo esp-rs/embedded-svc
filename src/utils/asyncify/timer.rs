@@ -88,7 +88,7 @@ where
     }
 }
 
-pub struct TimerFuture<'a, T>(&'a mut AsyncTimer<T>, Option<Duration>)
+struct TimerFuture<'a, T>(&'a mut AsyncTimer<T>, Option<Duration>)
 where
     T: crate::timer::Timer;
 
