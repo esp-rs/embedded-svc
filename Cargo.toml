@@ -15,8 +15,8 @@ rust-version = "1.71"
 [features]
 default = ["std", "use_serde", "use_strum", "use_numenum", "log"]
 
-std = ["alloc", "embedded-io/std", "embedded-io-async?/std", "serde/std", "anyhow/std", "strum?/std", "num_enum?/std"]
-alloc = ["anyhow", "embedded-io/alloc", "embedded-io-async?/alloc", "serde/alloc", "defmt?/alloc"]
+std = ["alloc", "embedded-io/std", "embedded-io-async?/std", "serde/std", "strum?/std", "num_enum?/std"]
+alloc = ["embedded-io/alloc", "embedded-io-async?/alloc", "serde/alloc", "defmt?/alloc"]
 nightly = ["embedded-io-async"]
 experimental = []
 use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
@@ -36,5 +36,4 @@ enumset = { version = "1", default-features = false }
 strum = { version = "0.25", default-features = false, optional = true, features = ["derive"] }
 strum_macros = { version = "0.25", optional = true }
 num_enum = { version = "0.7", default-features = false, optional = true }
-anyhow = { version = "1", default-features = false, optional = true } # Only used by the deprecated httpd module
 defmt = { version = "0.3", optional = true }
