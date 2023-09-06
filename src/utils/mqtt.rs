@@ -113,6 +113,26 @@ pub mod client {
         pub fn new(connection_state: Arc<ConnStateGuard<CV, ConnState<M, E>>>) -> Self {
             Self(connection_state)
         }
+
+        pub fn next(&mut self) -> Option<Result<Event<M>, E>> {
+            let mut state = self.0.state.lock();
+
+            loop {
+                if let Some(data) = &mut *state {
+                    let pulled = mem::replace(data, ConnState(None));
+
+                    match pulled {
+                        ConnState(Some(event)) => {
+                            self.0.state_changed.notify_all();
+                            return Some(event);
+                        }
+                        ConnState(None) => state = self.0.state_changed.wait(state),
+                    }
+                } else {
+                    return None;
+                }
+            }
+        }
     }
 
     impl<CV, M, E> ErrorType for Connection<CV, M, E>
@@ -131,23 +151,7 @@ pub mod client {
         type Message<'a> = M where Self: 'a;
 
         fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
-            let mut state = self.0.state.lock();
-
-            loop {
-                if let Some(data) = &mut *state {
-                    let pulled = mem::replace(data, ConnState(None));
-
-                    match pulled {
-                        ConnState(Some(event)) => {
-                            self.0.state_changed.notify_all();
-                            return Some(event);
-                        }
-                        ConnState(None) => state = self.0.state_changed.wait(state),
-                    }
-                } else {
-                    return None;
-                }
-            }
+            Connection::next(self)
         }
     }
 }
