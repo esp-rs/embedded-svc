@@ -114,6 +114,7 @@ pub mod client {
             Self(connection_state)
         }
 
+        #[allow(clippy::should_implement_trait)]
         pub fn next(&mut self) -> Option<Result<Event<M>, E>> {
             let mut state = self.0.state.lock();
 
