@@ -300,7 +300,7 @@ pub trait Middleware<C>: Send
 where
     C: Connection,
 {
-    fn handle<'a, H>(&'a self, connection: &'a mut C, handler: &'a H) -> HandlerResult
+    fn handle<H>(&self, connection: &mut C, handler: &H) -> HandlerResult
     where
         H: Handler<C>;
 
