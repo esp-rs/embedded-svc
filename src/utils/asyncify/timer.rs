@@ -234,4 +234,21 @@ mod async_traits_impl {
             AsyncTimerService::timer(self)
         }
     }
+
+    impl<T> embedded_hal_async::delay::DelayUs for AsyncTimer<T>
+    where
+        T: crate::timer::OnceTimer + Send + 'static,
+    {
+        async fn delay_us(&mut self, us: u32) {
+            AsyncTimer::after(self, Duration::from_micros(us as _))
+                .await
+                .unwrap();
+        }
+
+        async fn delay_ms(&mut self, ms: u32) {
+            AsyncTimer::after(self, Duration::from_millis(ms as _))
+                .await
+                .unwrap();
+        }
+    }
 }
