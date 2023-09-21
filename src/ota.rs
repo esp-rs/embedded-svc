@@ -141,12 +141,16 @@ where
 }
 
 pub trait OtaUpdate: Write {
-    fn complete(&mut self) -> Result<(), Self::Error>;
+    type OtaUpdateFinished: OtaUpdateFinished;
 
-    fn abort(&mut self) -> Result<(), Self::Error>;
+    fn finish(self) -> Result<Self::OtaUpdateFinished, Self::Error>;
+
+    fn complete(self) -> Result<(), Self::Error>;
+
+    fn abort(self) -> Result<(), Self::Error>;
 
     fn update<R>(
-        &mut self,
+        mut self,
         read: R,
         progress: impl Fn(u64, u64),
     ) -> Result<(), CopyError<R::Error, Self::Error>>
@@ -156,7 +160,7 @@ pub trait OtaUpdate: Write {
     {
         let mut buf = [0_u8; 64];
 
-        match copy_len_with_progress(read, &mut *self, &mut buf, u64::MAX, progress) {
+        match copy_len_with_progress(read, &mut self, &mut buf, u64::MAX, progress) {
             Ok(_) => self.complete().map_err(CopyError::Write),
             Err(e) => {
                 self.abort().map_err(CopyError::Write)?;
@@ -165,6 +169,10 @@ pub trait OtaUpdate: Write {
             }
         }
     }
+}
+
+pub trait OtaUpdateFinished: ErrorType {
+    fn activate(self) -> Result<(), Self::Error>;
 }
 
 #[cfg(feature = "nightly")]
@@ -236,17 +244,25 @@ pub mod asynch {
     }
 
     pub trait OtaUpdate: Write {
-        async fn complete(&mut self) -> Result<(), Self::Error>;
+        type OtaUpdateFinished: OtaUpdateFinished;
 
-        async fn abort(&mut self) -> Result<(), Self::Error>;
+        async fn finish(self) -> Result<Self::OtaUpdateFinished, Self::Error>;
+
+        async fn complete(self) -> Result<(), Self::Error>;
+
+        async fn abort(self) -> Result<(), Self::Error>;
 
         async fn update<R>(
-            &mut self,
+            self,
             read: R,
             progress: impl Fn(u64, u64),
         ) -> Result<(), CopyError<R::Error, Self::Error>>
         where
             R: Read,
             Self: Sized;
+    }
+
+    pub trait OtaUpdateFinished: ErrorType {
+        async fn activate(self) -> Result<(), Self::Error>;
     }
 }
