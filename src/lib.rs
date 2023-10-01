@@ -1,9 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(stable_features)]
 #![cfg_attr(
     feature = "nightly",
     feature(async_fn_in_trait, impl_trait_projections)
 )]
-
 #[cfg(feature = "alloc")]
 #[allow(unused_imports)]
 #[macro_use]
