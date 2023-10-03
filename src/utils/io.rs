@@ -95,7 +95,6 @@ where
 
         write
             .write_all(&buf[0..size_read])
-            .map_err(map_write_err)
             .map_err(CopyError::Write)?;
 
         copied += size_read as u64;
@@ -107,18 +106,9 @@ where
     Ok(copied)
 }
 
-pub(crate) fn map_write_err<W>(e: embedded_io::WriteAllError<W>) -> W {
-    match e {
-        embedded_io::WriteAllError::WriteZero => panic!("write() returned Ok(0)"),
-        embedded_io::WriteAllError::Other(e) => e,
-    }
-}
-
 #[cfg(feature = "nightly")]
 pub mod asynch {
     use crate::io::asynch::{Read, Write};
-
-    use super::map_write_err;
 
     pub use super::CopyError;
 
@@ -193,7 +183,6 @@ pub mod asynch {
             write
                 .write_all(&buf[0..size_read])
                 .await
-                .map_err(map_write_err)
                 .map_err(CopyError::Write)?;
 
             copied += size_read as u64;
