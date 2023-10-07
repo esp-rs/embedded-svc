@@ -140,9 +140,9 @@ where
 impl<T> AsyncTimerService<T>
 where
     T: crate::timer::TimerService,
-    T::Timer: Send,
+    for<'a> T::Timer<'a>: Send,
 {
-    pub fn timer(&mut self) -> Result<AsyncTimer<T::Timer>, T::Error> {
+    pub fn timer(&self) -> Result<AsyncTimer<T::Timer<'static>>, T::Error> {
         let signal = Arc::new(TimerSignal::new());
 
         let timer = {
@@ -226,11 +226,11 @@ mod async_traits_impl {
     impl<T> TimerService for AsyncTimerService<T>
     where
         T: crate::timer::TimerService,
-        T::Timer: Send,
+        for<'a> T::Timer<'a>: Send,
     {
-        type Timer = AsyncTimer<T::Timer>;
+        type Timer = AsyncTimer<T::Timer<'static>>;
 
-        fn timer(&mut self) -> Result<Self::Timer, Self::Error> {
+        fn timer(&self) -> Result<Self::Timer, Self::Error> {
             AsyncTimerService::timer(self)
         }
     }

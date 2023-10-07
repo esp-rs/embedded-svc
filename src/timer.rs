@@ -68,25 +68,37 @@ where
 }
 
 pub trait TimerService: ErrorType {
-    type Timer: OnceTimer<Error = Self::Error> + PeriodicTimer<Error = Self::Error> + 'static;
+    type Timer<'a>: OnceTimer<Error = Self::Error> + PeriodicTimer<Error = Self::Error> + 'a;
 
-    fn timer(
-        &mut self,
-        callback: impl FnMut() + Send + 'static,
-    ) -> Result<Self::Timer, Self::Error>;
+    fn timer<'a>(&self, callback: impl FnMut() + Send + 'a)
+        -> Result<Self::Timer<'a>, Self::Error>;
+}
+
+impl<S> TimerService for &S
+where
+    S: TimerService,
+{
+    type Timer<'a> = S::Timer<'a>;
+
+    fn timer<'a>(
+        &self,
+        callback: impl FnMut() + Send + 'a,
+    ) -> Result<Self::Timer<'a>, Self::Error> {
+        (*self).timer(callback)
+    }
 }
 
 impl<S> TimerService for &mut S
 where
     S: TimerService,
 {
-    type Timer = S::Timer;
+    type Timer<'a> = S::Timer<'a>;
 
-    fn timer(
-        &mut self,
-        callback: impl FnMut() + Send + 'static,
-    ) -> Result<Self::Timer, Self::Error> {
-        (*self).timer(callback)
+    fn timer<'a>(
+        &self,
+        callback: impl FnMut() + Send + 'a,
+    ) -> Result<Self::Timer<'a>, Self::Error> {
+        (**self).timer(callback)
     }
 }
 
@@ -150,7 +162,18 @@ pub mod asynch {
             + Send
             + 'static;
 
-        fn timer(&mut self) -> Result<Self::Timer, Self::Error>;
+        fn timer(&self) -> Result<Self::Timer, Self::Error>;
+    }
+
+    impl<T> TimerService for &T
+    where
+        T: TimerService,
+    {
+        type Timer = T::Timer;
+
+        fn timer(&self) -> Result<Self::Timer, Self::Error> {
+            (*self).timer()
+        }
     }
 
     impl<T> TimerService for &mut T
@@ -159,8 +182,8 @@ pub mod asynch {
     {
         type Timer = T::Timer;
 
-        fn timer(&mut self) -> Result<Self::Timer, Self::Error> {
-            (*self).timer()
+        fn timer(&self) -> Result<Self::Timer, Self::Error> {
+            (**self).timer()
         }
     }
 }
