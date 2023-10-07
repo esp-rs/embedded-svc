@@ -47,39 +47,38 @@ where
 }
 
 pub trait EventBus<P>: ErrorType {
-    type Subscription;
+    type Subscription<'a>;
 
-    fn subscribe(
-        &self,
-        callback: impl for<'a> FnMut(&'a P) + Send + 'static,
-    ) -> Result<Self::Subscription, Self::Error>;
+    fn subscribe<'a, F>(&self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
+    where
+        F: FnMut(&P) + Send + 'a;
 }
 
-impl<'a, P, E> EventBus<P> for &'a mut E
+impl<'e, P, E> EventBus<P> for &'e E
 where
     E: EventBus<P>,
 {
-    type Subscription = E::Subscription;
+    type Subscription<'a> = E::Subscription<'a>;
 
-    fn subscribe(
-        &self,
-        callback: impl for<'b> FnMut(&'b P) + Send + 'static,
-    ) -> Result<Self::Subscription, Self::Error> {
+    fn subscribe<'a, F>(&self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
+    where
+        F: FnMut(&P) + Send + 'a,
+    {
         (**self).subscribe(callback)
     }
 }
 
-impl<'a, P, E> EventBus<P> for &'a E
+impl<'e, P, E> EventBus<P> for &'e mut E
 where
     E: EventBus<P>,
 {
-    type Subscription = E::Subscription;
+    type Subscription<'a> = E::Subscription<'a>;
 
-    fn subscribe(
-        &self,
-        callback: impl for<'b> FnMut(&'b P) + Send + 'static,
-    ) -> Result<Self::Subscription, Self::Error> {
-        (*self).subscribe(callback)
+    fn subscribe<'a, F>(&self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
+    where
+        F: FnMut(&P) + Send + 'a,
+    {
+        (**self).subscribe(callback)
     }
 }
 

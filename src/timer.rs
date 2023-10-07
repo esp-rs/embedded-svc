@@ -70,8 +70,9 @@ where
 pub trait TimerService: ErrorType {
     type Timer<'a>: OnceTimer<Error = Self::Error> + PeriodicTimer<Error = Self::Error> + 'a;
 
-    fn timer<'a>(&self, callback: impl FnMut() + Send + 'a)
-        -> Result<Self::Timer<'a>, Self::Error>;
+    fn timer<'a, F>(&self, callback: F) -> Result<Self::Timer<'a>, Self::Error>
+    where
+        F: FnMut() + Send + 'a;
 }
 
 impl<S> TimerService for &S
@@ -80,10 +81,10 @@ where
 {
     type Timer<'a> = S::Timer<'a>;
 
-    fn timer<'a>(
-        &self,
-        callback: impl FnMut() + Send + 'a,
-    ) -> Result<Self::Timer<'a>, Self::Error> {
+    fn timer<'a, F>(&self, callback: F) -> Result<Self::Timer<'a>, Self::Error>
+    where
+        F: FnMut() + Send + 'a,
+    {
         (*self).timer(callback)
     }
 }
@@ -94,10 +95,10 @@ where
 {
     type Timer<'a> = S::Timer<'a>;
 
-    fn timer<'a>(
-        &self,
-        callback: impl FnMut() + Send + 'a,
-    ) -> Result<Self::Timer<'a>, Self::Error> {
+    fn timer<'a, F>(&self, callback: F) -> Result<Self::Timer<'a>, Self::Error>
+    where
+        F: FnMut() + Send + 'a,
+    {
         (**self).timer(callback)
     }
 }

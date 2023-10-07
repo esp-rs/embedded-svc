@@ -150,11 +150,13 @@ where
     CV: RawCondvar + Send + Sync + 'static,
     CV::RawMutex: Send + Sync + 'static,
 {
-    pub fn subscribe<P>(&self) -> Result<AsyncSubscription<CV, P, E::Subscription>, E::Error>
+    pub fn subscribe<P>(
+        &self,
+    ) -> Result<AsyncSubscription<CV, P, E::Subscription<'static>>, E::Error>
     where
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
-        E::Subscription: Send + 'static,
+        E::Subscription<'static>: Send + 'static,
     {
         let state = Arc::new((
             Mutex::new(SubscriptionState {
@@ -317,9 +319,9 @@ mod async_traits_impl {
         CV::RawMutex: Send + Sync + 'static,
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
-        E::Subscription: Send + 'static,
+        for<'a> E::Subscription<'a>: Send + 'static,
     {
-        type Subscription = AsyncSubscription<CV, P, E::Subscription>;
+        type Subscription = AsyncSubscription<CV, P, E::Subscription<'static>>;
 
         fn subscribe(&self) -> Result<Self::Subscription, Self::Error> {
             AsyncEventBus::subscribe(self)
