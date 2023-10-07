@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Breaking change: OTA: GAT `Ota::Update` now parametric over lifetime and no longer returned by `&mut` ref
 * Breaking change: OTA: `OtaUpdate::abort` and `OtaUpdate::complete` now take `self` instead of `&mut self`
 * Breaking change: MQTT: GAT `Connection::Message` now parametric over lifetime
+* Breaking change: Ping: Callback function of `Ping::ping_details` can now be `FnMut` but does require `Send`
 * Breaking change: All pub structs in `utils::asyncify` that implement the `Future` trait are now private and wrapped with async methods
 * Breaking change: Removed structs `Blocking` and `TrivialAsync`, as well as all trait implementations on them, because their usefulness was questionable
 * Breaking change: Removed the deprecated module `httpd` and the dependency on `anyhow`

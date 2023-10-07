@@ -63,11 +63,11 @@ pub trait Ping {
 
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
 
-    fn ping_details<F: Fn(&Summary, &Reply)>(
+    fn ping_details<F: FnMut(&Summary, &Reply) + Send>(
         &mut self,
         ip: ipv4::Ipv4Addr,
         conf: &Configuration,
-        reply_callback: &F,
+        reply_callback: F,
     ) -> Result<Summary, Self::Error>;
 }
 
@@ -81,11 +81,11 @@ where
         (*self).ping(ip, conf)
     }
 
-    fn ping_details<F: Fn(&Summary, &Reply)>(
+    fn ping_details<F: FnMut(&Summary, &Reply) + Send>(
         &mut self,
         ip: ipv4::Ipv4Addr,
         conf: &Configuration,
-        reply_callback: &F,
+        reply_callback: F,
     ) -> Result<Summary, Self::Error> {
         (*self).ping_details(ip, conf, reply_callback)
     }
@@ -107,11 +107,11 @@ pub mod asynch {
             conf: &Configuration,
         ) -> Result<Summary, Self::Error>;
 
-        async fn ping_details<F: Fn(&Summary, &Reply)>(
+        async fn ping_details<F: FnMut(&Summary, &Reply) + Send>(
             &mut self,
             ip: ipv4::Ipv4Addr,
             conf: &Configuration,
-            reply_callback: &F,
+            reply_callback: F,
         ) -> Result<Summary, Self::Error>;
     }
 
@@ -129,11 +129,11 @@ pub mod asynch {
             (*self).ping(ip, conf).await
         }
 
-        async fn ping_details<F: Fn(&Summary, &Reply)>(
+        async fn ping_details<F: FnMut(&Summary, &Reply) + Send>(
             &mut self,
             ip: ipv4::Ipv4Addr,
             conf: &Configuration,
-            reply_callback: &F,
+            reply_callback: F,
         ) -> Result<Summary, Self::Error> {
             (*self).ping_details(ip, conf, reply_callback).await
         }
