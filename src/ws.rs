@@ -81,19 +81,32 @@ pub mod server {
     pub use super::*;
 
     pub trait Acceptor: ErrorType {
-        type Connection: Sender<Error = Self::Error> + Receiver<Error = Self::Error>;
+        type Connection<'a>: Sender<Error = Self::Error> + Receiver<Error = Self::Error>
+        where
+            Self: 'a;
 
-        fn accept(&self) -> Result<Self::Connection, Self::Error>;
+        fn accept(&self) -> Result<Self::Connection<'_>, Self::Error>;
     }
 
     impl<A> Acceptor for &A
     where
         A: Acceptor,
     {
-        type Connection = A::Connection;
+        type Connection<'a> = A::Connection<'a> where Self: 'a;
 
-        fn accept(&self) -> Result<Self::Connection, Self::Error> {
+        fn accept(&self) -> Result<Self::Connection<'_>, Self::Error> {
             (*self).accept()
+        }
+    }
+
+    impl<A> Acceptor for &mut A
+    where
+        A: Acceptor,
+    {
+        type Connection<'a> = A::Connection<'a> where Self: 'a;
+
+        fn accept(&self) -> Result<Self::Connection<'_>, Self::Error> {
+            (**self).accept()
         }
     }
 }

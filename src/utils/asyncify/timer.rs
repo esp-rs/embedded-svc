@@ -230,7 +230,7 @@ mod async_traits_impl {
     {
         type Timer<'a> = AsyncTimer<T::Timer<'a>> where Self: 'a;
 
-        fn timer(&self) -> Result<Self::Timer<'_>, Self::Error> {
+        async fn timer(&self) -> Result<Self::Timer<'_>, Self::Error> {
             AsyncTimerService::timer(self)
         }
     }

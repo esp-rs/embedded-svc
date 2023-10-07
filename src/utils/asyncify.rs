@@ -66,54 +66,43 @@ mod blocking_unblocker {
     pub struct BlockingUnblocker(());
 
     impl BlockingUnblocker {
-        pub fn unblock<F, T>(&self, f: F) -> BlockingFuture<T>
+        pub fn unblock<'a, F, T>(&'a self, f: F) -> BlockingFuture<T>
         where
-            F: FnOnce() -> T + Send + 'static,
-            T: Send + 'static,
+            F: FnOnce() -> T + Send + 'a,
+            T: Send + 'a,
         {
             BlockingFuture::new(f)
         }
     }
 
     impl crate::executor::asynch::Unblocker for BlockingUnblocker {
-        type UnblockFuture<T> = BlockingFuture<T> where T: Send;
+        type UnblockFuture<'a, F, T> = BlockingFuture<'a, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
 
-        fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
+        fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
         where
-            F: FnOnce() -> T + Send + 'static,
-            T: Send + 'static,
+            F: FnOnce() -> T + Send + 'a,
+            T: Send + 'a,
         {
             BlockingUnblocker::unblock(self, f)
         }
     }
 
-    // #[cfg(feature = "nightly")]
-    // impl crate::executor::asynch::Unblocker for BlockingUnblocker {
-    //     async fn unblock<F, T>(&self, f: F) -> T
-    //     where
-    //         F: FnOnce() -> T + Send + 'static,
-    //         T: Send + 'static,
-    //     {
-    //         BlockingUnblocker::unblock(self, f).await
-    //     }
-    // }
-
     pub fn blocking_unblocker() -> BlockingUnblocker {
         BlockingUnblocker(())
     }
 
-    pub struct BlockingFuture<T> {
+    pub struct BlockingFuture<'a, T> {
         // TODO: Need to box or else we get rustc error:
         // "type parameter `F` is part of concrete type but not used in parameter list for the `impl Trait` type alias"
-        computation: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
+        computation: Option<Box<dyn FnOnce() -> T + Send + 'a>>,
         _result: PhantomData<fn() -> T>,
     }
 
-    impl<T> BlockingFuture<T> {
+    impl<'a, T> BlockingFuture<'a, T> {
         fn new<F>(computation: F) -> Self
         where
-            F: FnOnce() -> T + Send + 'static,
-            T: Send + 'static,
+            F: FnOnce() -> T + Send + 'a,
+            T: Send + 'a,
         {
             Self {
                 computation: Some(Box::new(computation)),
@@ -122,9 +111,9 @@ mod blocking_unblocker {
         }
     }
 
-    impl<T> Future for BlockingFuture<T>
+    impl<'a, T> Future for BlockingFuture<'a, T>
     where
-        T: Send,
+        T: Send + 'a,
     {
         type Output = T;
 

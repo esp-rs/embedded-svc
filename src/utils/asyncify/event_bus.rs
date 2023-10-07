@@ -2,10 +2,12 @@ use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
+use core::time::Duration;
 
 extern crate alloc;
 use alloc::sync::Arc;
 
+use crate::executor::asynch::Unblocker;
 use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
 
 #[cfg(feature = "nightly")]
@@ -27,15 +29,39 @@ impl<U, P, PB> AsyncPostbox<U, P, PB> {
             _payload_type: PhantomData,
         }
     }
+}
 
-    pub async fn send(&self, value: P)
+impl<P, PB> AsyncPostbox<(), P, PB> {
+    pub fn send_blocking(&self, value: P, duration: Option<core::time::Duration>)
     where
-        P: Clone + Send + 'static,
-        PB: crate::event_bus::Postbox<P> + Clone + Send + Sync + 'static,
+        PB: crate::event_bus::Postbox<P>,
     {
         self.blocking_postbox
-            .post(&value, None)
+            .post(&value, duration)
             .map(|_| ())
+            .unwrap()
+    }
+}
+
+impl<U, P, PB> AsyncPostbox<U, P, PB>
+where
+    U: Unblocker,
+{
+    pub async fn send(&self, value: P)
+    where
+        P: Send + 'static,
+        PB: crate::event_bus::Postbox<P> + Sync,
+        PB::Error: Send + 'static,
+    {
+        let blocking_postbox = &self.blocking_postbox;
+
+        self.unblocker
+            .unblock(move || {
+                blocking_postbox
+                    .post(&value, Some(Duration::MAX))
+                    .map(|_| ())
+            })
+            .await
             .unwrap()
     }
 }
@@ -150,13 +176,11 @@ where
     CV: RawCondvar + Send + Sync + 'static,
     CV::RawMutex: Send + Sync + 'static,
 {
-    pub fn subscribe<P>(
-        &self,
-    ) -> Result<AsyncSubscription<CV, P, E::Subscription<'static>>, E::Error>
+    pub fn subscribe<P>(&self) -> Result<AsyncSubscription<CV, P, E::Subscription<'_>>, E::Error>
     where
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
-        E::Subscription<'static>: Send + 'static,
+        for<'a> E::Subscription<'a>: Send,
     {
         let state = Arc::new((
             Mutex::new(SubscriptionState {
@@ -197,20 +221,18 @@ where
     }
 }
 
-impl<CV, E> AsyncEventBus<(), CV, E>
+impl<U, CV, E> AsyncEventBus<U, CV, E>
 where
+    U: Clone,
     CV: RawCondvar + Send + Sync + 'static,
 {
-    pub fn postbox<P>(&self) -> Result<AsyncPostbox<(), P, E::Postbox>, E::Error>
+    pub fn postbox<P>(&self) -> Result<AsyncPostbox<U, P, E::Postbox<'_>>, E::Error>
     where
-        P: Clone + Send + 'static,
-        E::Postbox: Clone + Send + 'static,
         E: crate::event_bus::PostboxProvider<P>,
-        E::Error: Send + Sync + 'static,
     {
         self.event_bus
             .postbox()
-            .map(|blocking_postbox| AsyncPostbox::new((), blocking_postbox))
+            .map(|blocking_postbox| AsyncPostbox::new(self.unblocker.clone(), blocking_postbox))
     }
 }
 
@@ -264,7 +286,7 @@ mod async_traits_impl {
     where
         U: Unblocker,
         P: Clone + Send + 'static,
-        PB: crate::event_bus::Postbox<P> + Clone + Send + Sync + 'static,
+        PB: crate::event_bus::Postbox<P> + Clone + Send + Sync,
     {
         type Data = P;
         type Result = ();
@@ -281,14 +303,14 @@ mod async_traits_impl {
 
     impl<P, PB> Sender for AsyncPostbox<(), P, PB>
     where
-        P: Clone + Send + 'static,
-        PB: crate::event_bus::Postbox<P> + Clone + Send + Sync + 'static,
+        P: Send,
+        PB: crate::event_bus::Postbox<P>,
     {
         type Data = P;
         type Result = ();
 
         async fn send(&self, value: Self::Data) {
-            AsyncPostbox::send(self, value).await
+            AsyncPostbox::send_blocking(self, value, Some(core::time::Duration::MAX))
         }
     }
 
@@ -319,11 +341,11 @@ mod async_traits_impl {
         CV::RawMutex: Send + Sync + 'static,
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
-        for<'a> E::Subscription<'a>: Send + 'static,
+        for<'a> E::Subscription<'a>: Send,
     {
-        type Subscription = AsyncSubscription<CV, P, E::Subscription<'static>>;
+        type Subscription<'a> = AsyncSubscription<CV, P, E::Subscription<'a>> where Self: 'a;
 
-        fn subscribe(&self) -> Result<Self::Subscription, Self::Error> {
+        async fn subscribe(&self) -> Result<Self::Subscription<'_>, Self::Error> {
             AsyncEventBus::subscribe(self)
         }
     }
@@ -333,30 +355,26 @@ mod async_traits_impl {
         U: Unblocker + Clone,
         CV: RawCondvar + Send + Sync + 'static,
         P: Clone + Send + 'static,
-        E::Postbox: Clone + Send + Sync + 'static,
+        for<'a> E::Postbox<'a>: Clone + Send + Sync,
         E: crate::event_bus::PostboxProvider<P>,
         Self::Error: Send + Sync + 'static,
     {
-        type Postbox = AsyncPostbox<U, P, E::Postbox>;
+        type Postbox<'a> = AsyncPostbox<U, P, E::Postbox<'a>> where Self: 'a;
 
-        fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
-            self.event_bus
-                .postbox()
-                .map(|blocking_postbox| AsyncPostbox::new(self.unblocker.clone(), blocking_postbox))
+        async fn postbox(&self) -> Result<Self::Postbox<'_>, Self::Error> {
+            AsyncEventBus::postbox(self)
         }
     }
 
     impl<CV, P, E> PostboxProvider<P> for AsyncEventBus<(), CV, E>
     where
         CV: RawCondvar + Send + Sync + 'static,
-        P: Clone + Send + 'static,
-        E::Postbox: Clone + Send + Sync + 'static,
+        P: Send + 'static,
         E: crate::event_bus::PostboxProvider<P>,
-        Self::Error: Send + Sync + 'static,
     {
-        type Postbox = AsyncPostbox<(), P, E::Postbox>;
+        type Postbox<'a> = AsyncPostbox<(), P, E::Postbox<'a>> where Self: 'a;
 
-        fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
+        async fn postbox(&self) -> Result<Self::Postbox<'_>, Self::Error> {
             AsyncEventBus::postbox(self)
         }
     }

@@ -26,33 +26,30 @@ pub mod server {
 
     impl<S> AsyncSender<(), S>
     where
-        S: Sender + SessionProvider + Send + Clone + 'static,
+        S: Sender + SessionProvider,
     {
-        pub async fn send_blocking(
+        pub fn send_blocking(
             &mut self,
             frame_type: FrameType,
             frame_data: &[u8],
         ) -> Result<(), S::Error> {
-            async move {
-                svc_log!(
-                    debug,
-                    "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
-                    frame_type,
-                    frame_data.len(),
-                    self.sender.session()
-                );
+            svc_log!(
+                debug,
+                "Sending data (frame_type={:?}, frame_len={}) to WS connection {:?}",
+                frame_type,
+                frame_data.len(),
+                self.sender.session()
+            );
 
-                self.sender.send(frame_type, frame_data)
-            }
-            .await
+            self.sender.send(frame_type, frame_data)
         }
     }
 
     impl<U, S> AsyncSender<U, S>
     where
         U: crate::executor::asynch::Unblocker,
-        S: Sender + SessionProvider + Send + Clone + 'static,
-        S::Error: Send + Sync + 'static,
+        S: Sender + SessionProvider + Send + Clone,
+        S::Error: Send + Sync,
     {
         pub async fn send(
             &mut self,
@@ -193,7 +190,7 @@ pub mod server {
     where
         C: RawCondvar + Send + Sync,
         C::RawMutex: Send + Sync,
-        S: Sender + SessionProvider + Send + Clone + 'static,
+        S: Sender + SessionProvider + Send,
         S::Error: Send + Sync + 'static,
     {
         pub fn accept(&self) -> &AsyncAcceptor<U, C, S> {
@@ -206,7 +203,7 @@ pub mod server {
         U: Clone,
         C: RawCondvar + Send + Sync,
         C::RawMutex: Send + Sync,
-        S: Sender + Send + Clone + 'static,
+        S: Sender + Send + Clone,
     {
         type Output = Result<
             (AsyncSender<U, S>, AsyncReceiver<C, <S as ErrorType>::Error>),
@@ -458,7 +455,7 @@ pub mod server {
         impl<U, S> asynch::Sender for AsyncSender<U, S>
         where
             U: Unblocker,
-            S: Sender + SessionProvider + Send + Clone + 'static,
+            S: Sender + SessionProvider + Send + Clone,
             S::Error: Send + Sync + 'static,
         {
             async fn send(
@@ -472,14 +469,14 @@ pub mod server {
 
         impl<S> asynch::Sender for AsyncSender<(), S>
         where
-            S: Sender + SessionProvider + Send + Clone + 'static,
+            S: Sender + SessionProvider,
         {
             async fn send(
                 &mut self,
                 frame_type: FrameType,
                 frame_data: &[u8],
             ) -> Result<(), Self::Error> {
-                AsyncSender::send_blocking(self, frame_type, frame_data).await
+                AsyncSender::send_blocking(self, frame_type, frame_data)
             }
         }
 
@@ -520,11 +517,11 @@ pub mod server {
             C: RawCondvar + Send + Sync,
             C::RawMutex: Send + Sync,
             C::RawMutex: Send + Sync,
-            S: Sender + SessionProvider + Send + Clone + 'static,
+            S: Sender + SessionProvider + Send + Clone,
             S::Error: Send + Sync + 'static,
         {
             type Sender<'a> = AsyncSender<U, S> where U: 'a, C: 'a, S: 'a;
-            type Receiver<'a> = AsyncReceiver<C, S::Error> where U: 'a, C: 'a;
+            type Receiver<'a> = AsyncReceiver<C, S::Error> where U: 'a, S: 'a, C: 'a;
 
             async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error> {
                 self.await
@@ -536,10 +533,10 @@ pub mod server {
             C: RawCondvar + Send + Sync,
             C::RawMutex: Send + Sync,
             C::RawMutex: Send + Sync,
-            S: Sender + SessionProvider + Send + Clone + 'static,
+            S: Sender + SessionProvider + Send + Clone,
         {
             type Sender<'a> = AsyncSender<(), S> where C: 'a, S: 'a;
-            type Receiver<'a> = AsyncReceiver<C, S::Error> where C: 'a;
+            type Receiver<'a> = AsyncReceiver<C, S::Error> where C: 'a, S: 'a;
 
             async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error> {
                 self.await

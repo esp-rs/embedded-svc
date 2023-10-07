@@ -17,57 +17,54 @@ pub mod asynch {
         }
     }
 
-    //#[cfg(feature = "nightly")]
     mod unblocker {
         use core::future::Future;
 
         // Keep it GAT based for now so that it builds with stable Rust
         // and therefore `crate::utils::asyncify` can also build with stable Rust
         pub trait Unblocker {
-            type UnblockFuture<T>: Future<Output = T> + Send
+            type UnblockFuture<'a, F, T>: Future<Output = T> + Send
             where
-                T: Send;
+                Self: 'a,
+                F: Send + 'a,
+                T: Send + 'a;
 
-            fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
+            fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
             where
-                F: FnOnce() -> T + Send + 'static,
-                T: Send + 'static;
+                F: FnOnce() -> T + Send + 'a,
+                T: Send + 'a;
         }
 
         impl<U> Unblocker for &U
         where
             U: Unblocker,
         {
-            type UnblockFuture<T>
-            = U::UnblockFuture<T> where T: Send;
+            type UnblockFuture<'a, F, T>
+            = U::UnblockFuture<'a, F, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
 
-            fn unblock<F, T>(&self, f: F) -> Self::UnblockFuture<T>
+            fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
             where
-                F: FnOnce() -> T + Send + 'static,
-                T: Send + 'static,
+                F: FnOnce() -> T + Send + 'a,
+                T: Send + 'a,
             {
                 (*self).unblock(f)
             }
         }
 
-        // pub trait Unblocker {
-        //     async fn unblock<F, T>(&self, f: F) -> T
-        //     where
-        //         F: FnOnce() -> T + Send + 'static,
-        //         T: Send + 'static;
-        // }
+        impl<U> Unblocker for &mut U
+        where
+            U: Unblocker,
+        {
+            type UnblockFuture<'a, F, T>
+            = U::UnblockFuture<'a, F, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
 
-        // impl<U> Unblocker for &U
-        // where
-        //     U: Unblocker,
-        // {
-        //     async fn unblock<F, T>(&self, f: F) -> T
-        //     where
-        //         F: FnOnce() -> T + Send + 'static,
-        //         T: Send + 'static,
-        //     {
-        //         (*self).unblock(f).await
-        //     }
-        // }
+            fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
+            where
+                F: FnOnce() -> T + Send + 'a,
+                T: Send + 'a,
+            {
+                (**self).unblock(f)
+            }
+        }
     }
 }

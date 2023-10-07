@@ -47,9 +47,11 @@ where
 }
 
 pub trait EventBus<P>: ErrorType {
-    type Subscription<'a>;
+    type Subscription<'a>
+    where
+        Self: 'a;
 
-    fn subscribe<'a, F>(&self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
+    fn subscribe<'a, F>(&'a self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
     where
         F: FnMut(&P) + Send + 'a;
 }
@@ -58,9 +60,9 @@ impl<'e, P, E> EventBus<P> for &'e E
 where
     E: EventBus<P>,
 {
-    type Subscription<'a> = E::Subscription<'a>;
+    type Subscription<'a> = E::Subscription<'a> where Self: 'a;
 
-    fn subscribe<'a, F>(&self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
+    fn subscribe<'a, F>(&'a self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
     where
         F: FnMut(&P) + Send + 'a,
     {
@@ -72,9 +74,9 @@ impl<'e, P, E> EventBus<P> for &'e mut E
 where
     E: EventBus<P>,
 {
-    type Subscription<'a> = E::Subscription<'a>;
+    type Subscription<'a> = E::Subscription<'a> where Self: 'a;
 
-    fn subscribe<'a, F>(&self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
+    fn subscribe<'a, F>(&'a self, callback: F) -> Result<Self::Subscription<'a>, Self::Error>
     where
         F: FnMut(&P) + Send + 'a,
     {
@@ -83,29 +85,31 @@ where
 }
 
 pub trait PostboxProvider<P>: ErrorType {
-    type Postbox: Postbox<P, Error = Self::Error>;
+    type Postbox<'a>: Postbox<P, Error = Self::Error>
+    where
+        Self: 'a;
 
-    fn postbox(&self) -> Result<Self::Postbox, Self::Error>;
+    fn postbox(&self) -> Result<Self::Postbox<'_>, Self::Error>;
 }
 
-impl<'a, P, PP> PostboxProvider<P> for &'a mut PP
+impl<'p, P, PP> PostboxProvider<P> for &'p mut PP
 where
     PP: PostboxProvider<P>,
 {
-    type Postbox = PP::Postbox;
+    type Postbox<'a> = PP::Postbox<'a> where Self: 'a;
 
-    fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
+    fn postbox(&self) -> Result<Self::Postbox<'_>, Self::Error> {
         (**self).postbox()
     }
 }
 
-impl<'a, P, PP> PostboxProvider<P> for &'a PP
+impl<'p, P, PP> PostboxProvider<P> for &'p PP
 where
     PP: PostboxProvider<P>,
 {
-    type Postbox = PP::Postbox;
+    type Postbox<'a> = PP::Postbox<'a> where Self: 'a;
 
-    fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
+    fn postbox(&self) -> Result<Self::Postbox<'_>, Self::Error> {
         (*self).postbox()
     }
 }
@@ -174,19 +178,21 @@ pub mod asynch {
     }
 
     pub trait EventBus<P>: ErrorType {
-        type Subscription: Receiver<Result = P>;
+        type Subscription<'a>: Receiver<Result = P>
+        where
+            Self: 'a;
 
-        fn subscribe(&self) -> Result<Self::Subscription, Self::Error>;
+        async fn subscribe(&self) -> Result<Self::Subscription<'_>, Self::Error>;
     }
 
     impl<E, P> EventBus<P> for &mut E
     where
         E: EventBus<P>,
     {
-        type Subscription = E::Subscription;
+        type Subscription<'a> = E::Subscription<'a> where Self: 'a;
 
-        fn subscribe(&self) -> Result<Self::Subscription, Self::Error> {
-            (**self).subscribe()
+        async fn subscribe(&self) -> Result<Self::Subscription<'_>, Self::Error> {
+            (**self).subscribe().await
         }
     }
 
@@ -194,27 +200,29 @@ pub mod asynch {
     where
         E: EventBus<P>,
     {
-        type Subscription = E::Subscription;
+        type Subscription<'a> = E::Subscription<'a> where Self: 'a;
 
-        fn subscribe(&self) -> Result<Self::Subscription, Self::Error> {
-            (**self).subscribe()
+        async fn subscribe(&self) -> Result<Self::Subscription<'_>, Self::Error> {
+            (**self).subscribe().await
         }
     }
 
     pub trait PostboxProvider<P>: ErrorType {
-        type Postbox: Sender<Data = P>;
+        type Postbox<'a>: Sender<Data = P>
+        where
+            Self: 'a;
 
-        fn postbox(&self) -> Result<Self::Postbox, Self::Error>;
+        async fn postbox(&self) -> Result<Self::Postbox<'_>, Self::Error>;
     }
 
     impl<PB, P> PostboxProvider<P> for &mut PB
     where
         PB: PostboxProvider<P>,
     {
-        type Postbox = PB::Postbox;
+        type Postbox<'a> = PB::Postbox<'a> where Self: 'a;
 
-        fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
-            (**self).postbox()
+        async fn postbox(&self) -> Result<Self::Postbox<'_>, Self::Error> {
+            (**self).postbox().await
         }
     }
 
@@ -222,10 +230,10 @@ pub mod asynch {
     where
         PB: PostboxProvider<P>,
     {
-        type Postbox = PB::Postbox;
+        type Postbox<'a> = PB::Postbox<'a> where Self: 'a;
 
-        fn postbox(&self) -> Result<Self::Postbox, Self::Error> {
-            (**self).postbox()
+        async fn postbox(&self) -> Result<Self::Postbox<'_>, Self::Error> {
+            (**self).postbox().await
         }
     }
 }

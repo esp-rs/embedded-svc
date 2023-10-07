@@ -164,7 +164,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        fn timer(&self) -> Result<Self::Timer<'_>, Self::Error>;
+        async fn timer(&self) -> Result<Self::Timer<'_>, Self::Error>;
     }
 
     impl<T> TimerService for &T
@@ -173,8 +173,8 @@ pub mod asynch {
     {
         type Timer<'a> = T::Timer<'a> where Self: 'a;
 
-        fn timer(&self) -> Result<Self::Timer<'_>, Self::Error> {
-            (*self).timer()
+        async fn timer(&self) -> Result<Self::Timer<'_>, Self::Error> {
+            (*self).timer().await
         }
     }
 
@@ -184,8 +184,8 @@ pub mod asynch {
     {
         type Timer<'a> = T::Timer<'a> where Self: 'a;
 
-        fn timer(&self) -> Result<Self::Timer<'_>, Self::Error> {
-            (**self).timer()
+        async fn timer(&self) -> Result<Self::Timer<'_>, Self::Error> {
+            (**self).timer().await
         }
     }
 }
