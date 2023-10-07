@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * OTA: New method: `Ota::finish` that allows to postpone/avoid setting the updated partition as a boot one
 * TimerService: `TimerService::timer` now takes `&self` instead of `&mut self`
 * Breaking change: TimerService: scoped handler: the timer callback now only needs to live as long as the `TimerService::Timer` associated type. Therefore, `TimerService::Timer` is now lifetimed: `TimerService::Timer<'a>`
+* Breaking change: TimerService: `TimerService::Timer` now borrows from `TimerService`. Therefore, that's another reason why `TimerService::Timer` is now lifetimed: `TimerService::Timer<'a>`
 * Breaking change: EventBus: scoped handler: the subscription callback now only needs to live as long as the `EventBus::Subscription` associated type. Therefore, `EventBus::Subscription` is now lifetimed: `EventBus::Subscription<'a>`
 * Breaking change: OTA: GAT `Ota::Update` now parametric over lifetime and no longer returned by `&mut` ref
 * Breaking change: OTA: `OtaUpdate::abort` and `OtaUpdate::complete` now take `self` instead of `&mut self`

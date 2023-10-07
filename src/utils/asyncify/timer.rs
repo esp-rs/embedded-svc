@@ -59,7 +59,7 @@ pub struct AsyncTimer<T> {
 
 impl<T> AsyncTimer<T>
 where
-    T: crate::timer::OnceTimer + Send + 'static,
+    T: crate::timer::OnceTimer + Send,
 {
     pub async fn after(&mut self, duration: Duration) -> Result<(), T::Error> {
         self.timer.cancel()?;
@@ -103,7 +103,7 @@ where
 
 impl<'a, T> Future for TimerFuture<'a, T>
 where
-    T: crate::timer::OnceTimer + 'static,
+    T: crate::timer::OnceTimer,
 {
     type Output = ();
 
@@ -142,7 +142,7 @@ where
     T: crate::timer::TimerService,
     for<'a> T::Timer<'a>: Send,
 {
-    pub fn timer(&self) -> Result<AsyncTimer<T::Timer<'static>>, T::Error> {
+    pub fn timer(&self) -> Result<AsyncTimer<T::Timer<'_>>, T::Error> {
         let signal = Arc::new(TimerSignal::new());
 
         let timer = {
@@ -189,7 +189,7 @@ mod async_traits_impl {
 
     impl<T> OnceTimer for AsyncTimer<T>
     where
-        T: crate::timer::OnceTimer + Send + 'static,
+        T: crate::timer::OnceTimer + Send,
     {
         async fn after(&mut self, duration: Duration) -> Result<(), Self::Error> {
             AsyncTimer::after(self, duration).await
@@ -198,9 +198,9 @@ mod async_traits_impl {
 
     impl<T> PeriodicTimer for AsyncTimer<T>
     where
-        T: crate::timer::OnceTimer + Send + 'static,
+        T: crate::timer::OnceTimer + Send,
     {
-        type Clock<'a> = &'a mut Self;
+        type Clock<'a> = &'a mut Self where Self: 'a;
 
         fn every(&mut self, duration: Duration) -> Result<Self::Clock<'_>, Self::Error> {
             AsyncTimer::every(self, duration)
@@ -209,7 +209,7 @@ mod async_traits_impl {
 
     impl<'a, T> Clock for &'a mut AsyncTimer<T>
     where
-        T: crate::timer::OnceTimer + Send + 'static,
+        T: crate::timer::OnceTimer + Send,
     {
         async fn tick(&mut self) {
             AsyncTimer::tick(self).await
@@ -228,9 +228,9 @@ mod async_traits_impl {
         T: crate::timer::TimerService,
         for<'a> T::Timer<'a>: Send,
     {
-        type Timer = AsyncTimer<T::Timer<'static>>;
+        type Timer<'a> = AsyncTimer<T::Timer<'a>> where Self: 'a;
 
-        fn timer(&self) -> Result<Self::Timer, Self::Error> {
+        fn timer(&self) -> Result<Self::Timer<'_>, Self::Error> {
             AsyncTimerService::timer(self)
         }
     }
