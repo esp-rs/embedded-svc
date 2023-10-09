@@ -237,7 +237,7 @@ mod async_traits_impl {
 
     impl<T> embedded_hal_async::delay::DelayUs for AsyncTimer<T>
     where
-        T: crate::timer::OnceTimer + Send + 'static,
+        T: crate::timer::OnceTimer + Send,
     {
         async fn delay_us(&mut self, us: u32) {
             AsyncTimer::after(self, Duration::from_micros(us as _))
