@@ -1,3 +1,5 @@
+use core::future::Future;
+
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod event_bus;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
@@ -7,48 +9,91 @@ pub mod timer;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod ws;
 
-pub use async_wrapper::*;
-
 #[cfg(feature = "alloc")]
 pub use blocking_unblocker::*;
 
-mod async_wrapper {
-    pub trait AsyncWrapper<S> {
-        fn new(sync: S) -> Self;
+// Keep it GAT based for now so that it builds with stable Rust
+// and therefore `crate::utils::asyncify` can also build with stable Rust
+pub trait Unblocker {
+    type UnblockFuture<'a, F, T>: Future<Output = T> + Send
+    where
+        Self: 'a,
+        F: Send + 'a,
+        T: Send + 'a;
+
+    fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
+    where
+        F: FnOnce() -> T + Send + 'a,
+        T: Send + 'a;
+}
+
+impl<U> Unblocker for &U
+where
+    U: Unblocker,
+{
+    type UnblockFuture<'a, F, T>
+    = U::UnblockFuture<'a, F, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
+
+    fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
+    where
+        F: FnOnce() -> T + Send + 'a,
+        T: Send + 'a,
+    {
+        (*self).unblock(f)
+    }
+}
+
+impl<U> Unblocker for &mut U
+where
+    U: Unblocker,
+{
+    type UnblockFuture<'a, F, T>
+    = U::UnblockFuture<'a, F, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
+
+    fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
+    where
+        F: FnOnce() -> T + Send + 'a,
+        T: Send + 'a,
+    {
+        (**self).unblock(f)
+    }
+}
+
+pub trait AsyncWrapper<S> {
+    fn new(sync: S) -> Self;
+}
+
+pub trait Asyncify {
+    type AsyncWrapper<S>: AsyncWrapper<S>;
+
+    fn into_async(self) -> Self::AsyncWrapper<Self>
+    where
+        Self: Sized,
+    {
+        Self::AsyncWrapper::new(self)
     }
 
-    pub trait Asyncify {
-        type AsyncWrapper<S>: AsyncWrapper<S>;
+    fn as_async(&mut self) -> Self::AsyncWrapper<&mut Self> {
+        Self::AsyncWrapper::new(self)
+    }
+}
 
-        fn into_async(self) -> Self::AsyncWrapper<Self>
-        where
-            Self: Sized,
-        {
-            Self::AsyncWrapper::new(self)
-        }
+pub trait UnblockingAsyncWrapper<U, S> {
+    fn new(unblocker: U, sync: S) -> Self;
+}
 
-        fn as_async(&mut self) -> Self::AsyncWrapper<&mut Self> {
-            Self::AsyncWrapper::new(self)
-        }
+pub trait UnblockingAsyncify {
+    type AsyncWrapper<U, S>: UnblockingAsyncWrapper<U, S>;
+
+    fn unblock_into_async<U>(self, unblocker: U) -> Self::AsyncWrapper<U, Self>
+    where
+        Self: Sized,
+    {
+        Self::AsyncWrapper::new(unblocker, self)
     }
 
-    pub trait UnblockingAsyncWrapper<U, S> {
-        fn new(unblocker: U, sync: S) -> Self;
-    }
-
-    pub trait UnblockingAsyncify {
-        type AsyncWrapper<U, S>: UnblockingAsyncWrapper<U, S>;
-
-        fn unblock_into_async<U>(self, unblocker: U) -> Self::AsyncWrapper<U, Self>
-        where
-            Self: Sized,
-        {
-            Self::AsyncWrapper::new(unblocker, self)
-        }
-
-        fn unblock_as_async<U>(&mut self, unblocker: U) -> Self::AsyncWrapper<U, &mut Self> {
-            Self::AsyncWrapper::new(unblocker, self)
-        }
+    fn unblock_as_async<U>(&mut self, unblocker: U) -> Self::AsyncWrapper<U, &mut Self> {
+        Self::AsyncWrapper::new(unblocker, self)
     }
 }
 
@@ -75,7 +120,7 @@ mod blocking_unblocker {
         }
     }
 
-    impl crate::executor::asynch::Unblocker for BlockingUnblocker {
+    impl super::Unblocker for BlockingUnblocker {
         type UnblockFuture<'a, F, T> = BlockingFuture<'a, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
 
         fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>

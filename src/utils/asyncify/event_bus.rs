@@ -7,7 +7,7 @@ use core::time::Duration;
 extern crate alloc;
 use alloc::sync::Arc;
 
-use crate::executor::asynch::Unblocker;
+use crate::utils::asyncify::Unblocker;
 use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
 
 #[cfg(feature = "nightly")]
@@ -277,7 +277,7 @@ impl<CV, E> AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
 #[cfg(feature = "nightly")]
 mod async_traits_impl {
     use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider, Receiver, Sender};
-    use crate::executor::asynch::Unblocker;
+    use crate::utils::asyncify::Unblocker;
     use crate::utils::mutex::RawCondvar;
 
     use super::{AsyncEventBus, AsyncPostbox, AsyncSubscription};

@@ -47,7 +47,7 @@ pub mod server {
 
     impl<U, S> AsyncSender<U, S>
     where
-        U: crate::executor::asynch::Unblocker,
+        U: crate::utils::asyncify::Unblocker,
         S: Sender + SessionProvider + Send + Clone,
         S::Error: Send + Sync,
     {
@@ -439,7 +439,7 @@ pub mod server {
     mod async_traits_impl {
         use core::fmt::Debug;
 
-        use crate::executor::asynch::Unblocker;
+        use crate::utils::asyncify::Unblocker;
         use crate::utils::mutex::RawCondvar;
         use crate::ws::{callback_server::*, *};
 

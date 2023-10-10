@@ -14,7 +14,6 @@ compile_error!("You must enable at most one of the following features: defmt, lo
 
 pub mod eth;
 pub mod event_bus;
-pub mod executor;
 pub mod http;
 pub mod io;
 pub mod ipv4;

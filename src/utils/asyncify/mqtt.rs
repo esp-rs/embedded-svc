@@ -309,10 +309,10 @@ pub mod client {
         use alloc::sync::Arc;
         use alloc::vec::Vec;
 
-        use crate::executor::asynch::Unblocker;
         use crate::mqtt::client::asynch::{Client, Connection, MessageId, Publish, QoS};
         use crate::mqtt::client::ErrorType;
         use crate::utils::asyncify::mqtt::client::Event;
+        use crate::utils::asyncify::Unblocker;
         use crate::utils::mutex::{Mutex, RawCondvar, RawMutex};
 
         use super::{
