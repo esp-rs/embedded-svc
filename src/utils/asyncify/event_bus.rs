@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
@@ -7,6 +8,7 @@ use core::time::Duration;
 extern crate alloc;
 use alloc::sync::Arc;
 
+use crate::event_bus::ErrorType;
 use crate::utils::asyncify::Unblocker;
 use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
 
@@ -32,14 +34,15 @@ impl<U, P, PB> AsyncPostbox<U, P, PB> {
 }
 
 impl<P, PB> AsyncPostbox<(), P, PB> {
-    pub fn send_blocking(&self, value: P, duration: Option<core::time::Duration>)
+    pub fn send_blocking(
+        &self,
+        value: P,
+        duration: Option<core::time::Duration>,
+    ) -> Result<(), PB::Error>
     where
         PB: crate::event_bus::Postbox<P>,
     {
-        self.blocking_postbox
-            .post(&value, duration)
-            .map(|_| ())
-            .unwrap()
+        self.blocking_postbox.post(&value, duration).map(|_| ())
     }
 }
 
@@ -47,7 +50,7 @@ impl<U, P, PB> AsyncPostbox<U, P, PB>
 where
     U: Unblocker,
 {
-    pub async fn send(&self, value: P)
+    pub async fn send(&self, value: P) -> Result<(), PB::Error>
     where
         P: Send + 'static,
         PB: crate::event_bus::Postbox<P> + Sync,
@@ -62,7 +65,6 @@ where
                     .map(|_| ())
             })
             .await
-            .unwrap()
     }
 }
 
@@ -87,34 +89,35 @@ pub struct SubscriptionState<P, S> {
 }
 
 #[allow(clippy::type_complexity)]
-pub struct AsyncSubscription<CV, P, S>(
+pub struct AsyncSubscription<CV, P, S, E>(
     Arc<(Mutex<CV::RawMutex, SubscriptionState<P, S>>, Condvar<CV>)>,
+    PhantomData<fn() -> E>,
 )
 where
     CV: RawCondvar,
     P: Send,
     S: Send;
 
-impl<CV, P, S> AsyncSubscription<CV, P, S>
+impl<CV, P, S, E> AsyncSubscription<CV, P, S, E>
 where
     CV: RawCondvar + Send + Sync,
     CV::RawMutex: Send + Sync,
     S: Send,
     P: Clone + Send,
 {
-    pub async fn recv(&self) -> P {
+    pub async fn recv(&self) -> Result<P, E> {
         NextFuture(self).await
     }
 }
 
-struct NextFuture<'a, CV, P, S>(&'a AsyncSubscription<CV, P, S>)
+struct NextFuture<'a, CV, P, S, E>(&'a AsyncSubscription<CV, P, S, E>)
 where
     CV: RawCondvar + Send + Sync,
     CV::RawMutex: Send + Sync,
     P: Clone + Send,
     S: Send;
 
-impl<'a, CV, P, S> Drop for NextFuture<'a, CV, P, S>
+impl<'a, CV, P, S, E> Drop for NextFuture<'a, CV, P, S, E>
 where
     CV: RawCondvar + Send + Sync,
     CV::RawMutex: Send + Sync,
@@ -127,14 +130,14 @@ where
     }
 }
 
-impl<'a, CV, P, S> Future for NextFuture<'a, CV, P, S>
+impl<'a, CV, P, S, E> Future for NextFuture<'a, CV, P, S, E>
 where
     CV: RawCondvar + Send + Sync,
     CV::RawMutex: Send + Sync,
     P: Clone + Send,
     S: Send,
 {
-    type Output = P;
+    type Output = Result<P, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut state = self.0 .0 .0.lock();
@@ -144,7 +147,7 @@ where
         if let Some(value) = value {
             self.0 .0 .1.notify_all();
 
-            Poll::Ready(value)
+            Poll::Ready(Ok(value))
         } else {
             state.waker = Some(cx.waker().clone());
 
@@ -176,7 +179,9 @@ where
     CV: RawCondvar + Send + Sync + 'static,
     CV::RawMutex: Send + Sync + 'static,
 {
-    pub fn subscribe<P>(&self) -> Result<AsyncSubscription<CV, P, E::Subscription<'_>>, E::Error>
+    pub fn subscribe<P>(
+        &self,
+    ) -> Result<AsyncSubscription<CV, P, E::Subscription<'_>, E::Error>, E::Error>
     where
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
@@ -217,7 +222,7 @@ where
 
         state.0.lock().subscription = Some(subscription);
 
-        Ok(AsyncSubscription(state))
+        Ok(AsyncSubscription(state, PhantomData))
     }
 }
 
@@ -274,9 +279,35 @@ impl<CV, E> AsyncWrapper<E> for AsyncEventBus<(), CV, E> {
     }
 }
 
+impl<U, P, PB> ErrorType for AsyncPostbox<U, P, PB>
+where
+    PB: ErrorType,
+{
+    type Error = PB::Error;
+}
+
+impl<U, CV, E> ErrorType for AsyncEventBus<U, CV, E>
+where
+    E: ErrorType,
+{
+    type Error = E::Error;
+}
+
+impl<CV, P, S, E> ErrorType for AsyncSubscription<CV, P, S, E>
+where
+    CV: RawCondvar,
+    P: Send,
+    S: Send,
+    E: Debug,
+{
+    type Error = E;
+}
+
 #[cfg(feature = "nightly")]
 mod async_traits_impl {
-    use crate::event_bus::asynch::{ErrorType, EventBus, PostboxProvider, Receiver, Sender};
+    use core::fmt::Debug;
+
+    use crate::event_bus::asynch::{EventBus, PostboxProvider, Receiver, Sender};
     use crate::utils::asyncify::Unblocker;
     use crate::utils::mutex::RawCondvar;
 
@@ -287,16 +318,16 @@ mod async_traits_impl {
         U: Unblocker,
         P: Clone + Send + 'static,
         PB: crate::event_bus::Postbox<P> + Clone + Send + Sync,
+        PB::Error: Send,
     {
         type Data = P;
-        type Result = ();
 
-        async fn send(&self, value: Self::Data) {
+        async fn send(&self, value: Self::Data) -> Result<(), Self::Error> {
             let value = value;
             let blocking_postbox = self.blocking_postbox.clone();
 
             self.unblocker
-                .unblock(move || blocking_postbox.post(&value, None).map(|_| ()).unwrap())
+                .unblock(move || blocking_postbox.post(&value, None).map(|_| ()))
                 .await
         }
     }
@@ -307,32 +338,25 @@ mod async_traits_impl {
         PB: crate::event_bus::Postbox<P>,
     {
         type Data = P;
-        type Result = ();
 
-        async fn send(&self, value: Self::Data) {
+        async fn send(&self, value: Self::Data) -> Result<(), Self::Error> {
             AsyncPostbox::send_blocking(self, value, Some(core::time::Duration::MAX))
         }
     }
 
-    impl<CV, P, S> Receiver for AsyncSubscription<CV, P, S>
+    impl<CV, P, S, E> Receiver for AsyncSubscription<CV, P, S, E>
     where
         CV: RawCondvar + Send + Sync,
         CV::RawMutex: Send + Sync,
         S: Send,
         P: Clone + Send,
+        E: Debug,
     {
-        type Result = P;
+        type Data = P;
 
-        async fn recv(&self) -> Self::Result {
+        async fn recv(&self) -> Result<Self::Data, Self::Error> {
             AsyncSubscription::recv(self).await
         }
-    }
-
-    impl<U, CV, E> ErrorType for AsyncEventBus<U, CV, E>
-    where
-        E: ErrorType,
-    {
-        type Error = E::Error;
     }
 
     impl<U, CV, P, E> EventBus<P> for AsyncEventBus<U, CV, E>
@@ -343,7 +367,7 @@ mod async_traits_impl {
         E: crate::event_bus::EventBus<P>,
         for<'a> E::Subscription<'a>: Send,
     {
-        type Subscription<'a> = AsyncSubscription<CV, P, E::Subscription<'a>> where Self: 'a;
+        type Subscription<'a> = AsyncSubscription<CV, P, E::Subscription<'a>, E::Error> where Self: 'a;
 
         async fn subscribe(&self) -> Result<Self::Subscription<'_>, Self::Error> {
             AsyncEventBus::subscribe(self)

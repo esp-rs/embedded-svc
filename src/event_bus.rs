@@ -118,11 +118,10 @@ where
 pub mod asynch {
     pub use super::{ErrorType, Spin};
 
-    pub trait Sender {
+    pub trait Sender: ErrorType {
         type Data: Send;
-        type Result: Send;
 
-        async fn send(&self, value: Self::Data) -> Self::Result;
+        async fn send(&self, value: Self::Data) -> Result<(), Self::Error>;
     }
 
     impl<S> Sender for &mut S
@@ -130,9 +129,8 @@ pub mod asynch {
         S: Sender,
     {
         type Data = S::Data;
-        type Result = S::Result;
 
-        async fn send(&self, value: Self::Data) -> Self::Result {
+        async fn send(&self, value: Self::Data) -> Result<(), Self::Error> {
             (**self).send(value).await
         }
     }
@@ -142,26 +140,25 @@ pub mod asynch {
         S: Sender,
     {
         type Data = S::Data;
-        type Result = S::Result;
 
-        async fn send(&self, value: Self::Data) -> Self::Result {
+        async fn send(&self, value: Self::Data) -> Result<(), Self::Error> {
             (*self).send(value).await
         }
     }
 
-    pub trait Receiver {
-        type Result: Send;
+    pub trait Receiver: ErrorType {
+        type Data: Send;
 
-        async fn recv(&self) -> Self::Result;
+        async fn recv(&self) -> Result<Self::Data, Self::Error>;
     }
 
     impl<R> Receiver for &mut R
     where
         R: Receiver,
     {
-        type Result = R::Result;
+        type Data = R::Data;
 
-        async fn recv(&self) -> Self::Result {
+        async fn recv(&self) -> Result<Self::Data, Self::Error> {
             (**self).recv().await
         }
     }
@@ -170,15 +167,15 @@ pub mod asynch {
     where
         R: Receiver,
     {
-        type Result = R::Result;
+        type Data = R::Data;
 
-        async fn recv(&self) -> Self::Result {
+        async fn recv(&self) -> Result<Self::Data, Self::Error> {
             (*self).recv().await
         }
     }
 
     pub trait EventBus<P>: ErrorType {
-        type Subscription<'a>: Receiver<Result = P>
+        type Subscription<'a>: Receiver<Data = P, Error = Self::Error>
         where
             Self: 'a;
 
