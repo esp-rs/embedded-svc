@@ -174,6 +174,7 @@ impl<U, CV, E> AsyncEventBus<U, CV, E> {
     }
 }
 
+#[allow(clippy::type_complexity)]
 impl<U, CV, E> AsyncEventBus<U, CV, E>
 where
     CV: RawCondvar + Send + Sync + 'static,
