@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.26.1] - 2023-10-18
-* Rolled back a change where `event_bus::asynch::Sender` and `event_bus::asynch::Receiver` did no longer implement `ErrorType` and returned a `Result`; since these traits are rarely used, and 0.26.0 was just released, no new major version was released, but instead 0.26.0 was yanked
+* Rolled back a change where `event_bus::asynch::Sender` and `event_bus::asynch::Receiver` did no longer implement `ErrorType` and returned a `Result`; since these traits are rarely used (feature `nightly` only), and 0.26.0 was just released, no new major version was released, but instead 0.26.0 was yanked
 
 ## [0.26.0] - 2023-10-17
 * MSRV raised to 1.71
