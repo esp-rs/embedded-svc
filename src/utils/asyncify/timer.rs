@@ -10,6 +10,7 @@ use alloc::sync::Arc;
 
 use atomic_waker::AtomicWaker;
 
+#[allow(unused_imports)]
 #[cfg(feature = "nightly")]
 pub use async_traits_impl::*;
 

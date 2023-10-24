@@ -12,6 +12,7 @@ pub mod client {
     use crate::utils::mqtt::client::ConnStateGuard;
     use crate::utils::mutex::{Mutex, RawCondvar, RawMutex};
 
+    #[allow(unused_imports)]
     #[cfg(feature = "nightly")]
     pub use async_traits_impl::*;
 

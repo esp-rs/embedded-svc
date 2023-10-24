@@ -12,6 +12,7 @@ use crate::event_bus::ErrorType;
 use crate::utils::asyncify::Unblocker;
 use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
 
+#[allow(unused_imports)]
 #[cfg(feature = "nightly")]
 pub use async_traits_impl::*;
 

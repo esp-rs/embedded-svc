@@ -15,6 +15,7 @@ pub mod server {
     use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
     use crate::ws::{callback_server::*, *};
 
+    #[allow(unused_imports)]
     #[cfg(feature = "nightly")]
     pub use async_traits_impl::*;
 
