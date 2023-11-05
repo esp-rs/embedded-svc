@@ -175,4 +175,7 @@ mod blocking_unblocker {
             }
         }
     }
+
+    // Temporary, until this issue in Rust nightly is fixed: https://github.com/rust-lang/rust/issues/117602
+    unsafe impl<'a, T> Send for BlockingFuture<'a, T> where T: Send + 'a {}
 }
