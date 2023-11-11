@@ -367,7 +367,7 @@ mod async_traits_impl {
         CV::RawMutex: Send + Sync + 'static,
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
-        for<'a> E::Subscription<'a>: Send,
+        for<'a> E::Subscription<'a>: Send + 'static,
     {
         type Subscription<'a> = AsyncSubscription<CV, P, E::Subscription<'a>, E::Error> where Self: 'a;
 
