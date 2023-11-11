@@ -187,7 +187,7 @@ where
     where
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
-        for<'a> E::Subscription<'a>: Send,
+        for<'a> E::Subscription<'a>: Send + 'static,
     {
         let state = Arc::new((
             Mutex::new(SubscriptionState {

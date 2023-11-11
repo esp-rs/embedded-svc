@@ -63,7 +63,7 @@ pub trait Ping {
 
     fn ping(&mut self, ip: ipv4::Ipv4Addr, conf: &Configuration) -> Result<Summary, Self::Error>;
 
-    fn ping_details<F: FnMut(&Summary, &Reply) + Send>(
+    fn ping_details<F: FnMut(&Summary, &Reply) + Send + 'static>(
         &mut self,
         ip: ipv4::Ipv4Addr,
         conf: &Configuration,
@@ -81,7 +81,7 @@ where
         (*self).ping(ip, conf)
     }
 
-    fn ping_details<F: FnMut(&Summary, &Reply) + Send>(
+    fn ping_details<F: FnMut(&Summary, &Reply) + Send + 'static>(
         &mut self,
         ip: ipv4::Ipv4Addr,
         conf: &Configuration,
@@ -107,7 +107,7 @@ pub mod asynch {
             conf: &Configuration,
         ) -> Result<Summary, Self::Error>;
 
-        async fn ping_details<F: FnMut(&Summary, &Reply) + Send>(
+        async fn ping_details<F: FnMut(&Summary, &Reply) + Send + 'static>(
             &mut self,
             ip: ipv4::Ipv4Addr,
             conf: &Configuration,
@@ -129,7 +129,7 @@ pub mod asynch {
             (*self).ping(ip, conf).await
         }
 
-        async fn ping_details<F: FnMut(&Summary, &Reply) + Send>(
+        async fn ping_details<F: FnMut(&Summary, &Reply) + Send + 'static>(
             &mut self,
             ip: ipv4::Ipv4Addr,
             conf: &Configuration,
