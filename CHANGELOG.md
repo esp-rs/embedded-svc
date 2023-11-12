@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.3] - 2023-11-12
+* Traits `EventBus` and `TimerService`: do not allow subscriptions with non-static callbacks, as these are impossible to implement safely on ESP IDF
+
 ## [0.26.2] - 2023-11-05
 * A temporary workaround for https://github.com/rust-lang/rust/issues/117602
 

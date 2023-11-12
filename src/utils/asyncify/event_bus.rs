@@ -83,21 +83,21 @@ where
     }
 }
 
-pub struct SubscriptionState<P, S> {
-    subscription: Option<S>,
+pub struct SubscriptionState<P> {
     value: Option<P>,
     waker: Option<Waker>,
 }
 
 #[allow(clippy::type_complexity)]
-pub struct AsyncSubscription<CV, P, S, E>(
-    Arc<(Mutex<CV::RawMutex, SubscriptionState<P, S>>, Condvar<CV>)>,
-    PhantomData<fn() -> E>,
-)
+pub struct AsyncSubscription<CV, P, S, E>
 where
     CV: RawCondvar,
     P: Send,
-    S: Send;
+{
+    state: Arc<(Mutex<CV::RawMutex, SubscriptionState<P>>, Condvar<CV>)>,
+    _subscription: S,
+    _pd: PhantomData<fn() -> E>,
+}
 
 impl<CV, P, S, E> AsyncSubscription<CV, P, S, E>
 where
@@ -126,7 +126,7 @@ where
     S: Send,
 {
     fn drop(&mut self) {
-        let mut state = self.0 .0 .0.lock();
+        let mut state = self.0.state.0.lock();
         state.waker = None;
     }
 }
@@ -141,18 +141,18 @@ where
     type Output = Result<P, E>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut state = self.0 .0 .0.lock();
+        let mut state = self.0.state.0.lock();
 
         let value = state.value.take();
 
         if let Some(value) = value {
-            self.0 .0 .1.notify_all();
+            self.0.state.1.notify_all();
 
             Poll::Ready(Ok(value))
         } else {
             state.waker = Some(cx.waker().clone());
 
-            self.0 .0 .1.notify_all();
+            self.0.state.1.notify_all();
 
             Poll::Pending
         }
@@ -187,11 +187,9 @@ where
     where
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
-        for<'a> E::Subscription<'a>: Send + 'static,
     {
         let state = Arc::new((
             Mutex::new(SubscriptionState {
-                subscription: None,
                 value: None,
                 waker: None,
             }),
@@ -222,9 +220,11 @@ where
             }
         })?;
 
-        state.0.lock().subscription = Some(subscription);
-
-        Ok(AsyncSubscription(state, PhantomData))
+        Ok(AsyncSubscription {
+            state,
+            _subscription: subscription,
+            _pd: PhantomData,
+        })
     }
 }
 
@@ -367,7 +367,7 @@ mod async_traits_impl {
         CV::RawMutex: Send + Sync + 'static,
         P: Clone + Send + 'static,
         E: crate::event_bus::EventBus<P>,
-        for<'a> E::Subscription<'a>: Send + 'static,
+        for<'a> E::Subscription<'a>: Send,
     {
         type Subscription<'a> = AsyncSubscription<CV, P, E::Subscription<'a>, E::Error> where Self: 'a;
 
