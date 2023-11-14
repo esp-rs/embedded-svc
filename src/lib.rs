@@ -21,6 +21,7 @@ pub mod log;
 pub mod mqtt;
 pub mod ota;
 pub mod ping;
+#[cfg(feature = "storage")]
 pub mod storage;
 pub mod sys_time;
 pub mod timer;
