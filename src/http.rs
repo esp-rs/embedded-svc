@@ -170,6 +170,8 @@ where
 }
 
 pub mod headers {
+    use core::convert::TryFrom;
+
     pub type ContentLenParseBuf = heapless::String<20>;
 
     pub fn content_type(ctype: &str) -> (&str, &str) {
@@ -177,7 +179,7 @@ pub mod headers {
     }
 
     pub fn content_len(len: u64, buf: &mut ContentLenParseBuf) -> (&str, &str) {
-        *buf = ContentLenParseBuf::from(len);
+        *buf = ContentLenParseBuf::try_from(len).unwrap();
 
         ("Content-Length", buf.as_str())
     }

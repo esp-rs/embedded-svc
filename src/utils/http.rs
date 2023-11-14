@@ -1,4 +1,4 @@
-use core::str;
+use core::{convert::TryFrom, str};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -101,7 +101,7 @@ impl<'b, const N: usize> Headers<'b, N> {
         content_len: u64,
         buf: &'b mut heapless::String<20>,
     ) -> &mut Self {
-        *buf = heapless::String::<20>::from(content_len);
+        *buf = heapless::String::<20>::try_from(content_len).unwrap();
 
         self.set("Content-Length", buf.as_str())
     }
@@ -372,6 +372,7 @@ pub mod server {
     }
 
     pub mod session {
+        use core::convert::TryInto;
         use core::fmt;
         use core::time::Duration;
 
@@ -444,7 +445,7 @@ pub mod server {
 
                 for entry in &mut *data {
                     if entry.last_accessed + entry.timeout < current_time {
-                        entry.id = "".into();
+                        entry.id = heapless::String::new();
                     }
                 }
             }
@@ -515,7 +516,7 @@ pub mod server {
                 {
                     Ok(f(&mut entry.data))
                 } else if let Some(entry) = data.iter_mut().find(|entry| entry.id == "") {
-                    entry.id = session_id.into();
+                    entry.id = session_id.try_into().unwrap();
                     entry.data = Default::default();
                     entry.timeout = self.default_session_timeout;
                     entry.last_accessed = current_time;
@@ -537,7 +538,7 @@ pub mod server {
                         .iter_mut()
                         .find(|entry| entry.id.as_str() == session_id)
                     {
-                        entry.id = "".into();
+                        entry.id = heapless::String::new();
                         true
                     } else {
                         false
