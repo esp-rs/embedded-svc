@@ -13,16 +13,17 @@ readme = "README.md"
 rust-version = "1.71"
 
 [features]
-default = ["std", "use_serde", "use_strum", "use_numenum", "log"]
+default = ["std", "use_serde", "use_strum", "use_numenum", "log", "asyncify"]
 
 std = ["alloc", "embedded-io/std", "embedded-io-async?/std", "serde/std", "strum?/std", "num_enum?/std"]
 alloc = ["embedded-io/alloc", "embedded-io-async?/alloc", "serde/alloc", "defmt?/alloc"]
 nightly = ["embedded-io-async", "embedded-hal-async"]
 experimental = []
-use_serde = ["enumset/serde", "no-std-net/serde", "heapless/serde"]
+use_serde = ["dep:serde", "enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
 defmt = ["dep:defmt", "heapless/defmt", "heapless/defmt-impl", "embedded-io/defmt-03", "embedded-io-async?/defmt-03", "embedded-hal-async?/defmt-03"]
+asyncify = ["dep:atomic-waker"]
 
 [dependencies]
 heapless = { version = "0.7" }
@@ -31,8 +32,8 @@ embedded-io-async = { version = "0.6", default-features = false, optional = true
 embedded-hal-async = { version = "=1.0.0-rc.1", default-features = false, optional = true }
 log = { version = "0.4", default-features = false, optional = true }
 no-std-net = { version = "0.5", default-features = false }
-serde = { version = "1", default-features = false, features = ["derive"] }
-atomic-waker = { version = "1.1.1", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive"], optional = true }
+atomic-waker = { version = "1.1.1", default-features = false, optional = true }
 enumset = { version = "1", default-features = false }
 strum = { version = "0.25", default-features = false, optional = true, features = ["derive"] }
 strum_macros = { version = "0.25", optional = true }
