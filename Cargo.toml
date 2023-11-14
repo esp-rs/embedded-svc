@@ -22,11 +22,11 @@ experimental = []
 use_serde = ["dep:serde", "enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
-defmt = ["dep:defmt", "heapless/defmt", "heapless/defmt-impl", "embedded-io/defmt-03", "embedded-io-async?/defmt-03", "embedded-hal-async?/defmt-03"]
+defmt = ["dep:defmt", "heapless/defmt-03", "embedded-io/defmt-03", "embedded-io-async?/defmt-03", "embedded-hal-async?/defmt-03"]
 asyncify = ["dep:atomic-waker"]
 
 [dependencies]
-heapless = { version = "0.7" }
+heapless = { version = "0.8" }
 embedded-io = { version = "0.6", default-features = false }
 embedded-io-async = { version = "0.6", default-features = false, optional = true }
 embedded-hal-async = { version = "=1.0.0-rc.1", default-features = false, optional = true }

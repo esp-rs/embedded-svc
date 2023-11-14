@@ -1,4 +1,7 @@
-use core::fmt::{self, Debug, Display, Write as _};
+use core::{
+    convert::TryInto,
+    fmt::{self, Debug, Display, Write as _},
+};
 
 use crate::io::{Error, Read, Write};
 
@@ -222,7 +225,7 @@ pub struct HandlerError(heapless::String<64>);
 
 impl HandlerError {
     pub fn new(message: &str) -> Self {
-        Self(message.into())
+        Self(message.try_into().unwrap())
     }
 
     pub fn message(&self) -> &str {
@@ -239,10 +242,10 @@ where
     E: Debug,
 {
     fn from(e: E) -> Self {
-        let mut string: heapless::String<64> = "".into();
+        let mut string = heapless::String::<64>::new();
 
         if write!(&mut string, "{e:?}").is_err() {
-            string = "(Error string too big)".into();
+            string = "(Error string too big)".try_into().unwrap();
         }
 
         Self(string)

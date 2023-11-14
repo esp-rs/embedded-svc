@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.??.?] - ?
 * Added the opt-out `asyncify` feature. Disabling this feature removes the `atomic-waker` dependencies and removes the `utils::asyncify` module.
 * The `serde` dependency is now optional.
+* Update to `heapless` 0.8
 
 ## [0.26.4] - 2023-11-12
 * Updated changelog

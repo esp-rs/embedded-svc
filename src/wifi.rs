@@ -1,3 +1,4 @@
+use core::convert::TryInto;
 use core::fmt::Debug;
 use core::mem;
 
@@ -157,13 +158,13 @@ pub struct AccessPointConfiguration {
 impl Default for AccessPointConfiguration {
     fn default() -> Self {
         Self {
-            ssid: "iot-device".into(),
+            ssid: "iot-device".try_into().unwrap(),
             ssid_hidden: false,
             channel: 1,
             secondary_channel: None,
             protocols: Protocol::P802D11B | Protocol::P802D11BG | Protocol::P802D11BGN,
             auth_method: AuthMethod::None,
-            password: "".into(),
+            password: heapless::String::new(),
             max_connections: 255,
         }
     }
@@ -195,10 +196,10 @@ impl Debug for ClientConfiguration {
 impl Default for ClientConfiguration {
     fn default() -> Self {
         ClientConfiguration {
-            ssid: "".into(),
+            ssid: heapless::String::new(),
             bssid: None,
             auth_method: Default::default(),
-            password: "".into(),
+            password: heapless::String::new(),
             channel: None,
         }
     }
