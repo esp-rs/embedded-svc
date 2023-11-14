@@ -3,6 +3,7 @@ use core::fmt::{self, Debug, Display, Formatter};
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
 pub trait ErrorType {
@@ -25,8 +26,9 @@ where
 
 /// Quality of service
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum QoS {
     AtMostOnce = 0,
     AtLeastOnce = 1,
@@ -35,8 +37,9 @@ pub enum QoS {
 
 pub type MessageId = u32;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Event<M> {
     BeforeConnect,
     Connected(bool),
@@ -159,22 +162,25 @@ impl Message for MessageImpl {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Details {
     Complete,
     InitialChunk(InitialChunkData),
     SubsequentChunk(SubsequentChunkData),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct InitialChunkData {
     pub total_data_size: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct SubsequentChunkData {
     pub current_data_offset: usize,
     pub total_data_size: usize,

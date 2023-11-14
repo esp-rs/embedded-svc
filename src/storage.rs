@@ -1,8 +1,8 @@
 use core::any::Any;
 use core::fmt::{self, Debug};
 
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+#[cfg(feature = "use_serde")]
+use serde::{de::DeserializeOwned, Serialize};
 
 pub trait StorageBase {
     type Error: Debug;
@@ -26,6 +26,7 @@ where
     }
 }
 
+#[cfg(feature = "use_serde")]
 pub trait Storage: StorageBase {
     fn get<T>(&self, name: &str) -> Result<Option<T>, Self::Error>
     where
@@ -36,6 +37,7 @@ pub trait Storage: StorageBase {
         T: serde::Serialize;
 }
 
+#[cfg(feature = "use_serde")]
 impl<S> Storage for &mut S
 where
     S: Storage,
@@ -99,6 +101,7 @@ where
     }
 }
 
+#[cfg(feature = "use_serde")]
 pub trait SerDe {
     type Error: Debug;
 
@@ -111,6 +114,7 @@ pub trait SerDe {
         T: DeserializeOwned;
 }
 
+#[cfg(feature = "use_serde")]
 impl<S> SerDe for &S
 where
     S: SerDe,
@@ -160,11 +164,13 @@ where
 {
 }
 
+#[cfg(feature = "use_serde")]
 pub struct StorageImpl<const N: usize, R, S> {
     raw_storage: R,
     serde: S,
 }
 
+#[cfg(feature = "use_serde")]
 impl<const N: usize, R, S> StorageImpl<N, R, S>
 where
     R: RawStorage,
@@ -236,6 +242,7 @@ where
     }
 }
 
+#[cfg(feature = "use_serde")]
 impl<const N: usize, R, S> StorageBase for StorageImpl<N, R, S>
 where
     R: RawStorage,
@@ -252,6 +259,7 @@ where
     }
 }
 
+#[cfg(feature = "use_serde")]
 impl<const N: usize, R, S> Storage for StorageImpl<N, R, S>
 where
     R: RawStorage,
