@@ -8,6 +8,27 @@ use crate::io::{Error, Read, Write};
 pub use super::{Headers, Method, Query, Status};
 pub use crate::io::ErrorType;
 
+pub trait Server<'a> {
+    type Connection<'r>: Connection;
+    type Error;
+
+    fn handler<H>(
+        &mut self,
+        uri: &str,
+        method: Method,
+        handler: H,
+    ) -> Result<&mut Self, Self::Error>
+    where
+        H: for<'r> Handler<Self::Connection<'r>> + Send + 'a;
+
+    fn fn_handler<F>(&mut self, uri: &str, method: Method, f: F) -> Result<&mut Self, Self::Error>
+    where
+        F: for<'r> Fn(Request<&mut Self::Connection<'r>>) -> HandlerResult + Send + 'a,
+    {
+        self.handler(uri, method, FnHandler::new(f))
+    }
+}
+
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Request<C>(C);
