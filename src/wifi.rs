@@ -137,7 +137,7 @@ pub struct AccessPointInfo {
     pub signal_strength: i8,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
     pub protocols: EnumSet<Protocol>,
-    pub auth_method: AuthMethod,
+    pub auth_method: Option<AuthMethod>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
