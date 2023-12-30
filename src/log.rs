@@ -31,4 +31,5 @@ macro_rules! svc_log {
     ($level:ident, $($arg:expr),*) => {{ $( let _ = $arg; )* }}
 }
 
+#[allow(unused)]
 pub(crate) use svc_log;
