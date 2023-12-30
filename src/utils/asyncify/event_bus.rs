@@ -148,7 +148,9 @@ fn defer<F: FnOnce()>(f: F) -> impl Drop {
 
     impl<F: FnOnce()> Drop for Defer<F> {
         fn drop(&mut self) {
-            self.0.take().map(|f| f());
+            if let Some(f) = self.0.take() {
+                f();
+            }
         }
     }
 
