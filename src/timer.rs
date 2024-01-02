@@ -105,7 +105,6 @@ where
     }
 }
 
-#[cfg(feature = "nightly")]
 pub mod asynch {
     use core::time::Duration;
 

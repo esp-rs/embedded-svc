@@ -114,7 +114,6 @@ where
     }
 }
 
-#[cfg(feature = "nightly")]
 pub mod asynch {
     pub use super::{ErrorType, Spin};
 

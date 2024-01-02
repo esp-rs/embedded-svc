@@ -12,7 +12,6 @@ use crate::utils::asyncify::Unblocker;
 use crate::utils::mutex::{Condvar, Mutex, RawCondvar};
 
 #[allow(unused_imports)]
-#[cfg(feature = "nightly")]
 pub use async_traits_impl::*;
 
 use super::{AsyncWrapper, UnblockingAsyncWrapper};
@@ -303,7 +302,6 @@ where
     type Error = E;
 }
 
-#[cfg(feature = "nightly")]
 mod async_traits_impl {
     use core::fmt::Debug;
 

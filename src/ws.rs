@@ -130,7 +130,6 @@ pub mod callback_server {
     }
 }
 
-#[cfg(feature = "nightly")]
 pub mod asynch {
     pub use super::{ErrorType, Fragmented, FrameType};
 

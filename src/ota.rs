@@ -175,7 +175,6 @@ pub trait OtaUpdateFinished: ErrorType {
     fn activate(self) -> Result<(), Self::Error>;
 }
 
-#[cfg(feature = "nightly")]
 pub mod asynch {
     use crate::io::asynch::{ErrorType, Read, Write};
     use crate::utils::io::asynch::*;
