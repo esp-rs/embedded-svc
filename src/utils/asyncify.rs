@@ -1,5 +1,3 @@
-use core::future::Future;
-
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 pub mod event_bus;
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
@@ -15,13 +13,7 @@ pub use blocking_unblocker::*;
 // Keep it GAT based for now so that it builds with stable Rust
 // and therefore `crate::utils::asyncify` can also build with stable Rust
 pub trait Unblocker {
-    type UnblockFuture<'a, F, T>: Future<Output = T> + Send
-    where
-        Self: 'a,
-        F: Send + 'a,
-        T: Send + 'a;
-
-    fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
+    async fn unblock<'a, F, T>(&'a self, f: F) -> T
     where
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a;
@@ -31,15 +23,12 @@ impl<U> Unblocker for &U
 where
     U: Unblocker,
 {
-    type UnblockFuture<'a, F, T>
-    = U::UnblockFuture<'a, F, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
-
-    fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
+    async fn unblock<'a, F, T>(&'a self, f: F) -> T
     where
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
     {
-        (*self).unblock(f)
+        (*self).unblock(f).await
     }
 }
 
@@ -47,15 +36,12 @@ impl<U> Unblocker for &mut U
 where
     U: Unblocker,
 {
-    type UnblockFuture<'a, F, T>
-    = U::UnblockFuture<'a, F, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
-
-    fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
+    async fn unblock<'a, F, T>(&'a self, f: F) -> T
     where
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
     {
-        (**self).unblock(f)
+        (**self).unblock(f).await
     }
 }
 
@@ -121,14 +107,12 @@ mod blocking_unblocker {
     }
 
     impl super::Unblocker for BlockingUnblocker {
-        type UnblockFuture<'a, F, T> = BlockingFuture<'a, T> where Self: 'a, F: Send + 'a, T: Send + 'a;
-
-        fn unblock<'a, F, T>(&'a self, f: F) -> Self::UnblockFuture<'a, F, T>
+        async fn unblock<'a, F, T>(&'a self, f: F) -> T
         where
             F: FnOnce() -> T + Send + 'a,
             T: Send + 'a,
         {
-            BlockingUnblocker::unblock(self, f)
+            BlockingUnblocker::unblock(self, f).await
         }
     }
 

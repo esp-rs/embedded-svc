@@ -4,7 +4,7 @@ on:
   workflow_dispatch
 
 env:
-  rust_toolchain: nightly
+  rust_toolchain: stable
   crate_name: embedded-svc
 
 jobs:

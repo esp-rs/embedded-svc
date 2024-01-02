@@ -4,7 +4,7 @@ on:
   workflow_dispatch
 
 env:
-  rust_toolchain: nightly
+  rust_toolchain: stable
 
 jobs:
   publishdryrun:
