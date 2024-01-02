@@ -277,7 +277,6 @@ where
     }
 }
 
-#[cfg(feature = "nightly")]
 pub mod asynch {
     pub use super::{Details, ErrorType, Event, Message, MessageId, QoS};
 

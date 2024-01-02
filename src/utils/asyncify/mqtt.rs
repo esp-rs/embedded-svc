@@ -13,7 +13,6 @@ pub mod client {
     use crate::utils::mutex::{Mutex, RawCondvar, RawMutex};
 
     #[allow(unused_imports)]
-    #[cfg(feature = "nightly")]
     pub use async_traits_impl::*;
 
     async fn enqueue_publish<'a, E>(
@@ -300,7 +299,6 @@ pub mod client {
         }
     }
 
-    #[cfg(feature = "nightly")]
     mod async_traits_impl {
         use core::fmt::Debug;
 

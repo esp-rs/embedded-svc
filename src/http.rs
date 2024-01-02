@@ -237,7 +237,6 @@ pub mod headers {
     }
 }
 
-#[cfg(feature = "nightly")]
 pub mod asynch {
     pub use super::*;
 }

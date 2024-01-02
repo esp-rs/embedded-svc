@@ -341,7 +341,6 @@ where
     }
 }
 
-#[cfg(feature = "nightly")]
 pub mod asynch {
     use crate::io::{asynch::Read, asynch::Write};
 

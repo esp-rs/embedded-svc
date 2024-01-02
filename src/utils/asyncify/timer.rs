@@ -11,7 +11,6 @@ use alloc::sync::Arc;
 use atomic_waker::AtomicWaker;
 
 #[allow(unused_imports)]
-#[cfg(feature = "nightly")]
 pub use async_traits_impl::*;
 
 use super::AsyncWrapper;
@@ -170,7 +169,6 @@ impl<T> AsyncWrapper<T> for AsyncTimerService<T> {
     }
 }
 
-#[cfg(feature = "nightly")]
 mod async_traits_impl {
     use core::result::Result;
     use core::time::Duration;
@@ -236,12 +234,13 @@ mod async_traits_impl {
         }
     }
 
-    impl<T> embedded_hal_async::delay::DelayUs for AsyncTimer<T>
+    #[cfg(feature = "embedded-hal-async")]
+    impl<T> embedded_hal_async::delay::DelayNs for AsyncTimer<T>
     where
         T: crate::timer::OnceTimer + Send,
     {
-        async fn delay_us(&mut self, us: u32) {
-            AsyncTimer::after(self, Duration::from_micros(us as _))
+        async fn delay_ns(&mut self, ns: u32) {
+            AsyncTimer::after(self, Duration::from_micros(ns as _))
                 .await
                 .unwrap();
         }

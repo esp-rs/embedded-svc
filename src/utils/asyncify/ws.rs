@@ -16,7 +16,6 @@ pub mod server {
     use crate::ws::{callback_server::*, *};
 
     #[allow(unused_imports)]
-    #[cfg(feature = "nightly")]
     pub use async_traits_impl::*;
 
     #[allow(dead_code)]
@@ -436,7 +435,6 @@ pub mod server {
         }
     }
 
-    #[cfg(feature = "nightly")]
     mod async_traits_impl {
         use core::fmt::Debug;
 
