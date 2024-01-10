@@ -2,7 +2,7 @@
 name = "embedded-svc"
 version = "0.26.4"
 authors = ["Ivan Markov <ivan.markov@gmail.com>"]
-edition = "2018"
+edition = "2021"
 resolver = "2"
 categories = ["embedded", "hardware-support"]
 keywords = ["embedded", "svc", "hal"]
@@ -31,7 +31,7 @@ embedded-io = { version = "0.6", default-features = false }
 embedded-io-async = { version = "0.6", default-features = false }
 embedded-hal-async = { version = "1", default-features = false, optional = true }
 log = { version = "0.4", default-features = false, optional = true }
-no-std-net = { version = "0.6", default-features = false }
+no-std-net = { version = "0.5", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"], optional = true }
 atomic-waker = { version = "1.1.1", default-features = false, optional = true }
 enumset = { version = "1", default-features = false }
