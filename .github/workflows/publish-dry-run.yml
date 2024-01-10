@@ -19,4 +19,4 @@ jobs:
           toolchain: ${{ env.rust_toolchain }}
           components: rust-src
       - name: Build | Publish Dry Run
-        run: cargo publish --dry-run --target riscv32imc-esp-espidf -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
+        run: cargo publish --dry-run
