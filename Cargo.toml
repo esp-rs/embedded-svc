@@ -2,7 +2,7 @@
 name = "embedded-svc"
 version = "0.26.4"
 authors = ["Ivan Markov <ivan.markov@gmail.com>"]
-edition = "2018"
+edition = "2021"
 resolver = "2"
 categories = ["embedded", "hardware-support"]
 keywords = ["embedded", "svc", "hal"]
