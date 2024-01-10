@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.??.?] - ?
 * Bumped the MSRV version to 1.75 and removed the `nightly` feature requirement from all async traits
+* Updated the `embedded-hal-async` dependency to 1.0
 * Added the opt-out `asyncify` feature. Disabling this feature removes the `atomic-waker` dependencies and removes the `utils::asyncify` module
 * The `serde` dependency is now optional
 * The `embedded-hal-async` dependency is now optional (when enabled `asyncify::timer::Timer` implements the e-hal-async `Delay` trait)

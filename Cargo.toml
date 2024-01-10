@@ -29,7 +29,7 @@ asyncify = ["dep:atomic-waker"]
 heapless = { version = "0.8" }
 embedded-io = { version = "0.6", default-features = false }
 embedded-io-async = { version = "0.6", default-features = false }
-embedded-hal-async = { version = "=1.0.0-rc.3", default-features = false, optional = true }
+embedded-hal-async = { version = "1", default-features = false, optional = true }
 log = { version = "0.4", default-features = false, optional = true }
 no-std-net = { version = "0.6", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"], optional = true }
