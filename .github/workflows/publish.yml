@@ -22,7 +22,7 @@ jobs:
       - name: Login
         run: cargo login ${{ secrets.crates_io_token }}
       - name: Build | Publish
-        run: cargo publish --target riscv32imc-esp-espidf -Zbuild-std=std,panic_abort -Zbuild-std-features=panic_immediate_abort
+        run: cargo publish
       - name: Get the crate version from cargo
         run: |
           version=$(cargo metadata --format-version=1 --no-deps | jq -r ".packages[] | select(.name == \"${{env.crate_name}}\") | .version")
