@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.??.?] - ?
+## [0.??.?] - ????-??-??
+* Breaking change in module `http::server`: `HandlerError` and `HandlerResult` are now gone. The blocking and async versions of the `Handler` and `Middleware` traits now all have an associated `Error` type that the user can define however she wants (only requirement is for it to implement `Debug`)
 * Bumped the MSRV version to 1.75 and removed the `nightly` feature requirement from all async traits
 * Updated the `embedded-hal-async` dependency to 1.0
 * Added the opt-out `asyncify` feature. Disabling this feature removes the `atomic-waker` dependencies and removes the `utils::asyncify` module

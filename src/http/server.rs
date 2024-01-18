@@ -1,7 +1,4 @@
-use core::{
-    convert::TryInto,
-    fmt::{self, Debug, Display, Write as _},
-};
+use core::fmt::Debug;
 
 use crate::io::{Error, Read, Write};
 
@@ -221,50 +218,13 @@ where
     }
 }
 
-pub struct HandlerError(heapless::String<64>);
-
-impl HandlerError {
-    pub fn new(message: &str) -> Self {
-        Self(message.try_into().unwrap())
-    }
-
-    pub fn message(&self) -> &str {
-        &self.0
-    }
-
-    pub fn release(self) -> heapless::String<64> {
-        self.0
-    }
-}
-
-impl<E> From<E> for HandlerError
-where
-    E: Debug,
-{
-    fn from(e: E) -> Self {
-        let mut string = heapless::String::<64>::new();
-
-        if write!(&mut string, "{e:?}").is_err() {
-            string = "(Error string too big)".try_into().unwrap();
-        }
-
-        Self(string)
-    }
-}
-
-impl Display for HandlerError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-pub type HandlerResult = Result<(), HandlerError>;
-
 pub trait Handler<C>: Send
 where
     C: Connection,
 {
-    fn handle(&self, connection: &mut C) -> HandlerResult;
+    type Error: Debug;
+
+    fn handle(&self, connection: &mut C) -> Result<(), Self::Error>;
 }
 
 impl<C, H> Handler<C> for &H
@@ -272,7 +232,9 @@ where
     C: Connection,
     H: Handler<C> + Send + Sync,
 {
-    fn handle(&self, connection: &mut C) -> HandlerResult {
+    type Error = H::Error;
+
+    fn handle(&self, connection: &mut C) -> Result<(), Self::Error> {
         (*self).handle(connection)
     }
 }
@@ -280,21 +242,25 @@ where
 pub struct FnHandler<F>(F);
 
 impl<F> FnHandler<F> {
-    pub const fn new<C>(f: F) -> Self
+    pub const fn new<C, E>(f: F) -> Self
     where
         C: Connection,
-        F: Fn(Request<&mut C>) -> HandlerResult + Send,
+        F: Fn(Request<&mut C>) -> Result<(), E> + Send,
+        E: Debug,
     {
         Self(f)
     }
 }
 
-impl<C, F> Handler<C> for FnHandler<F>
+impl<C, F, E> Handler<C> for FnHandler<F>
 where
     C: Connection,
-    F: Fn(Request<&mut C>) -> HandlerResult + Send,
+    F: Fn(Request<&mut C>) -> Result<(), E> + Send,
+    E: Debug,
 {
-    fn handle(&self, connection: &mut C) -> HandlerResult {
+    type Error = E;
+
+    fn handle(&self, connection: &mut C) -> Result<(), Self::Error> {
         self.0(Request::wrap(connection))
     }
 }
@@ -303,7 +269,9 @@ pub trait Middleware<C>: Send
 where
     C: Connection,
 {
-    fn handle<H>(&self, connection: &mut C, handler: &H) -> HandlerResult
+    type Error: Debug;
+
+    fn handle<H>(&self, connection: &mut C, handler: &H) -> Result<(), Self::Error>
     where
         H: Handler<C>;
 
@@ -336,15 +304,19 @@ where
     H: Handler<C>,
     C: Connection,
 {
-    fn handle(&self, connection: &mut C) -> HandlerResult {
+    type Error = M::Error;
+
+    fn handle(&self, connection: &mut C) -> Result<(), Self::Error> {
         self.middleware.handle(connection, &self.handler)
     }
 }
 
 pub mod asynch {
+    use core::fmt::Debug;
+
     use crate::io::{asynch::Read, asynch::Write};
 
-    pub use super::{HandlerError, HandlerResult, Headers, Method, Query, Status};
+    pub use super::{Headers, Method, Query, Status};
     pub use crate::io::{Error, ErrorType};
 
     #[derive(Debug)]
@@ -564,7 +536,9 @@ pub mod asynch {
     where
         C: Connection,
     {
-        async fn handle(&self, connection: &mut C) -> HandlerResult;
+        type Error: Debug;
+
+        async fn handle(&self, connection: &mut C) -> Result<(), Self::Error>;
     }
 
     impl<H, C> Handler<C> for &H
@@ -572,7 +546,9 @@ pub mod asynch {
         C: Connection,
         H: Handler<C> + Send + Sync,
     {
-        async fn handle(&self, connection: &mut C) -> HandlerResult {
+        type Error = H::Error;
+
+        async fn handle(&self, connection: &mut C) -> Result<(), Self::Error> {
             (*self).handle(connection).await
         }
     }
@@ -581,7 +557,9 @@ pub mod asynch {
     where
         C: Connection,
     {
-        async fn handle<H>(&self, connection: &mut C, handler: &H) -> HandlerResult
+        type Error: Debug;
+
+        async fn handle<H>(&self, connection: &mut C, handler: &H) -> Result<(), Self::Error>
         where
             H: Handler<C>;
 
@@ -614,7 +592,9 @@ pub mod asynch {
         H: Handler<C>,
         C: Connection,
     {
-        async fn handle(&self, connection: &mut C) -> HandlerResult {
+        type Error = M::Error;
+
+        async fn handle(&self, connection: &mut C) -> Result<(), Self::Error> {
             self.middleware.handle(connection, &self.handler).await
         }
     }
