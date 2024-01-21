@@ -118,6 +118,17 @@ where
     }
 }
 
+pub fn display<M: Message>(f: &mut Formatter<'_>, msg: M) -> fmt::Result {
+    write!(
+        f,
+        "Message {{ id: {}, topic: {}, data: {:?}, details: {:?} }}",
+        msg.id(),
+        msg.topic().as_deref().unwrap_or("None"),
+        core::str::from_utf8(&msg.data()),
+        msg.details(),
+    )
+}
+
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
@@ -160,6 +171,13 @@ impl Message for MessageImpl {
 
     fn details(&self) -> &Details {
         &self.details
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Display for MessageImpl {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        display(f, self)
     }
 }
 
