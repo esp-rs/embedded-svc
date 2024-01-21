@@ -119,10 +119,8 @@ where
 }
 
 #[cfg(feature = "alloc")]
-#[cfg_attr(
-    feature = "use_serde",
-    derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)
-)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MessageImpl {
     id: MessageId,
