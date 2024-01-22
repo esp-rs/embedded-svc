@@ -23,7 +23,7 @@ use_serde = ["dep:serde", "enumset/serde", "no-std-net/serde", "heapless/serde"]
 use_strum = ["strum", "strum_macros"]
 use_numenum = ["num_enum"]
 defmt = ["dep:defmt", "heapless/defmt-03", "embedded-io/defmt-03", "embedded-io-async/defmt-03", "embedded-hal-async?/defmt-03"]
-asyncify = ["dep:atomic-waker"]
+asyncify = ["atomic-waker"]
 
 [dependencies]
 heapless = { version = "0.8" }
