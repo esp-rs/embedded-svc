@@ -1,19 +1,19 @@
 pub mod client {
     use core::fmt::Debug;
-    use core::future::Future;
-    use core::mem;
-    use core::pin::Pin;
-    use core::task::{Context, Poll, Waker};
+    use core::marker::PhantomData;
 
     extern crate alloc;
+    use alloc::borrow::ToOwned;
+    use alloc::string::String;
     use alloc::sync::Arc;
+    use alloc::vec::Vec;
 
-    use crate::mqtt::client::{Event, MessageId, QoS};
-    use crate::utils::mqtt::client::ConnStateGuard;
+    use crate::mqtt::client::asynch::{Client, Connection, Publish};
+    use crate::mqtt::client::{ErrorType, Event, MessageId, QoS};
+
+    use crate::utils::asyncify::Unblocker;
     use crate::utils::mutex::{Mutex, RawCondvar, RawMutex};
-
-    #[allow(unused_imports)]
-    pub use async_traits_impl::*;
+    use crate::utils::zerocopy::Receiver;
 
     async fn enqueue_publish<'a, E>(
         enqueue: &'a mut E,
@@ -149,130 +149,113 @@ pub mod client {
         }
     }
 
-    pub enum AsyncConnState<M, E> {
-        None,
-        Waiting(Waker),
-        Received(Result<Event<M>, E>),
-    }
-
-    impl<M, E> AsyncConnState<M, E> {
-        pub const fn new() -> Self {
-            Self::None
-        }
-    }
-
-    impl<M, E> Default for AsyncConnState<M, E> {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    struct NextFuture<'a, CV, M, E>(&'a ConnStateGuard<CV, AsyncConnState<M, E>>)
+    impl<U, R, C> ErrorType for AsyncClient<U, Arc<Mutex<R, C>>>
     where
-        CV: RawCondvar + 'a,
-        M: 'a,
-        E: 'a;
-
-    impl<'a, CV, M, E> Future for NextFuture<'a, CV, M, E>
-    where
-        CV: RawCondvar + 'a,
-        M: 'a,
-        E: 'a,
+        R: RawMutex,
+        C: ErrorType,
     {
-        type Output = Option<Result<Event<M>, E>>;
+        type Error = C::Error;
+    }
 
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            let mut state = self.0.state.lock();
+    impl<U, R, C> Client for AsyncClient<U, Arc<Mutex<R, C>>>
+    where
+        U: Unblocker,
+        R: RawMutex + Send + Sync + 'static,
+        C: crate::mqtt::client::Client + Send + 'static,
+        C::Error: Clone,
+        Self::Error: Send + Sync + 'static,
+    {
+        async fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<MessageId, C::Error> {
+            let topic: String = topic.to_owned();
+            let client = self.0.clone();
 
-            if let Some(state) = &mut *state {
-                let pulled = mem::replace(state, AsyncConnState::None);
+            self.1
+                .unblock(move || client.lock().subscribe(&topic, qos))
+                .await
+        }
 
-                match pulled {
-                    AsyncConnState::Received(event) => {
-                        self.0.state_changed.notify_all();
+        async fn unsubscribe(&mut self, topic: &str) -> Result<MessageId, C::Error> {
+            let topic: String = topic.to_owned();
+            let client = self.0.clone();
 
-                        Poll::Ready(Some(event))
-                    }
-                    _ => {
-                        *state = AsyncConnState::Waiting(cx.waker().clone());
-                        self.0.state_changed.notify_all();
-
-                        Poll::Pending
-                    }
-                }
-            } else {
-                Poll::Ready(None)
-            }
+            self.1
+                .unblock(move || client.lock().unsubscribe(&topic))
+                .await
         }
     }
 
-    pub struct AsyncPostbox<CV, M, E>(Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>)
+    impl<U, R, C> Publish for AsyncClient<U, Arc<Mutex<R, C>>>
     where
-        CV: RawCondvar;
-
-    impl<CV, M, E> AsyncPostbox<CV, M, E>
-    where
-        CV: RawCondvar,
-        M: Send,
-        E: Send,
+        U: Unblocker,
+        R: RawMutex + Send + Sync + 'static,
+        C: crate::mqtt::client::Publish + Send + 'static,
+        C::Error: Clone,
+        Self::Error: Send + Sync + 'static,
     {
-        pub const fn new(connection_state: Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>) -> Self {
-            Self(connection_state)
-        }
+        async fn publish(
+            &mut self,
+            topic: &str,
+            qos: QoS,
+            retain: bool,
+            payload: &[u8],
+        ) -> Result<MessageId, C::Error> {
+            let topic: String = topic.to_owned();
+            let payload: Vec<u8> = payload.to_owned();
+            let client = self.0.clone();
 
-        pub fn post(&mut self, event: Result<Event<M>, E>) {
-            let mut state = self.0.state.lock();
-
-            loop {
-                if state.is_none() {
-                    return;
-                } else if matches!(&*state, Some(AsyncConnState::Received(_))) {
-                    state = self.0.state_changed.wait(state);
-                } else {
-                    break;
-                }
-            }
-
-            if let Some(AsyncConnState::Waiting(waker)) =
-                mem::replace(&mut *state, Some(AsyncConnState::Received(event)))
-            {
-                waker.wake();
-            }
+            self.1
+                .unblock(move || client.lock().publish(&topic, qos, retain, &payload))
+                .await
         }
     }
 
-    pub struct AsyncConnection<CV, M, E>(Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>)
+    impl<E, P> ErrorType for AsyncClient<(), Blocking<E, P>>
     where
-        CV: RawCondvar;
-
-    impl<CV, M, E> AsyncConnection<CV, M, E>
-    where
-        CV: RawCondvar,
+        E: ErrorType,
     {
-        pub fn new(connection_state: Arc<ConnStateGuard<CV, AsyncConnState<M, E>>>) -> Self {
-            Self(connection_state)
+        type Error = E::Error;
+    }
+
+    impl<E> Publish for AsyncClient<(), Blocking<E, Enqueueing>>
+    where
+        E: crate::mqtt::client::Enqueue + Send,
+    {
+        async fn publish(
+            &mut self,
+            topic: &str,
+            qos: QoS,
+            retain: bool,
+            payload: &[u8],
+        ) -> Result<MessageId, E::Error> {
+            enqueue_publish(&mut self.0.client, topic, qos, retain, payload).await
         }
     }
 
-    impl<CV, M, E> Drop for AsyncConnection<CV, M, E>
+    impl<P> Publish for AsyncClient<(), Blocking<P, Publishing>>
     where
-        CV: RawCondvar,
+        P: crate::mqtt::client::Publish + Send,
     {
-        fn drop(&mut self) {
-            self.0.close();
+        async fn publish(
+            &mut self,
+            topic: &str,
+            qos: QoS,
+            retain: bool,
+            payload: &[u8],
+        ) -> Result<MessageId, P::Error> {
+            publish_publish(&mut self.0.client, topic, qos, retain, payload).await
         }
     }
 
-    impl<CV, M, E> AsyncConnection<CV, M, E>
+    impl<C, P> Client for AsyncClient<(), Blocking<C, P>>
     where
-        CV: RawCondvar + Send + Sync + 'static,
-        CV::RawMutex: Sync + 'static,
-        M: Send,
-        E: Debug + Send + 'static,
+        C: crate::mqtt::client::Client + Send,
     {
-        #[allow(clippy::should_implement_trait)]
-        pub async fn next(&mut self) -> Option<Result<Event<M>, E>> {
-            NextFuture(&self.0).await
+        async fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<MessageId, C::Error> {
+            client_subscribe(&mut self.0.client, topic, qos).await
+        }
+
+        async fn unsubscribe(&mut self, topic: &str) -> Result<MessageId, C::Error> {
+            client_unsubscribe(&mut self.0.client, topic).await
         }
     }
 
@@ -299,155 +282,59 @@ pub mod client {
         }
     }
 
-    mod async_traits_impl {
-        use core::fmt::Debug;
+    pub struct AsyncConnection<C, E, X>
+    where
+        C: RawCondvar,
+    {
+        receiver: Receiver<C, E>,
+        given: bool,
+        _error: PhantomData<fn() -> X>,
+    }
 
-        extern crate alloc;
-        use alloc::borrow::ToOwned;
-        use alloc::string::String;
-        use alloc::sync::Arc;
-        use alloc::vec::Vec;
-
-        use crate::mqtt::client::asynch::{Client, Connection, MessageId, Publish, QoS};
-        use crate::mqtt::client::ErrorType;
-        use crate::utils::asyncify::mqtt::client::Event;
-        use crate::utils::asyncify::Unblocker;
-        use crate::utils::mutex::{Mutex, RawCondvar, RawMutex};
-
-        use super::{
-            client_subscribe, client_unsubscribe, enqueue_publish, publish_publish, AsyncClient,
-            AsyncConnection, Blocking, Enqueueing, Publishing,
-        };
-
-        impl<U, R, C> ErrorType for AsyncClient<U, Arc<Mutex<R, C>>>
-        where
-            R: RawMutex,
-            C: ErrorType,
-        {
-            type Error = C::Error;
-        }
-
-        impl<U, R, C> Client for AsyncClient<U, Arc<Mutex<R, C>>>
-        where
-            U: Unblocker,
-            R: RawMutex + Send + Sync + 'static,
-            C: crate::mqtt::client::Client + Send + 'static,
-            C::Error: Clone,
-            Self::Error: Send + Sync + 'static,
-        {
-            async fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<MessageId, C::Error> {
-                let topic: String = topic.to_owned();
-                let client = self.0.clone();
-
-                self.1
-                    .unblock(move || client.lock().subscribe(&topic, qos))
-                    .await
-            }
-
-            async fn unsubscribe(&mut self, topic: &str) -> Result<MessageId, C::Error> {
-                let topic: String = topic.to_owned();
-                let client = self.0.clone();
-
-                self.1
-                    .unblock(move || client.lock().unsubscribe(&topic))
-                    .await
+    impl<C, E, X> AsyncConnection<C, E, X>
+    where
+        C: RawCondvar,
+    {
+        pub const fn new(receiver: Receiver<C, E>) -> Self {
+            Self {
+                receiver,
+                given: false,
+                _error: PhantomData,
             }
         }
 
-        impl<U, R, C> Publish for AsyncClient<U, Arc<Mutex<R, C>>>
-        where
-            U: Unblocker,
-            R: RawMutex + Send + Sync + 'static,
-            C: crate::mqtt::client::Publish + Send + 'static,
-            C::Error: Clone,
-            Self::Error: Send + Sync + 'static,
-        {
-            async fn publish(
-                &mut self,
-                topic: &str,
-                qos: QoS,
-                retain: bool,
-                payload: &[u8],
-            ) -> Result<MessageId, C::Error> {
-                let topic: String = topic.to_owned();
-                let payload: Vec<u8> = payload.to_owned();
-                let client = self.0.clone();
-
-                self.1
-                    .unblock(move || client.lock().publish(&topic, qos, retain, &payload))
-                    .await
-            }
-        }
-
-        impl<E, P> ErrorType for AsyncClient<(), Blocking<E, P>>
-        where
-            E: ErrorType,
-        {
-            type Error = E::Error;
-        }
-
-        impl<E> Publish for AsyncClient<(), Blocking<E, Enqueueing>>
-        where
-            E: crate::mqtt::client::Enqueue + Send,
-        {
-            async fn publish(
-                &mut self,
-                topic: &str,
-                qos: QoS,
-                retain: bool,
-                payload: &[u8],
-            ) -> Result<MessageId, E::Error> {
-                enqueue_publish(&mut self.0.client, topic, qos, retain, payload).await
-            }
-        }
-
-        impl<P> Publish for AsyncClient<(), Blocking<P, Publishing>>
-        where
-            P: crate::mqtt::client::Publish + Send,
-        {
-            async fn publish(
-                &mut self,
-                topic: &str,
-                qos: QoS,
-                retain: bool,
-                payload: &[u8],
-            ) -> Result<MessageId, P::Error> {
-                publish_publish(&mut self.0.client, topic, qos, retain, payload).await
-            }
-        }
-
-        impl<C, P> Client for AsyncClient<(), Blocking<C, P>>
-        where
-            C: crate::mqtt::client::Client + Send,
-        {
-            async fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<MessageId, C::Error> {
-                client_subscribe(&mut self.0.client, topic, qos).await
+        pub async fn next(&mut self) -> Result<Option<&mut E>, X> {
+            if self.given {
+                self.receiver.done();
+            } else {
+                self.given = true;
             }
 
-            async fn unsubscribe(&mut self, topic: &str) -> Result<MessageId, C::Error> {
-                client_unsubscribe(&mut self.0.client, topic).await
-            }
+            Ok(self.receiver.get_async().await)
         }
+    }
 
-        impl<CV, M, E> ErrorType for AsyncConnection<CV, M, E>
-        where
-            CV: RawCondvar,
-            E: Debug,
-        {
-            type Error = E;
-        }
+    impl<C, E, X> ErrorType for AsyncConnection<C, E, X>
+    where
+        C: RawCondvar,
+        X: Debug,
+    {
+        type Error = X;
+    }
 
-        impl<CV, M, E> Connection for AsyncConnection<CV, M, E>
-        where
-            CV: RawCondvar + Send + Sync + 'static,
-            CV::RawMutex: Send + Sync + 'static,
-            M: Send,
-            E: Debug + Send + 'static,
-        {
-            type Message<'a> = M where Self: 'a;
+    impl<C, E, X> Connection for AsyncConnection<C, E, X>
+    where
+        C: RawCondvar,
+        E: Event,
+        X: Debug,
+    {
+        type Event<'a> = &'a E where Self: 'a;
 
-            async fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
-                AsyncConnection::next(self).await
+        async fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error> {
+            if let Some(data) = AsyncConnection::next(self).await? {
+                Ok(Some(data))
+            } else {
+                Ok(None)
             }
         }
     }

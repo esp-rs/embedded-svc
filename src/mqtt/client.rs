@@ -37,42 +37,49 @@ pub enum QoS {
 
 pub type MessageId = u32;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub trait Event {
+    fn payload(&self) -> &EventPayload<'_>;
+}
+
+impl<M> Event for &M
+where
+    M: Event,
+{
+    fn payload(&self) -> &EventPayload<'_> {
+        (*self).payload()
+    }
+}
+
+impl<M> Event for &mut M
+where
+    M: Event,
+{
+    fn payload(&self) -> &EventPayload<'_> {
+        (**self).payload()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum Event<M> {
+pub enum EventPayload<'a> {
     BeforeConnect,
     Connected(bool),
     Disconnected,
     Subscribed(MessageId),
     Unsubscribed(MessageId),
     Published(MessageId),
-    Received(M),
+    Received {
+        id: MessageId,
+        topic: Option<&'a str>,
+        data: &'a [u8],
+        details: Details,
+    },
     Deleted(MessageId),
+    Error, // TODO
 }
 
-impl<M> Event<M> {
-    pub fn transform_received<F, O>(&self, f: F) -> Event<O>
-    where
-        F: FnOnce(&M) -> O,
-    {
-        match self {
-            Self::Received(message) => Event::Received(f(message)),
-            Self::BeforeConnect => Event::BeforeConnect,
-            Self::Connected(connected) => Event::Connected(*connected),
-            Self::Disconnected => Event::Disconnected,
-            Self::Subscribed(message_id) => Event::Subscribed(*message_id),
-            Self::Unsubscribed(message_id) => Event::Unsubscribed(*message_id),
-            Self::Published(message_id) => Event::Published(*message_id),
-            Self::Deleted(message_id) => Event::Deleted(*message_id),
-        }
-    }
-}
-
-impl<M> Display for Event<M>
-where
-    M: Display,
-{
+impl<'a> Display for EventPayload<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::BeforeConnect => write!(f, "BeforeConnect"),
@@ -81,103 +88,18 @@ where
             Self::Subscribed(message_id) => write!(f, "Subscribed({message_id})"),
             Self::Unsubscribed(message_id) => write!(f, "Unsubscribed({message_id})"),
             Self::Published(message_id) => write!(f, "Published({message_id})"),
-            Self::Received(message) => write!(f, "Received({message})"),
+            Self::Received {
+                id,
+                topic,
+                data,
+                details,
+            } => write!(
+                f,
+                "Received {{ id: {id}, topic: {topic:?}, data: {data:?}, details: {details:?} }}"
+            ),
             Self::Deleted(message_id) => write!(f, "Deleted({message_id})"),
+            Self::Error => write!(f, "Error"), // TODO
         }
-    }
-}
-
-pub trait Message {
-    fn id(&self) -> MessageId;
-
-    fn topic(&self) -> Option<&'_ str>;
-
-    fn data(&self) -> &'_ [u8];
-
-    fn details(&self) -> &Details;
-}
-
-impl<M> Message for &M
-where
-    M: Message,
-{
-    fn id(&self) -> MessageId {
-        (*self).id()
-    }
-
-    fn topic(&self) -> Option<&'_ str> {
-        (*self).topic()
-    }
-
-    fn data(&self) -> &'_ [u8] {
-        (*self).data()
-    }
-
-    fn details(&self) -> &Details {
-        (*self).details()
-    }
-}
-
-pub fn display<M: Message>(f: &mut Formatter<'_>, msg: M) -> fmt::Result {
-    write!(
-        f,
-        "Message {{ id: {}, topic: {}, data: {:?}, details: {:?} }}",
-        msg.id(),
-        msg.topic().as_deref().unwrap_or("None"),
-        core::str::from_utf8(&msg.data()),
-        msg.details(),
-    )
-}
-
-#[cfg(feature = "alloc")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct MessageImpl {
-    id: MessageId,
-    topic: Option<alloc::string::String>,
-    details: Details,
-    data: alloc::vec::Vec<u8>,
-}
-
-#[cfg(feature = "alloc")]
-impl MessageImpl {
-    pub fn new<M>(message: &M) -> Self
-    where
-        M: Message,
-    {
-        Self {
-            id: message.id(),
-            data: message.data().to_vec(),
-            topic: message.topic().map(alloc::string::String::from),
-            details: message.details().clone(),
-        }
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl Message for MessageImpl {
-    fn id(&self) -> MessageId {
-        self.id
-    }
-
-    fn topic(&self) -> Option<&'_ str> {
-        self.topic.as_deref()
-    }
-
-    fn data(&self) -> &'_ [u8] {
-        &self.data
-    }
-
-    fn details(&self) -> &Details {
-        &self.details
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl Display for MessageImpl {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        display(f, self)
     }
 }
 
@@ -275,26 +197,26 @@ where
 }
 
 pub trait Connection: ErrorType {
-    type Message<'a>
+    type Event<'a>: Event
     where
         Self: 'a;
 
-    fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>>;
+    fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error>;
 }
 
 impl<C> Connection for &mut C
 where
     C: Connection,
 {
-    type Message<'a> = C::Message<'a> where Self: 'a;
+    type Event<'a> = C::Event<'a> where Self: 'a;
 
-    fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
+    fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error> {
         (*self).next()
     }
 }
 
 pub mod asynch {
-    pub use super::{Details, ErrorType, Event, Message, MessageId, QoS};
+    pub use super::{Details, ErrorType, Event, EventPayload, MessageId, QoS};
 
     pub trait Client: ErrorType {
         async fn subscribe(&mut self, topic: &str, qos: QoS) -> Result<MessageId, Self::Error>;
@@ -341,20 +263,20 @@ pub mod asynch {
     }
 
     pub trait Connection: ErrorType {
-        type Message<'a>
+        type Event<'a>: Event
         where
             Self: 'a;
 
-        async fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>>;
+        async fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error>;
     }
 
     impl<C> Connection for &mut C
     where
         C: Connection,
     {
-        type Message<'a> = C::Message<'a> where Self: 'a;
+        type Event<'a> = C::Event<'a> where Self: 'a;
 
-        async fn next(&mut self) -> Option<Result<Event<Self::Message<'_>>, Self::Error>> {
+        async fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error> {
             (*self).next().await
         }
     }
