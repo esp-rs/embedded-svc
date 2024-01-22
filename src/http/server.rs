@@ -265,19 +265,17 @@ where
     }
 }
 
-pub trait Middleware<C>: Send
+pub trait Middleware<C, H>: Send
 where
     C: Connection,
+    H: Handler<C>,
 {
     type Error: Debug;
 
-    fn handle<H>(&self, connection: &mut C, handler: &H) -> Result<(), Self::Error>
-    where
-        H: Handler<C>;
+    fn handle(&self, connection: &mut C, handler: &H) -> Result<(), Self::Error>;
 
-    fn compose<H>(self, handler: H) -> CompositeHandler<Self, H>
+    fn compose(self, handler: H) -> CompositeHandler<Self, H>
     where
-        H: Handler<C>,
         Self: Sized,
     {
         CompositeHandler::new(self, handler)
@@ -300,7 +298,7 @@ impl<M, H> CompositeHandler<M, H> {
 
 impl<M, H, C> Handler<C> for CompositeHandler<M, H>
 where
-    M: Middleware<C>,
+    M: Middleware<C, H>,
     H: Handler<C>,
     C: Connection,
 {
@@ -553,19 +551,17 @@ pub mod asynch {
         }
     }
 
-    pub trait Middleware<C>: Send
+    pub trait Middleware<C, H>: Send
     where
         C: Connection,
+        H: Handler<C>,
     {
         type Error: Debug;
 
-        async fn handle<H>(&self, connection: &mut C, handler: &H) -> Result<(), Self::Error>
-        where
-            H: Handler<C>;
+        async fn handle(&self, connection: &mut C, handler: &H) -> Result<(), Self::Error>;
 
-        fn compose<H>(self, handler: H) -> CompositeHandler<Self, H>
+        fn compose(self, handler: H) -> CompositeHandler<Self, H>
         where
-            H: Handler<C>,
             Self: Sized,
         {
             CompositeHandler::new(self, handler)
@@ -588,7 +584,7 @@ pub mod asynch {
 
     impl<M, H, C> Handler<C> for CompositeHandler<M, H>
     where
-        M: Middleware<C>,
+        M: Middleware<C, H>,
         H: Handler<C>,
         C: Connection,
     {

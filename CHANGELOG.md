@@ -10,7 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * Introduced a new single-method trait: `Event` with method `payload` returning `EventPayload`
   * Introduced a new enumeration - `EventPayload` - modeling all possible event types that can be received from the MQTT client
   * `Message` and `MessageImpl` retired
-* Breaking change in module `http::server`: `HandlerError` and `HandlerResult` are now gone. The blocking and async versions of the `Handler` and `Middleware` traits now all have an associated `Error` type that the user can define however she wants (only requirement is for it to implement `Debug`)
+* Breaking change in module `http::server`: `HandlerError` and `HandlerResult` are now gone. 
+  * The blocking and async versions of the `Handler` and `Middleware` traits now all have an associated `Error` type that the user can define however she wants (only requirement is for it to implement `Debug`)
+  * Additionally, the blocking and async versions of `Middleware` are now generified by the `Handler` type, so that they have access
+    to the Handler's error type and are therefore free to implement their error type in terms of a composition between the handler error type and the error types of other functions they are calling
 * New synchronization primitives: `utils::notification::Notification` and `utils::zerocopy::Channel`
 * Bumped the MSRV version to 1.75 and removed the `nightly` feature requirement from all async traits
 * Updated the `embedded-hal-async` dependency to 1.0
