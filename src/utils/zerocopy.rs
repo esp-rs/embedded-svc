@@ -1,8 +1,8 @@
 /// Zero-copy blocking SPSC channel of one element.
-/// Useful as a rendezvous point between two threads ot tasks: one - sending, and the other - receiving.
-/// Both threads can wait either in a blocking, or in an async fashion.
+/// Useful as a rendezvous point between two tasks: one - sending, and the other - receiving.
+/// Both tasks can wait either in a blocking, or in an async fashion.
 ///
-/// Note that - strictly speaking - the channel is MPSC in the sense that multiple threads/tasks can send data.
+/// Note that - strictly speaking - the channel is MPSC in the sense that multiple tasks can send data.
 /// Doing this in an async fashion however will result in high CPU usage, as the sender tasks will fight over
 /// the single sending notification primitive, which supports the registration of only one `Waker`.
 use super::mutex::{Condvar, Mutex, RawCondvar};
@@ -23,8 +23,8 @@ where
         let mut guard = self.0.state.lock();
 
         loop {
-            match &mut guard.data {
-                StateData::Empty => guard = self.0.notify.wait(guard),
+            match &mut *guard {
+                StateData::Empty => guard = self.0.blocking_notify.wait(guard),
                 StateData::Quit => break None,
                 StateData::Data(data) => break unsafe { (data as *mut T).as_mut() },
             }
@@ -36,7 +36,7 @@ where
             {
                 let mut guard = self.0.state.lock();
 
-                match &mut guard.data {
+                match &mut *guard {
                     StateData::Empty => (),
                     StateData::Quit => return None,
                     StateData::Data(data) => return unsafe { (data as *mut T).as_mut() },
@@ -50,9 +50,9 @@ where
     pub fn done(&mut self) {
         let mut guard = self.0.state.lock();
 
-        if matches!(guard.data, StateData::Data(_)) {
-            guard.data = StateData::Empty;
-            self.0.notify.notify_all();
+        if matches!(&*guard, StateData::Data(_)) {
+            *guard = StateData::Empty;
+            self.0.blocking_notify.notify_all();
             self.0.notify_empty.notify();
         }
     }
@@ -65,13 +65,8 @@ where
     fn drop(&mut self) {
         let mut guard = self.0.state.lock();
 
-        guard.receiver_quit = true;
-
-        if !matches!(guard.data, StateData::Quit) {
-            guard.data = StateData::Empty;
-        }
-
-        self.0.notify.notify_all();
+        *guard = StateData::Quit;
+        self.0.blocking_notify.notify_all();
         self.0.notify_empty.notify();
     }
 }
@@ -80,8 +75,8 @@ pub struct Channel<C, T>
 where
     C: RawCondvar,
 {
-    state: Mutex<C::RawMutex, State<T>>,
-    notify: Condvar<C>,
+    state: Mutex<C::RawMutex, StateData<T>>,
+    blocking_notify: Condvar<C>,
     notify_empty: Notification,
     notify_full: Notification,
 }
@@ -92,11 +87,8 @@ where
 {
     pub fn new() -> (Arc<Self>, Receiver<C, T>) {
         let this = Arc::new(Self {
-            state: Mutex::new(State {
-                receiver_quit: false,
-                data: StateData::Empty,
-            }),
-            notify: Condvar::new(),
+            state: Mutex::new(StateData::Empty),
+            blocking_notify: Condvar::new(),
             notify_empty: Notification::new(),
             notify_full: Notification::new(),
         });
@@ -124,30 +116,20 @@ where
         let mut guard = self.state.lock();
 
         loop {
-            match &guard.data {
+            match &*guard {
                 StateData::Empty => {
-                    if guard.receiver_quit {
-                        return false;
-                    } else {
-                        self.set_data_and_notify(&mut guard.data, data);
-                        break;
-                    }
+                    self.set_data_and_notify(&mut guard, data);
+                    break;
                 }
                 StateData::Quit => return false,
-                StateData::Data(_) => guard = self.notify.wait(guard),
+                StateData::Data(_) => guard = self.blocking_notify.wait(guard),
             }
         }
 
         loop {
-            match &guard.data {
+            match &*guard {
                 StateData::Empty | StateData::Quit => break,
-                StateData::Data(_) => {
-                    if guard.receiver_quit {
-                        unreachable!()
-                    } else {
-                        guard = self.notify.wait(guard)
-                    }
-                }
+                StateData::Data(_) => guard = self.blocking_notify.wait(guard),
             }
         }
 
@@ -159,20 +141,12 @@ where
             {
                 let mut guard = self.state.lock();
 
-                match &guard.data {
-                    StateData::Data(_) => {
-                        if guard.receiver_quit {
-                            unreachable!()
-                        }
-                    }
+                match &*guard {
+                    StateData::Data(_) => (),
                     StateData::Quit => return false,
                     StateData::Empty => {
-                        if guard.receiver_quit {
-                            return false;
-                        } else {
-                            self.set_data_and_notify(&mut guard.data, data);
-                            break;
-                        }
+                        self.set_data_and_notify(&mut *guard, data);
+                        break;
                     }
                 }
             }
@@ -184,12 +158,8 @@ where
             {
                 let guard = self.state.lock();
 
-                match &guard.data {
-                    StateData::Data(_) => {
-                        if guard.receiver_quit {
-                            unreachable!()
-                        }
-                    }
+                match &*guard {
+                    StateData::Data(_) => (),
                     StateData::Quit | StateData::Empty => break,
                 }
             }
@@ -202,14 +172,9 @@ where
 
     fn set_data_and_notify(&self, cell: &mut StateData<T>, data: StateData<T>) {
         *cell = data;
-        self.notify.notify_all();
+        self.blocking_notify.notify_all();
         self.notify_full.notify();
     }
-}
-
-struct State<T> {
-    receiver_quit: bool,
-    data: StateData<T>,
 }
 
 #[derive(Copy, Clone, Debug)]
