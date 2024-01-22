@@ -38,14 +38,14 @@ pub enum QoS {
 pub type MessageId = u32;
 
 pub trait Event {
-    fn payload(&self) -> &EventPayload<'_>;
+    fn payload(&self) -> EventPayload<'_>;
 }
 
 impl<M> Event for &M
 where
     M: Event,
 {
-    fn payload(&self) -> &EventPayload<'_> {
+    fn payload(&self) -> EventPayload<'_> {
         (*self).payload()
     }
 }
@@ -54,7 +54,7 @@ impl<M> Event for &mut M
 where
     M: Event,
 {
-    fn payload(&self) -> &EventPayload<'_> {
+    fn payload(&self) -> EventPayload<'_> {
         (**self).payload()
     }
 }
@@ -103,7 +103,7 @@ impl<'a> Display for EventPayload<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum Details {
@@ -112,14 +112,14 @@ pub enum Details {
     SubsequentChunk(SubsequentChunkData),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct InitialChunkData {
     pub total_data_size: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct SubsequentChunkData {
