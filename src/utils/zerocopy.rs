@@ -3,7 +3,7 @@
 /// Both threads can wait either in a blocking, or in an async fashion.
 ///
 /// Note that - strictly speaking - the channel is MPSC in the sense that multiple threads/tasks can send data.
-/// Doing this in an async fashion however will result in high CPU usage, as the sender threads will fight over
+/// Doing this in an async fashion however will result in high CPU usage, as the sender tasks will fight over
 /// the single sending notification primitive, which supports the registration of only one `Waker`.
 use super::mutex::{Condvar, Mutex, RawCondvar};
 use super::notification::Notification;
