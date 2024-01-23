@@ -38,14 +38,14 @@ pub enum QoS {
 pub type MessageId = u32;
 
 pub trait Event: ErrorType {
-    fn payload(&self) -> Result<EventPayload<'_>, Self::Error>;
+    fn payload(&self) -> EventPayload<'_, Self::Error>;
 }
 
 impl<E> Event for &E
 where
     E: Event,
 {
-    fn payload(&self) -> Result<EventPayload<'_>, Self::Error> {
+    fn payload(&self) -> EventPayload<'_, Self::Error> {
         (*self).payload()
     }
 }
@@ -54,15 +54,14 @@ impl<E> Event for &mut E
 where
     E: Event,
 {
-    fn payload(&self) -> Result<EventPayload<'_>, Self::Error> {
+    fn payload(&self) -> EventPayload<'_, Self::Error> {
         (**self).payload()
     }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
-pub enum EventPayload<'a> {
+pub enum EventPayload<'a, E> {
     BeforeConnect,
     Connected(bool),
     Disconnected,
@@ -76,9 +75,13 @@ pub enum EventPayload<'a> {
         details: Details,
     },
     Deleted(MessageId),
+    Error(&'a E),
 }
 
-impl<'a> Display for EventPayload<'a> {
+impl<'a, E> Display for EventPayload<'a, E>
+where
+    E: Debug,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::BeforeConnect => write!(f, "BeforeConnect"),
@@ -97,6 +100,7 @@ impl<'a> Display for EventPayload<'a> {
                 "Received {{ id: {id}, topic: {topic:?}, data: {data:?}, details: {details:?} }}"
             ),
             Self::Deleted(message_id) => write!(f, "Deleted({message_id})"),
+            Self::Error(error) => write!(f, "Error({error:?})"),
         }
     }
 }
