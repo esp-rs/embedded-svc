@@ -120,7 +120,7 @@ pub mod asynch {
     pub trait Sender: ErrorType {
         type Data: Send;
 
-        async fn send(&self, value: Self::Data) -> Result<(), Self::Error>;
+        async fn send(&mut self, value: Self::Data) -> Result<(), Self::Error>;
     }
 
     impl<S> Sender for &mut S
@@ -129,26 +129,15 @@ pub mod asynch {
     {
         type Data = S::Data;
 
-        async fn send(&self, value: Self::Data) -> Result<(), Self::Error> {
+        async fn send(&mut self, value: Self::Data) -> Result<(), Self::Error> {
             (**self).send(value).await
-        }
-    }
-
-    impl<S> Sender for &S
-    where
-        S: Sender,
-    {
-        type Data = S::Data;
-
-        async fn send(&self, value: Self::Data) -> Result<(), Self::Error> {
-            (*self).send(value).await
         }
     }
 
     pub trait Receiver: ErrorType {
         type Data: Send;
 
-        async fn recv(&self) -> Result<Self::Data, Self::Error>;
+        async fn recv(&mut self) -> Result<Self::Data, Self::Error>;
     }
 
     impl<R> Receiver for &mut R
@@ -157,19 +146,8 @@ pub mod asynch {
     {
         type Data = R::Data;
 
-        async fn recv(&self) -> Result<Self::Data, Self::Error> {
+        async fn recv(&mut self) -> Result<Self::Data, Self::Error> {
             (**self).recv().await
-        }
-    }
-
-    impl<R> Receiver for &R
-    where
-        R: Receiver,
-    {
-        type Data = R::Data;
-
-        async fn recv(&self) -> Result<Self::Data, Self::Error> {
-            (*self).recv().await
         }
     }
 

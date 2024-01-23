@@ -21,6 +21,7 @@ pub mod ping;
 pub mod storage;
 pub mod sys_time;
 pub mod timer;
+pub mod unblock;
 pub mod utils;
 pub mod wifi;
 pub mod ws;

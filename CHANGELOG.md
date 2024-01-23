@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.??.?] - ????-??-??
+* Breaking change in module `utils::asyncify` - the whole module is now removed as all the functionality is folded directly into `esp-idf-svc`. The one trait in there - `Unblocker` now lives in a new module - `unblock`
+* Breaking change in module `utils::mutex` - the whole module is now removed as all the functionality is folded directly into `esp-idf-svc`
 * Breaking change in modules `mqtt::client` and `utils::mqtt::client`: The `Event` structure, and its associated `Message` and `MessageImpl` traits simplified significantly, allowing for much more ergonomic event processing, thanks to GATs and async-fn-in-trait which are now stable:
   * Introduced a new single-method trait: `Event` with method `payload` returning `EventPayload`
   * Introduced a new enumeration - `EventPayload` - modeling all possible event types that can be received from the MQTT client
@@ -14,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * The blocking and async versions of the `Handler` and `Middleware` traits now all have an associated `Error` type that the user can define however she wants (only requirement is for it to implement `Debug`)
   * Additionally, the blocking and async versions of `Middleware` are now generified by the `Handler` type, so that they have access
     to the Handler's error type and are therefore free to implement their error type in terms of a composition between the handler error type and the error types of other functions they are calling
-* New synchronization primitives: `utils::notification::Notification` and `utils::zerocopy::Channel`
+* Breaking change in traits `event_bus::asynch::Receiver` and `event_bus::asynch::Sender` - rolled back the change where the `send`/`recv` methods took `&self` and restored `&mut self` as the `&self` requirement was too constraining
 * Bumped the MSRV version to 1.75 and removed the `nightly` feature requirement from all async traits
 * Updated the `embedded-hal-async` dependency to 1.0
 * Added the opt-out `asyncify` feature. Disabling this feature removes the `atomic-waker` dependencies and removes the `utils::asyncify` module
