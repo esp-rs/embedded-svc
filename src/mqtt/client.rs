@@ -37,24 +37,24 @@ pub enum QoS {
 
 pub type MessageId = u32;
 
-pub trait Event {
-    fn payload(&self) -> EventPayload<'_>;
+pub trait Event: ErrorType {
+    fn payload(&self) -> Result<EventPayload<'_>, Self::Error>;
 }
 
-impl<M> Event for &M
+impl<E> Event for &E
 where
-    M: Event,
+    E: Event,
 {
-    fn payload(&self) -> EventPayload<'_> {
+    fn payload(&self) -> Result<EventPayload<'_>, Self::Error> {
         (*self).payload()
     }
 }
 
-impl<M> Event for &mut M
+impl<E> Event for &mut E
 where
-    M: Event,
+    E: Event,
 {
-    fn payload(&self) -> EventPayload<'_> {
+    fn payload(&self) -> Result<EventPayload<'_>, Self::Error> {
         (**self).payload()
     }
 }
@@ -76,7 +76,6 @@ pub enum EventPayload<'a> {
         details: Details,
     },
     Deleted(MessageId),
-    Error, // TODO
 }
 
 impl<'a> Display for EventPayload<'a> {
@@ -98,7 +97,6 @@ impl<'a> Display for EventPayload<'a> {
                 "Received {{ id: {id}, topic: {topic:?}, data: {data:?}, details: {details:?} }}"
             ),
             Self::Deleted(message_id) => write!(f, "Deleted({message_id})"),
-            Self::Error => write!(f, "Error"), // TODO
         }
     }
 }
@@ -201,7 +199,7 @@ pub trait Connection: ErrorType {
     where
         Self: 'a;
 
-    fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error>;
+    fn next(&mut self) -> Result<Self::Event<'_>, Self::Error>;
 }
 
 impl<C> Connection for &mut C
@@ -210,7 +208,7 @@ where
 {
     type Event<'a> = C::Event<'a> where Self: 'a;
 
-    fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error> {
+    fn next(&mut self) -> Result<Self::Event<'_>, Self::Error> {
         (*self).next()
     }
 }
@@ -267,7 +265,7 @@ pub mod asynch {
         where
             Self: 'a;
 
-        async fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error>;
+        async fn next(&mut self) -> Result<Self::Event<'_>, Self::Error>;
     }
 
     impl<C> Connection for &mut C
@@ -276,7 +274,7 @@ pub mod asynch {
     {
         type Event<'a> = C::Event<'a> where Self: 'a;
 
-        async fn next(&mut self) -> Result<Option<Self::Event<'_>>, Self::Error> {
+        async fn next(&mut self) -> Result<Self::Event<'_>, Self::Error> {
             (*self).next().await
         }
     }
