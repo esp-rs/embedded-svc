@@ -111,25 +111,6 @@ pub mod server {
     }
 }
 
-pub mod callback_server {
-    pub use super::*;
-
-    pub trait SessionProvider {
-        type Session: Clone + Send + PartialEq + Debug;
-
-        fn session(&self) -> Self::Session;
-
-        fn is_new(&self) -> bool;
-        fn is_closed(&self) -> bool;
-    }
-
-    pub trait SenderFactory: ErrorType {
-        type Sender: Sender<Error = Self::Error>;
-
-        fn create(&self) -> Result<Self::Sender, Self::Error>;
-    }
-}
-
 pub mod asynch {
     pub use super::{ErrorType, Fragmented, FrameType};
 
