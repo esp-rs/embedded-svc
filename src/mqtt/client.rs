@@ -97,7 +97,8 @@ where
                 details,
             } => write!(
                 f,
-                "Received {{ id: {id}, topic: {topic:?}, data: {data:?}, details: {details:?} }}"
+                "Received {{ id: {id}, topic: {topic:?}, data: {:?}, details: {details:?} }}",
+                core::str::from_utf8(data),
             ),
             Self::Deleted(message_id) => write!(f, "Deleted({message_id})"),
             Self::Error(error) => write!(f, "Error({error:?})"),
