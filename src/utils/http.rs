@@ -371,6 +371,9 @@ pub mod server {
         }
     }
 
+    // TODO: Commented out as it needs a mutex, yet `embedded-svc` no longer has one
+    // An option is to depend on `embassy-sync`, yet this decision would be deplayed until
+    // we figure out in general what to do with the utility code in `embedded-svc`.
     // pub mod session {
     //     use core::convert::TryInto;
     //     use core::fmt;
