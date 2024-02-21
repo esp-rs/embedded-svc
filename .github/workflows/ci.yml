@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  rust_toolchain: stable
+  rust_toolchain: nightly
 
 jobs:
   compile:

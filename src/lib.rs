@@ -1,5 +1,10 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 #![allow(async_fn_in_trait)]
+
+#[cfg(feature = "std")]
+#[allow(unused_imports)]
+#[macro_use]
+extern crate std;
 
 #[cfg(feature = "alloc")]
 #[allow(unused_imports)]
