@@ -1,4 +1,4 @@
-use core::{convert::TryFrom, str};
+use core::str;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -188,7 +188,7 @@ impl<'b, const N: usize> crate::http::Headers for Headers<'b, N> {
 }
 
 pub mod cookies {
-    use core::iter::{self, Iterator};
+    use core::iter;
     use core::str::Split;
 
     pub struct Cookies<'a>(&'a str);

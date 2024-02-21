@@ -1,5 +1,4 @@
 use core::fmt::Debug;
-use core::result::Result;
 
 pub trait ErrorType {
     type Error: Debug;

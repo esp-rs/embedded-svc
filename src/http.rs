@@ -170,8 +170,6 @@ where
 }
 
 pub mod headers {
-    use core::convert::TryFrom;
-
     pub type ContentLenParseBuf = heapless::String<20>;
 
     pub fn content_type(ctype: &str) -> (&str, &str) {
