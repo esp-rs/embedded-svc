@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.1] - 2024-02-21
+* Fix clippy duplicate imports warnings with latest 1.78 nightly
+
 ## [0.27.0] - 2024-01-26
 * MAJOR CLEANUP/REMOVAL of obscure/rarely used trait modules:
   * `sys_time`
