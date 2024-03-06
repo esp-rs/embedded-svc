@@ -245,6 +245,7 @@ impl PmfConfiguration {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[non_exhaustive]
 pub enum ScanMethod {
     /// Scan every channel and connect according to [ScanSortMethod]
     FullScan(ScanSortMethod),
@@ -256,6 +257,7 @@ pub enum ScanMethod {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[non_exhaustive]
 pub enum ScanSortMethod {
     /// Sort by signal strength
     Signal,
