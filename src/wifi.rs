@@ -169,16 +169,27 @@ impl Default for AccessPointConfiguration {
     }
 }
 
+/// Configuration for wifi in STA mode
 #[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientConfiguration {
+    /// SSID of the target AP
     pub ssid: heapless::String<32>,
+    /// BSSID of the target AP
     pub bssid: Option<[u8; 6]>,
     //pub protocol: Protocol,
     pub auth_method: AuthMethod,
     pub password: heapless::String<64>,
+    /// The expected Channel of the target AP
+    ///
+    /// Connecting might be quicker when the client starts its scan
+    /// at the channel the target AP is on.
     pub channel: Option<u8>,
+    /// The scan method to use when searching for the target AP
+    pub scan_method: ScanMethod,
+    /// Protected Management Frame configuration
+    pub pmf_cfg: PmfConfiguration,
 }
 
 impl Debug for ClientConfiguration {
@@ -188,6 +199,8 @@ impl Debug for ClientConfiguration {
             .field("bssid", &self.bssid)
             .field("auth_method", &self.auth_method)
             .field("channel", &self.channel)
+            .field("scan_method", &self.scan_method)
+            .field("pmf_cfg", &self.pmf_cfg)
             .finish()
     }
 }
@@ -200,8 +213,55 @@ impl Default for ClientConfiguration {
             auth_method: Default::default(),
             password: heapless::String::new(),
             channel: None,
+            scan_method: ScanMethod::default(),
+            pmf_cfg: PmfConfiguration::default(),
         }
     }
+}
+
+/// Protected Management Frame configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub enum PmfConfiguration {
+    /// No support for PMF will be advertized (default)
+    #[default]
+    NotCapable,
+    /// Advertize PMF support and wether PMF is required or not
+    Capable { required: bool },
+}
+impl PmfConfiguration {
+    /// PMF configuration with PMF strictly required
+    pub fn new_required() -> Self {
+        PmfConfiguration::Capable { required: true }
+    }
+    /// PMF configuration with PMF optional but available
+    pub fn new_pmf_optional() -> Self {
+        PmfConfiguration::Capable { required: true }
+    }
+}
+
+/// The scan method to use when connecting to an AP
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub enum ScanMethod {
+    /// Scan every channel and connect according to [ScanSortMethod]
+    FullScan(ScanSortMethod),
+    /// Connect to the first found AP and stop scanning (default)
+    #[default]
+    FastScan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+pub enum ScanSortMethod {
+    /// Sort by signal strength
+    Signal,
+    /// Sort by Security (default)
+    #[default]
+    Security,
 }
 
 #[derive(EnumSetType, Debug, PartialOrd)]
