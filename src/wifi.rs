@@ -223,11 +223,32 @@ impl Default for ClientConfiguration {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames)
+)]
 pub enum PmfConfiguration {
     /// No support for PMF will be advertized (default)
     #[default]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(
+            serialize = "not_capable",
+            serialize = "pmf_disabled",
+            to_string = "PMF Disabled",
+            message = "Don't advertise PMF capabilities",
+        )
+    )]
     NotCapable,
     /// Advertize PMF support and wether PMF is required or not
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(
+            serialize = "capable",
+            to_string = "PMF enabled",
+            message = "Advertise PMF capabilities",
+        )
+    )]
     Capable { required: bool },
 }
 impl PmfConfiguration {
@@ -245,28 +266,71 @@ impl PmfConfiguration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames)
+)]
 #[non_exhaustive]
 pub enum ScanMethod {
     /// Scan every channel and connect according to [ScanSortMethod] (default)
-    FullScan(ScanSortMethod),
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(
+            serialize = "complete_scan",
+            to_string = "Complete Scan",
+            message = "Do a complete scan",
+            detailed_message = "Scan all APs and sort by a criteria"
+        )
+    )]
+    CompleteScan(ScanSortMethod),
     /// Connect to the first found AP and stop scanning
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(
+            serialize = "fast_scan",
+            to_string = "Fast Scan",
+            message = "Do a fast scan",
+            detailed_message = "Connect to the first matching AP"
+        )
+    )]
     FastScan,
 }
 impl Default for ScanMethod {
     fn default() -> Self {
-        Self::FullScan(ScanSortMethod::default())
+        Self::CompleteScan(ScanSortMethod::default())
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "use_strum",
+    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames)
+)]
 #[non_exhaustive]
 pub enum ScanSortMethod {
     /// Sort by signal strength (default)
     #[default]
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(
+            serialize = "signal_strength",
+            serialize = "signal",
+            to_string = "Signal Strength",
+            message = "Sort by signal strength"
+        )
+    )]
     Signal,
     /// Sort by Security
+    #[cfg_attr(
+        feature = "use_strum",
+        strum(
+            serialize = "security",
+            to_string = "Security",
+            message = "Sort by security"
+        )
+    )]
     Security,
 }
 
