@@ -242,16 +242,20 @@ impl PmfConfiguration {
 }
 
 /// The scan method to use when connecting to an AP
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub enum ScanMethod {
-    /// Scan every channel and connect according to [ScanSortMethod]
+    /// Scan every channel and connect according to [ScanSortMethod] (default)
     FullScan(ScanSortMethod),
-    /// Connect to the first found AP and stop scanning (default)
-    #[default]
+    /// Connect to the first found AP and stop scanning
     FastScan,
+}
+impl Default for ScanMethod {
+    fn default() -> Self {
+        Self::FullScan(ScanSortMethod::default())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -259,10 +263,10 @@ pub enum ScanMethod {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub enum ScanSortMethod {
-    /// Sort by signal strength
-    Signal,
-    /// Sort by Security (default)
+    /// Sort by signal strength (default)
     #[default]
+    Signal,
+    /// Sort by Security
     Security,
 }
 
