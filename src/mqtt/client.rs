@@ -85,7 +85,7 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::BeforeConnect => write!(f, "BeforeConnect"),
-            Self::Connected(connected) => write!(f, "Connected(session: {connected})"),
+            Self::Connected(session_present) => write!(f, "Connected(session: {session_present})"),
             Self::Disconnected => write!(f, "Disconnected"),
             Self::Subscribed(message_id) => write!(f, "Subscribed({message_id})"),
             Self::Unsubscribed(message_id) => write!(f, "Unsubscribed({message_id})"),
