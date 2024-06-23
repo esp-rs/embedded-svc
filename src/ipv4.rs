@@ -2,9 +2,7 @@ use core::fmt::Display;
 use core::str::FromStr;
 
 /// For backwards compatibility. Might be removed in future versions.
-pub use core::net::{
-    IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6,
-};
+pub use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
