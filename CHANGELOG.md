@@ -5,8 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [?.??.?] - ????-??-??
-* Breaking change: Add configuration for Protected Management Frames and scan methods to `wifi::ClientConfiguration`
+## [0.28.0] - 2024-06-23
+### Breaking
+* Add configuration for Protected Management Frames and scan methods to `wifi::ClientConfiguration`
+* Removed the `no-std-net` dependency in favor of `core::net` which is stable since Rust 1.77
+* Due to the above, module `ipv4` no longer re-exports `ToSocketAddrs` with `feature = "std"` enabled as this trait is not available in `core::net` (and might completely stop re-exporting `core::net` types in future)
 
 ## [0.27.1] - 2024-02-21
 * Fix clippy duplicate imports warnings with latest 1.78 nightly
