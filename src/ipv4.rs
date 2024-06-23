@@ -74,8 +74,8 @@ impl From<Mask> for Ipv4Addr {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Subnet {
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_serialize")]
-    #[serde(deserialize_with = "ipv4_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_serialize"))]
+    #[cfg_attr(feature = "use_serde", serde(deserialize_with = "ipv4_deserialize"))]
     pub gateway: Ipv4Addr,
     pub mask: Mask,
 }
@@ -112,17 +112,23 @@ impl FromStr for Subnet {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientSettings {
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_serialize")]
-    #[serde(deserialize_with = "ipv4_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_serialize"))]
+    #[cfg_attr(feature = "use_serde", serde(deserialize_with = "ipv4_deserialize"))]
     pub ip: Ipv4Addr,
     pub subnet: Subnet,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_opt_serialize")]
-    #[serde(deserialize_with = "ipv4_opt_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_opt_serialize"))]
+    #[cfg_attr(
+        feature = "use_serde",
+        serde(deserialize_with = "ipv4_opt_deserialize")
+    )]
     pub dns: Option<Ipv4Addr>,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_opt_serialize")]
-    #[serde(deserialize_with = "ipv4_opt_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_opt_serialize"))]
+    #[cfg_attr(
+        feature = "use_serde",
+        serde(deserialize_with = "ipv4_opt_deserialize")
+    )]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 
@@ -187,12 +193,18 @@ pub struct RouterConfiguration {
     pub subnet: Subnet,
     pub dhcp_enabled: bool,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_opt_serialize")]
-    #[serde(deserialize_with = "ipv4_opt_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_opt_serialize"))]
+    #[cfg_attr(
+        feature = "use_serde",
+        serde(deserialize_with = "ipv4_opt_deserialize")
+    )]
     pub dns: Option<Ipv4Addr>,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_opt_serialize")]
-    #[serde(deserialize_with = "ipv4_opt_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_opt_serialize"))]
+    #[cfg_attr(
+        feature = "use_serde",
+        serde(deserialize_with = "ipv4_opt_deserialize")
+    )]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 
@@ -229,17 +241,23 @@ impl Default for Configuration {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct IpInfo {
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_serialize")]
-    #[serde(deserialize_with = "ipv4_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_serialize"))]
+    #[cfg_attr(feature = "use_serde", serde(deserialize_with = "ipv4_deserialize"))]
     pub ip: Ipv4Addr,
     pub subnet: Subnet,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_opt_serialize")]
-    #[serde(deserialize_with = "ipv4_opt_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_opt_serialize"))]
+    #[cfg_attr(
+        feature = "use_serde",
+        serde(deserialize_with = "ipv4_opt_deserialize")
+    )]
     pub dns: Option<Ipv4Addr>,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
-    #[serde(serialize_with = "ipv4_opt_serialize")]
-    #[serde(deserialize_with = "ipv4_opt_deserialize")]
+    #[cfg_attr(feature = "use_serde", serde(serialize_with = "ipv4_opt_serialize"))]
+    #[cfg_attr(
+        feature = "use_serde",
+        serde(deserialize_with = "ipv4_opt_deserialize")
+    )]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 
