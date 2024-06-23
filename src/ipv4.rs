@@ -74,6 +74,8 @@ impl From<Mask> for Ipv4Addr {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Subnet {
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_serialize")]
+    #[serde(deserialize_with = "ipv4_deserialize")]
     pub gateway: Ipv4Addr,
     pub mask: Mask,
 }
@@ -110,11 +112,17 @@ impl FromStr for Subnet {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct ClientSettings {
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_serialize")]
+    #[serde(deserialize_with = "ipv4_deserialize")]
     pub ip: Ipv4Addr,
     pub subnet: Subnet,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_opt_serialize")]
+    #[serde(deserialize_with = "ipv4_opt_deserialize")]
     pub dns: Option<Ipv4Addr>,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_opt_serialize")]
+    #[serde(deserialize_with = "ipv4_opt_deserialize")]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 
@@ -179,8 +187,12 @@ pub struct RouterConfiguration {
     pub subnet: Subnet,
     pub dhcp_enabled: bool,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_opt_serialize")]
+    #[serde(deserialize_with = "ipv4_opt_deserialize")]
     pub dns: Option<Ipv4Addr>,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_opt_serialize")]
+    #[serde(deserialize_with = "ipv4_opt_deserialize")]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 
@@ -217,11 +229,17 @@ impl Default for Configuration {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct IpInfo {
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_serialize")]
+    #[serde(deserialize_with = "ipv4_deserialize")]
     pub ip: Ipv4Addr,
     pub subnet: Subnet,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_opt_serialize")]
+    #[serde(deserialize_with = "ipv4_opt_deserialize")]
     pub dns: Option<Ipv4Addr>,
     #[cfg_attr(feature = "defmt", defmt(Debug2Format))]
+    #[serde(serialize_with = "ipv4_opt_serialize")]
+    #[serde(deserialize_with = "ipv4_opt_deserialize")]
     pub secondary_dns: Option<Ipv4Addr>,
 }
 
@@ -234,4 +252,36 @@ pub trait Interface {
     fn is_iface_up(&self) -> bool;
 
     fn get_ip_info(&self) -> Result<IpInfo, Self::Error>;
+}
+
+#[cfg(feature = "use_serde")]
+fn ipv4_serialize<S>(ipv4: &Ipv4Addr, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    ipv4.octets().serialize(serializer)
+}
+
+#[cfg(feature = "use_serde")]
+fn ipv4_deserialize<'de, D>(deserializer: D) -> Result<Ipv4Addr, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    <[u8; 4]>::deserialize(deserializer).map(Ipv4Addr::from)
+}
+
+#[cfg(feature = "use_serde")]
+fn ipv4_opt_serialize<S>(ipv4: &Option<Ipv4Addr>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    ipv4.map(|ip| ip.octets()).serialize(serializer)
+}
+
+#[cfg(feature = "use_serde")]
+fn ipv4_opt_deserialize<'de, D>(deserializer: D) -> Result<Option<Ipv4Addr>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    <Option<[u8; 4]>>::deserialize(deserializer).map(|octets| octets.map(Ipv4Addr::from))
 }
