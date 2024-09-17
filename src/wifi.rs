@@ -187,8 +187,10 @@ pub struct ClientConfiguration {
     /// at the channel the target AP is on.
     pub channel: Option<u8>,
     /// The scan method to use when searching for the target AP
+    #[cfg_attr(feature = "use_serde", serde(default))]
     pub scan_method: ScanMethod,
     /// Protected Management Frame configuration
+    #[cfg_attr(feature = "use_serde", serde(default))]
     pub pmf_cfg: PmfConfiguration,
 }
 
