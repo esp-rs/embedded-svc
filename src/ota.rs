@@ -105,7 +105,10 @@ impl<O> Ota for &mut O
 where
     O: Ota,
 {
-    type Update<'a> = O::Update<'a> where Self: 'a;
+    type Update<'a>
+        = O::Update<'a>
+    where
+        Self: 'a;
 
     fn get_boot_slot(&self) -> Result<Slot, Self::Error> {
         (**self).get_boot_slot()
@@ -207,7 +210,10 @@ pub mod asynch {
     where
         O: Ota,
     {
-        type Update<'a> = O::Update<'a> where Self: 'a;
+        type Update<'a>
+            = O::Update<'a>
+        where
+            Self: 'a;
 
         async fn get_boot_slot(&self) -> Result<Slot, Self::Error> {
             (**self).get_boot_slot().await

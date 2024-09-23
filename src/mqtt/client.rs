@@ -211,7 +211,10 @@ impl<C> Connection for &mut C
 where
     C: Connection,
 {
-    type Event<'a> = C::Event<'a> where Self: 'a;
+    type Event<'a>
+        = C::Event<'a>
+    where
+        Self: 'a;
 
     fn next(&mut self) -> Result<Self::Event<'_>, Self::Error> {
         (*self).next()
@@ -277,7 +280,10 @@ pub mod asynch {
     where
         C: Connection,
     {
-        type Event<'a> = C::Event<'a> where Self: 'a;
+        type Event<'a>
+            = C::Event<'a>
+        where
+            Self: 'a;
 
         async fn next(&mut self) -> Result<Self::Event<'_>, Self::Error> {
             (*self).next().await

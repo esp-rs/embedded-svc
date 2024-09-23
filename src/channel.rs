@@ -47,7 +47,10 @@ impl<R> Receiver for &mut R
 where
     R: Receiver,
 {
-    type Data<'a> = R::Data<'a> where Self: 'a;
+    type Data<'a>
+        = R::Data<'a>
+    where
+        Self: 'a;
 
     fn recv(&mut self) -> Result<Self::Data<'_>, Self::Error> {
         (**self).recv()
@@ -86,7 +89,10 @@ pub mod asynch {
     where
         R: Receiver,
     {
-        type Data<'a> = R::Data<'a> where Self: 'a;
+        type Data<'a>
+            = R::Data<'a>
+        where
+            Self: 'a;
 
         async fn recv(&mut self) -> Result<Self::Data<'_>, Self::Error> {
             (**self).recv().await

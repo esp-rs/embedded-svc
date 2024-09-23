@@ -92,7 +92,10 @@ pub mod server {
     where
         A: Acceptor,
     {
-        type Connection<'a> = A::Connection<'a> where Self: 'a;
+        type Connection<'a>
+            = A::Connection<'a>
+        where
+            Self: 'a;
 
         fn accept(&self) -> Result<Self::Connection<'_>, Self::Error> {
             (*self).accept()
@@ -103,7 +106,10 @@ pub mod server {
     where
         A: Acceptor,
     {
-        type Connection<'a> = A::Connection<'a> where Self: 'a;
+        type Connection<'a>
+            = A::Connection<'a>
+        where
+            Self: 'a;
 
         fn accept(&self) -> Result<Self::Connection<'_>, Self::Error> {
             (**self).accept()
@@ -172,8 +178,14 @@ pub mod asynch {
         where
             A: Acceptor,
         {
-            type Sender<'a> = A::Sender<'a> where Self: 'a;
-            type Receiver<'a> = A::Receiver<'a> where Self: 'a;
+            type Sender<'a>
+                = A::Sender<'a>
+            where
+                Self: 'a;
+            type Receiver<'a>
+                = A::Receiver<'a>
+            where
+                Self: 'a;
 
             async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error> {
                 (*self).accept().await
@@ -184,8 +196,14 @@ pub mod asynch {
         where
             A: Acceptor,
         {
-            type Sender<'a> = A::Sender<'a> where Self: 'a;
-            type Receiver<'a> = A::Receiver<'a> where Self: 'a;
+            type Sender<'a>
+                = A::Sender<'a>
+            where
+                Self: 'a;
+            type Receiver<'a>
+                = A::Receiver<'a>
+            where
+                Self: 'a;
 
             async fn accept(&self) -> Result<(Self::Sender<'_>, Self::Receiver<'_>), Self::Error> {
                 (**self).accept().await
