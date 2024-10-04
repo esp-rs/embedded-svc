@@ -78,7 +78,7 @@ pub enum EventPayload<'a, E> {
     Error(&'a E),
 }
 
-impl<'a, E> Display for EventPayload<'a, E>
+impl<E> Display for EventPayload<'_, E>
 where
     E: Debug,
 {

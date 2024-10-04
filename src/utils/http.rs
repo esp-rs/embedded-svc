@@ -175,13 +175,13 @@ impl<'b, const N: usize> Headers<'b, N> {
     }
 }
 
-impl<'b, const N: usize> Default for Headers<'b, N> {
+impl<const N: usize> Default for Headers<'_, N> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'b, const N: usize> crate::http::Headers for Headers<'b, N> {
+impl<const N: usize> crate::http::Headers for Headers<'_, N> {
     fn header(&self, name: &str) -> Option<&'_ str> {
         self.get(name)
     }
