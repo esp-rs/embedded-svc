@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::io::{ErrorType, Read, Write};
 use crate::utils::io::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Slot {
@@ -13,7 +13,7 @@ pub struct Slot {
     pub firmware: Option<FirmwareInfo>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct FirmwareInfo {
