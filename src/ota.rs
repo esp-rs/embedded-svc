@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::io::{ErrorType, Read, Write};
 use crate::utils::io::*;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(Hash))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Slot {
@@ -14,8 +13,7 @@ pub struct Slot {
     pub firmware: Option<FirmwareInfo>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(Hash))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct FirmwareInfo {
@@ -34,8 +32,7 @@ pub struct UpdateProgress {
     pub operation: &'static str,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(Hash))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum LoadResult {
@@ -44,8 +41,7 @@ pub enum LoadResult {
     Loaded,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "std", derive(Hash))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub enum SlotState {
