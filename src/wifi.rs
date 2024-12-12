@@ -189,6 +189,9 @@ pub struct ClientConfiguration {
     /// The scan method to use when searching for the target AP
     #[cfg_attr(feature = "use_serde", serde(default))]
     pub scan_method: ScanMethod,
+    /// Listen interval for station to receive beacon when modem power save is set to MAX.
+    /// Units: AP beacon intervals. Defaults to 3 if set to 0.
+    pub listen_interval: u16,
     /// Protected Management Frame configuration
     #[cfg_attr(feature = "use_serde", serde(default))]
     pub pmf_cfg: PmfConfiguration,
@@ -202,6 +205,7 @@ impl Debug for ClientConfiguration {
             .field("auth_method", &self.auth_method)
             .field("channel", &self.channel)
             .field("scan_method", &self.scan_method)
+            .field("listen_interval", &self.listen_interval)
             .field("pmf_cfg", &self.pmf_cfg)
             .finish()
     }
@@ -216,6 +220,7 @@ impl Default for ClientConfiguration {
             password: heapless::String::new(),
             channel: None,
             scan_method: ScanMethod::default(),
+            listen_interval: 0,
             pmf_cfg: PmfConfiguration::default(),
         }
     }
