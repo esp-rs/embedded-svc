@@ -179,7 +179,9 @@ pub struct ClientConfiguration {
     /// BSSID of the target AP
     pub bssid: Option<[u8; 6]>,
     //pub protocol: Protocol,
+    #[cfg_attr(feature = "use_serde", serde(default))]
     pub auth_method: AuthMethod,
+    #[cfg_attr(feature = "use_serde", serde(default))]
     pub password: heapless::String<64>,
     /// The expected Channel of the target AP
     ///

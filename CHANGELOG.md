@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking
 
 ### Added
+- Add serde defaults for authentication method and password fields of ClientConfiguration struct (#82)
 
 ### Fixed
 - Remove `DynStorageImpl` as nobody used it BECAUSE it did not have a public constructor ANYWAY
