@@ -6,8 +6,17 @@ extern crate alloc;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "mqtt_protocol_v5")]
+use crate::mqtt::client5::{
+    MessageMetadata, PublishPropertyConfig, SubscribePropertyConfig, UserPropertyList,
+};
+
 pub trait ErrorType {
     type Error: Debug;
+}
+
+pub trait EventHandlerType {
+    type Handler;
 }
 
 impl<E> ErrorType for &E
@@ -39,6 +48,10 @@ pub type MessageId = u32;
 
 pub trait Event: ErrorType {
     fn payload(&self) -> EventPayload<'_, Self::Error>;
+    #[cfg(feature = "mqtt_protocol_v5")]
+    fn metadata(&self) -> Option<MessageMetadata<'_>>;
+    #[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+    fn user_properties(&self) -> Option<Box<dyn UserPropertyList<Self::Error>>>;
 }
 
 impl<E> Event for &E
@@ -47,6 +60,14 @@ where
 {
     fn payload(&self) -> EventPayload<'_, Self::Error> {
         (*self).payload()
+    }
+    #[cfg(feature = "mqtt_protocol_v5")]
+    fn metadata(&self) -> Option<MessageMetadata<'_>> {
+        (*self).metadata()
+    }
+    #[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+    fn user_properties(&self) -> Option<Box<dyn UserPropertyList<Self::Error>>> {
+        (*self).user_properties()
     }
 }
 
@@ -57,10 +78,20 @@ where
     fn payload(&self) -> EventPayload<'_, Self::Error> {
         (**self).payload()
     }
+
+    #[cfg(feature = "mqtt_protocol_v5")]
+    fn metadata(&self) -> Option<MessageMetadata<'_>> {
+        (**self).metadata()
+    }
+
+    #[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+    fn user_properties(&self) -> Option<Box<dyn UserPropertyList<Self::Error>>> {
+        (**self).user_properties()
+    }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum EventPayload<'a, E> {
     BeforeConnect,
     Connected(bool),
