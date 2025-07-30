@@ -206,7 +206,7 @@ impl<'a> MessageMetadata<'a> {
 pub trait UserPropertyList<TError> {
     fn set_items(&mut self, properties: &[UserPropertyItem]) -> Result<(), TError>;
     #[cfg(feature = "std")]
-    fn get_items(&self) -> Result<Option<Vec<UserPropertyItem>>, TError>;
+    fn get_items<'a>(&self) -> Result<Vec<UserPropertyItem<'a>>, TError>;
     fn clear(&self);
     fn count(&self) -> u8;
     fn is_empty(&self) -> bool {
