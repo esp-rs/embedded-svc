@@ -1,4 +1,6 @@
 use core::fmt::{self, Debug, Display, Formatter};
+#[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+use std::vec::Vec;
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -6,8 +8,17 @@ extern crate alloc;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "mqtt_protocol_v5")]
+use crate::mqtt::client5::MessageMetadata;
+#[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+use crate::mqtt::client5::UserPropertyItem;
+
 pub trait ErrorType {
     type Error: Debug;
+}
+
+pub trait EventHandlerType {
+    type Handler;
 }
 
 impl<E> ErrorType for &E
@@ -39,6 +50,10 @@ pub type MessageId = u32;
 
 pub trait Event: ErrorType {
     fn payload(&self) -> EventPayload<'_, Self::Error>;
+    #[cfg(feature = "mqtt_protocol_v5")]
+    fn metadata<'a>(&self) -> Option<MessageMetadata<'a>>;
+    #[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+    fn user_properties<'a>(&self) -> Result<Vec<UserPropertyItem<'a>>, Self::Error>;
 }
 
 impl<E> Event for &E
@@ -47,6 +62,14 @@ where
 {
     fn payload(&self) -> EventPayload<'_, Self::Error> {
         (*self).payload()
+    }
+    #[cfg(feature = "mqtt_protocol_v5")]
+    fn metadata<'a>(&self) -> Option<MessageMetadata<'a>> {
+        (*self).metadata()
+    }
+    #[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+    fn user_properties<'a>(&self) -> Result<Vec<UserPropertyItem<'a>>, Self::Error> {
+        (*self).user_properties()
     }
 }
 
@@ -57,10 +80,20 @@ where
     fn payload(&self) -> EventPayload<'_, Self::Error> {
         (**self).payload()
     }
+
+    #[cfg(feature = "mqtt_protocol_v5")]
+    fn metadata<'a>(&self) -> Option<MessageMetadata<'a>> {
+        (**self).metadata()
+    }
+
+    #[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+    fn user_properties<'a>(&self) -> Result<Vec<UserPropertyItem<'a>>, Self::Error> {
+        (**self).user_properties()
+    }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum EventPayload<'a, E> {
     BeforeConnect,
     Connected(bool),
