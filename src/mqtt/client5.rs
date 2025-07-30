@@ -1,7 +1,9 @@
-use core::{any::Any, fmt::Debug};
+use core::fmt::Debug;
 
 #[cfg(feature = "std")]
 use std::vec::Vec;
+
+use crate::mqtt::client::{ErrorType, MessageId, QoS};
 
 #[allow(unused_imports)]
 pub use super::*;
@@ -16,10 +18,7 @@ pub struct UserPropertyItem<'a> {
 
 impl<'a> UserPropertyItem<'a> {
     pub fn new(key: &'a str, value: &'a str) -> Self {
-        Self {
-            key,
-            value,
-        }
+        Self { key, value }
     }
 }
 
@@ -215,6 +214,7 @@ pub trait UserPropertyList<TError> {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct PublishPropertyConfig<'a> {
     pub payload_format_indicator: bool,
     pub message_expiry_interval: u32,
@@ -225,6 +225,21 @@ pub struct PublishPropertyConfig<'a> {
     pub user_properties: Option<&'a [UserPropertyItem<'a>]>,
 }
 
+impl<'a> Default for PublishPropertyConfig<'a> {
+    fn default() -> Self {
+        Self {
+            payload_format_indicator: false,
+            message_expiry_interval: 0,
+            topic_alias: 0,
+            response_topic: None,
+            correlation_data: None,
+            content_type: None,
+            user_properties: None,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct SubscribePropertyConfig<'a> {
     pub subscribe_id: u16,
     pub no_local: bool,
@@ -234,47 +249,98 @@ pub struct SubscribePropertyConfig<'a> {
     pub user_properties: Option<&'a [UserPropertyItem<'a>]>,
 }
 
+impl<'a> Default for SubscribePropertyConfig<'a> {
+    fn default() -> Self {
+        Self {
+            subscribe_id: 0,
+            no_local: false,
+            retain_as_published: false,
+            retain_handling: 0, // Default to 0 (Send retained messages)
+            share_name: None,
+            user_properties: None,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct UnsubscribePropertyConfig<'a> {
     pub is_shared: bool,
     pub share_name: Option<&'a str>,
     pub user_properties: Option<&'a [UserPropertyItem<'a>]>,
 }
 
+impl<'a> Default for UnsubscribePropertyConfig<'a> {
+    fn default() -> Self {
+        Self {
+            is_shared: false,
+            share_name: None,
+            user_properties: None,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct DisconnectPropertyConfig<'a> {
     pub session_expiry_interval: u32,
-    pub reason: Option<&'a str>,
+    pub reason: u8,
     pub user_properties: Option<&'a [UserPropertyItem<'a>]>,
 }
 
-pub trait PropertyConfig<'a> {
-    fn as_ptr(&self) -> *const core::ffi::c_void;
-    fn as_any(&self) -> &dyn Any;
+impl<'a> Default for DisconnectPropertyConfig<'a> {
+    fn default() -> Self {
+        Self {
+            session_expiry_interval: 0,
+            reason: 0,
+            user_properties: None,
+        }
+    }
 }
 
 pub trait Client: ErrorType {
-    fn subscribe<'a>(&mut self, topic: &str, qos: QoS, config: SubscribePropertyConfig<'a>) -> Result<MessageId, Self::Error>;
+    fn subscribe<'a>(
+        &mut self,
+        topic: &str,
+        qos: QoS,
+        config: Option<SubscribePropertyConfig<'a>>,
+    ) -> Result<MessageId, Self::Error>;
 
-    fn unsubscribe<'a>(&mut self, topic: &str, config: UnsubscribePropertyConfig<'_>) -> Result<MessageId, Self::Error>;  
+    fn unsubscribe<'a>(
+        &mut self,
+        topic: &str,
+        config: Option<UnsubscribePropertyConfig<'a>>,
+    ) -> Result<MessageId, Self::Error>;
 
     fn disconnect<'a>(
         &mut self,
-        config: DisconnectPropertyConfig<'a>,
+        config: Option<DisconnectPropertyConfig<'a>>,
     ) -> Result<(), Self::Error>;
 }
 
-impl <C> Client for &mut C
+impl<C> Client for &mut C
 where
     C: Client,
 {
-    fn subscribe<'a>(&mut self, topic: &str, qos: QoS, config: SubscribePropertyConfig<'a>) -> Result<MessageId, Self::Error> {
+    fn subscribe<'a>(
+        &mut self,
+        topic: &str,
+        qos: QoS,
+        config: Option<SubscribePropertyConfig<'a>>,
+    ) -> Result<MessageId, Self::Error> {
         (*self).subscribe(topic, qos, config)
     }
 
-    fn unsubscribe<'a>(&mut self, topic: &str, config: UnsubscribePropertyConfig<'a>) -> Result<MessageId, Self::Error> {
+    fn unsubscribe<'a>(
+        &mut self,
+        topic: &str,
+        config: Option<UnsubscribePropertyConfig<'a>>,
+    ) -> Result<MessageId, Self::Error> {
         (*self).unsubscribe(topic, config)
     }
 
-    fn disconnect<'a>(&mut self, config: DisconnectPropertyConfig<'a>) -> Result<(), Self::Error> {
+    fn disconnect<'a>(
+        &mut self,
+        config: Option<DisconnectPropertyConfig<'a>>,
+    ) -> Result<(), Self::Error> {
         (*self).disconnect(config)
     }
 }
@@ -286,27 +352,56 @@ pub trait Publish: ErrorType {
         qos: QoS,
         retain: bool,
         payload: &'a [u8],
-        config: PublishPropertyConfig<'a>,
+        config: Option<PublishPropertyConfig<'a>>,
     ) -> Result<MessageId, Self::Error>;
 }
 
+impl<P> Publish for &mut P
+where
+    P: Publish,
+{
+    fn publish<'a>(
+        &mut self,
+        topic: &str,
+        qos: QoS,
+        retain: bool,
+        payload: &'a [u8],
+        config: Option<PublishPropertyConfig<'a>>,
+    ) -> Result<MessageId, Self::Error> {
+        (*self).publish(topic, qos, retain, payload, config)
+    }
+}
+
 pub mod asyncch {
+    use crate::mqtt::{
+        client::{ErrorType, MessageId, QoS},
+        client5::{
+            DisconnectPropertyConfig, PublishPropertyConfig, SubscribePropertyConfig,
+            UnsubscribePropertyConfig,
+        },
+    };
+
     pub trait Client: ErrorType {
         async fn subscribe<'a>(
             &'a mut self,
             topic: &'a str,
             qos: QoS,
-            config: SubscribePropertyConfig<'a>,
+            config: Option<SubscribePropertyConfig<'a>>,
         ) -> Result<MessageId, Self::Error>;
 
         async fn unsubscribe<'a>(
             &'a mut self,
             topic: &'a str,
-            config: UnsubscribePropertyConfig<'a>,
+            config: Option<UnsubscribePropertyConfig<'a>>,
         ) -> Result<MessageId, Self::Error>;
+
+        async fn disconnect<'a>(
+            &'a mut self,
+            config: Option<DisconnectPropertyConfig<'a>>,
+        ) -> Result<(), Self::Error>;
     }
 
-    impl <C> Client for &mut C
+    impl<C> Client for &mut C
     where
         C: Client,
     {
@@ -314,7 +409,7 @@ pub mod asyncch {
             &'a mut self,
             topic: &'a str,
             qos: QoS,
-            config: SubscribePropertyConfig<'a>,
+            config: Option<SubscribePropertyConfig<'a>>,
         ) -> Result<MessageId, Self::Error> {
             (*self).subscribe(topic, qos, config).await
         }
@@ -322,9 +417,16 @@ pub mod asyncch {
         async fn unsubscribe<'a>(
             &'a mut self,
             topic: &'a str,
-            config: UnsubscribePropertyConfig<'a>,
+            config: Option<UnsubscribePropertyConfig<'a>>,
         ) -> Result<MessageId, Self::Error> {
             (*self).unsubscribe(topic, config).await
+        }
+
+        async fn disconnect<'a>(
+            &'a mut self,
+            config: Option<DisconnectPropertyConfig<'a>>,
+        ) -> Result<(), Self::Error> {
+            (*self).disconnect(config).await
         }
     }
 
@@ -335,11 +437,11 @@ pub mod asyncch {
             qos: QoS,
             retain: bool,
             payload: &'a [u8],
-            config: PublishPropertyConfig<'a>,
+            config: Option<PublishPropertyConfig<'a>>,
         ) -> Result<MessageId, Self::Error>;
     }
 
-    impl <P> Publish for &mut P
+    impl<P> Publish for &mut P
     where
         P: Publish,
     {
@@ -349,7 +451,7 @@ pub mod asyncch {
             qos: QoS,
             retain: bool,
             payload: &'a [u8],
-            config: PublishPropertyConfig<'a>,
+            config: Option<PublishPropertyConfig<'a>>,
         ) -> Result<MessageId, Self::Error> {
             (*self).publish(topic, qos, retain, payload, config).await
         }

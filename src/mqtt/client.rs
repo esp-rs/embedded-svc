@@ -1,4 +1,6 @@
 use core::fmt::{self, Debug, Display, Formatter};
+#[cfg(all(feature = "mqtt_protocol_v5", feature = "std"))]
+use std::boxed::Box;
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -7,9 +9,7 @@ extern crate alloc;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "mqtt_protocol_v5")]
-use crate::mqtt::client5::{
-    MessageMetadata, PublishPropertyConfig, SubscribePropertyConfig, UserPropertyList,
-};
+use crate::mqtt::client5::{MessageMetadata, UserPropertyList};
 
 pub trait ErrorType {
     type Error: Debug;
