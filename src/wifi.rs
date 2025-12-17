@@ -10,7 +10,7 @@ use enumset::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "use_strum")]
-use strum_macros::{Display, EnumIter, EnumMessage, EnumString, EnumVariantNames, FromRepr};
+use strum_macros::{Display, EnumIter, EnumMessage, EnumString, FromRepr, VariantNames};
 
 #[cfg(feature = "use_numenum")]
 use num_enum::TryFromPrimitive;
@@ -20,7 +20,7 @@ use num_enum::TryFromPrimitive;
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames, FromRepr)
+    derive(EnumString, Display, EnumMessage, EnumIter, VariantNames, FromRepr)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
@@ -70,7 +70,7 @@ pub enum AuthMethod {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames, FromRepr)
+    derive(EnumString, Display, EnumMessage, EnumIter, VariantNames, FromRepr)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
@@ -109,7 +109,7 @@ pub enum Protocol {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames, FromRepr)
+    derive(EnumString, Display, EnumMessage, EnumIter, VariantNames, FromRepr)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
@@ -229,7 +229,7 @@ impl Default for ClientConfiguration {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames)
+    derive(EnumString, Display, EnumMessage, EnumIter, VariantNames)
 )]
 pub enum PmfConfiguration {
     /// No support for PMF will be advertized (default)
@@ -272,7 +272,7 @@ impl PmfConfiguration {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames)
+    derive(EnumString, Display, EnumMessage, EnumIter, VariantNames)
 )]
 #[non_exhaustive]
 pub enum ScanMethod {
@@ -310,7 +310,7 @@ impl Default for ScanMethod {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames)
+    derive(EnumString, Display, EnumMessage, EnumIter, VariantNames)
 )]
 #[non_exhaustive]
 pub enum ScanSortMethod {
@@ -343,7 +343,7 @@ pub enum ScanSortMethod {
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "use_strum",
-    derive(EnumString, Display, EnumMessage, EnumIter, EnumVariantNames, FromRepr)
+    derive(EnumString, Display, EnumMessage, EnumIter, VariantNames, FromRepr)
 )]
 #[cfg_attr(feature = "use_numenum", derive(TryFromPrimitive))]
 #[cfg_attr(feature = "use_numenum", repr(u8))]
