@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 
 ### Breaking
+- Update `embedded-io`, `embedded-io-async`, `heapless`, `strum`, `strum-macros`, and `defmt` dependencies to their latest versions
 
 ### Added
 - Add serde defaults for authentication method and password fields of ClientConfiguration struct (#82)
