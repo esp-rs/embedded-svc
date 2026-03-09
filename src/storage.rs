@@ -156,11 +156,10 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-impl<R, S> std::error::Error for StorageError<R, S>
+impl<R, S> core::error::Error for StorageError<R, S>
 where
-    R: std::error::Error,
-    S: std::error::Error,
+    R: core::error::Error,
+    S: core::error::Error,
 {
 }
 

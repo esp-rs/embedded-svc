@@ -33,7 +33,6 @@ impl<R: core::fmt::Debug, W: core::fmt::Debug> core::fmt::Display for CopyError<
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(not(feature = "std"))))]
 impl<R: core::fmt::Debug, W: core::fmt::Debug> core::error::Error for CopyError<R, W> {}
 
 impl<R, W> Error for CopyError<R, W>

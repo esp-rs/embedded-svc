@@ -5,13 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-03-09
+
+### Breaking
+- Update `embedded-io`, `embedded-io-async`, `heapless`, `strum`, `strum-macros`, and `defmt` dependencies to their latest versions
+- Raise Rust MSRV to `1.82`
+
 ## [0.28.1] - 2025-01-02
 
 ### Deprecated
 
 ### Breaking
-- Update `embedded-io`, `embedded-io-async`, `heapless`, `strum`, `strum-macros`, and `defmt` dependencies to their latest versions
-- Raise Rust MSRV to `1.82`
 
 ### Added
 - Add serde defaults for authentication method and password fields of ClientConfiguration struct (#82)
